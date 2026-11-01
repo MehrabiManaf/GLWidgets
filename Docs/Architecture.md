@@ -1,0 +1,363 @@
+# GLWidgets architecture
+
+GLWidgets is a C++ GUI framework whose widgets are drawn entirely with the GPU. It runs on Windows, Linux and macOS, it
+depends only on permissively licensed libraries, and new widgets are made by deriving from the existing ones. Its first
+real user is the second version of the [FlowGraph](https://github.com/MehrabiManaf/FlowGraph) script editor, which must
+not need Qt. After that it is meant for user interfaces inside 3D applications and games, and for charts and plots.
+
+This document says how it is built and why. Parts marked *planned* are decided but not written yet; the
+[milestones](#milestones) say what exists.
+
+## Requirements
+
+- **Platforms:** Windows, Linux (X11 and Wayland), macOS.
+- **Licenses:** GLWidgets is MIT; every dependency is permissive (zlib, MIT, BSD, Apache-2.0, FTL, OFL). No LGPL or GPL,
+  even as an optional part.
+- **Persian and other right-to-left languages:** bidirectional text, shaping, right-to-left layouts.
+- **Localization:** every text a user sees is translatable, and the language can change while the application runs.
+- **Docking of documents and panels:** major tabs dock only in the tab strip at the top of a window, as in a web
+  browser, so whole windows merge and split. Panel tabs dock, split and float inside a major tab, as in Unreal Engine's
+  Slate.
+- **Custom window chrome:** windows have no title bar or borders of the system. GLWidgets draws them, so the application
+  looks and behaves the same everywhere.
+- **Embedding:** the user interface can be drawn over a 3D scene, into a texture placed in a 3D world, or inside an engine
+  that owns the window and the GPU device.
+- **Charts and plots:** drawing many thousands of points, lines and markers interactively, and custom GPU drawing for more.
+- **C++20 now, C++26 later:** the design leaves room for reflection, contracts and `std::execution` to replace what is
+  written by hand today, without changing the API users see.
+
+Out of scope: native widgets of the system (everything is drawn by GLWidgets), mobile platforms, a UI designer tool.
+
+## Layers
+
+```
+Application
+   │
+Widgets        Widget tree, layout, events, focus, styles, docking, window chrome     (planned)
+   │
+Text           Fonts, shaping, bidi, line breaking, glyph atlas                        (planned)
+   │
+Paint          Painter → DrawList (portable)    Renderer: DrawList → Rhi              Library/Include/GLWidgets/Paint
+   │
+Rhi            GPU: devices, surfaces, buffers, textures, shaders, pipelines          Library/Include/GLWidgets/Rhi
+   │
+Platform       Windows, events, input, hit testing, clipboard, IME, DPI               Library/Include/GLWidgets/Platform
+   │
+Core           Geometry, color, errors, contract checks                               Library/Include/GLWidgets/Core
+```
+
+A layer uses only the layers below it. Three rules matter most:
+
+1. **Widgets never touch the RHI.** A widget paints with a `Painter`, which records a `DrawList`. A draw list holds only
+   vertices, indices and commands that refer to textures by id. It is the boundary that makes embedding possible (an
+   engine draws it with its own renderer), as well as batching, caching and other GPU backends.
+2. **The widget layer does not need the Platform.** A widget tree takes events (plain structs) and gives draw lists. With
+   the Platform, GLWidgets makes the windows; without it, an engine feeds the events and draws the lists.
+3. **SDL3 stays behind the Platform and Rhi interfaces.** No SDL type is in a public header. Where SDL cannot do
+   something, the system's own API is added next to it, inside the implementation (SDL exposes the native handles:
+   `HWND`, `NSWindow`, `wl_surface`...).
+
+All of it is one library, `GLWidgets` (shared by default, `GLW_SHARED`), with the public headers in
+`Library/Include/GLWidgets/<Layer>/` and the implementation in `Library/Source/<Layer>/`.
+
+## Platform
+
+`glw::platform::Platform` makes windows and reports events; `createPlatform()` returns the SDL3 implementation
+(`Source/Platform/Sdl`).
+
+**Units.** Everything is in device independent units (*dips*). A window's `scale()` is its pixels per dip (2 on a Retina
+screen, 1.5 on Windows at 150 %). SDL's own window coordinates are pixels on Windows and X11 but points on macOS and
+Wayland. The SDL platform converts every position and size, so users of `Platform` never see the difference. What the GPU
+draws into is in pixels (`PixelSize`).
+
+**Events.** One plain struct per kind of event, `Event` is a `std::variant` of them. Each carries the `WindowId` of its
+window, so one event loop serves every window of a docking layout. Events are plain aggregates on purpose: an engine can
+make them from its own input, and reflection will be able to log, record and replay them.
+
+**Threading.** One platform per process, used on the main thread (macOS requires it), as everything of the user
+interface. `wakeUp()` is the one call allowed from other threads.
+
+**Quitting.** Closing the last window does not quit (`SDL_HINT_QUIT_ON_LAST_WINDOW_CLOSE` is off). With several windows
+that is the application's decision. `QuitRequested` comes from the system: Command+Q, the session ending.
+
+**Keyboard.** `KeyChanged` is for shortcuts and navigation. Its letters are those of the US layout whatever the active
+layout, so Ctrl+C is `Key::C` on a Persian keyboard too (SDL's "latin_letters" key code option). Typed text comes only from
+`TextInput`, and the composition of an input method comes from `TextComposition`.
+
+### Window chrome
+
+A window made with `WindowDesc::borderless` has no title bar or borders of the system: its whole area is drawn by
+GLWidgets. The application tells the system what each point is with `Window::setHitTest`: the caption (drag to move,
+double-click to maximize), one of the eight resize borders, or client area (everything else, the window buttons included).
+The system then moves, resizes and snaps the window itself: `WM_NCHITTEST` on Windows (Aero Snap works),
+`_NET_WM_MOVERESIZE` on X11, `xdg_toplevel.move/resize` on Wayland, where drawing the decorations in the client is the
+norm anyway.
+
+What stays native, behind the interface:
+
+| What | Where | Plan |
+|---|---|---|
+| Window shadow and rounded corners | Windows 11 | DWM attributes on the borderless window (native code, M3) |
+| The snap layouts flyout on the maximize button | Windows 11 | Answer `HTMAXBUTTON` for our maximize button (native code, M3) |
+| Shadow | macOS | Given by the system |
+| Shadow | X11, Wayland | None, or drawn by GLWidgets in a transparent margin (decided in M3) |
+
+The window buttons look the same everywhere; on which side they are is a style setting, by default the system's
+convention (left on macOS, right elsewhere).
+
+### Known gaps
+
+| Gap | Where | Plan |
+|---|---|---|
+| Live resize: the event loop is blocked while the user drags a window edge | Windows, macOS | Redraw from SDL's event watch on `SDL_EVENT_WINDOW_EXPOSED` (M3) |
+| No z-order of windows | All | Track the activation order of our own windows |
+| Global menu bar | macOS | Native `NSMenu` code |
+| Accessibility | All | Platform accessibility APIs, possibly through AccessKit (MIT/Apache-2.0) |
+| Window positions and global mouse position | Wayland | See [Docking](#docking) |
+
+## RHI
+
+`glw::rhi::Device` is the GPU. The implementation is SDL3's GPU API (`Source/Rhi/SdlGpu`), which picks Vulkan
+(Windows, Linux), Direct3D 12 (Windows 10 and later) or Metal (macOS 10.14 and later) at run time. OpenGL or Direct3D 11
+would be further implementations of the same interface, written only if a target machine needs them.
+
+The RHI is public. Applications use it for what widgets do not draw: a 3D scene under the user interface, a chart with
+millions of points, a texture shown in a viewport widget. It has buffers, textures (sampled and render targets),
+samplers, shaders, pipelines and command lists. A command list records uploads outside passes, and draws inside a pass
+into a window's surface or into a texture.
+
+- **One device for every window.** Each window gets a `Surface` (a swap chain) from the same device, so textures, the
+  glyph atlas and pipelines are shared. A panel that moves to another window uploads nothing again.
+- **A frame:** `beginCommands()`, uploads, then for each target a pass (`beginSurfacePass` or `beginTexturePass`, draws,
+  `endPass`), then `submit()`, which presents. Windows are drawn only when they need it; between frames the application
+  sleeps in `waitForEvents`.
+- **Resources** may be destroyed right after the frame that used them is submitted: the GPU API keeps them until the GPU
+  is done with them.
+- **Shaders** are written once in HLSL (`Library/Shaders`) and compiled ahead of time by `Tools/CompileShaders.py` into
+  DXBC (Direct3D 12, with `fxc` from the Windows SDK), SPIR-V (Vulkan, with DXC) and MSL (Metal, SPIR-V through
+  SPIRV-Cross). The results are committed as headers, so building GLWidgets needs no shader compiler. A shader names its
+  resources as SDL's GPU API requires (see the comment at the top of `Library/Shaders/Painter.hlsl`).
+- **Colors** are sRGB, written as they are into non-sRGB swap chains. Color management and HDR are deliberately left for
+  later.
+
+SDL's GPU API cannot adopt a device that an engine already made. That is why embedding goes through draw lists (see
+[Embedding](#embedding)) and not through a shared device.
+
+## Paint
+
+`glw::paint::Painter` records into a `DrawList`. Everything is in dips; a transform (uniform scale and translation, enough
+for zooming and panning a canvas) and a stack of clip rectangles apply to what is drawn. It has:
+
+- **Boxes:** rectangles, rounded rectangles, circles, their borders, and blurred shadows. They are drawn as a signed
+  distance field in the fragment shader, so their edges are anti-aliased at any scale and a box is four vertices whatever
+  its corner radius or blur.
+- **Lines and polygons:** polylines of any width with mitered joins, and convex polygons, tessellated on the CPU with a
+  one-pixel anti-aliasing fringe. This is what charts and node connections are made of.
+- **Images:** a texture (by id) on a rectangle, tinted.
+- **Text** *(planned, M2)*: glyph quads from the glyph atlas.
+
+**The vertex format and one shader are the whole contract of a draw list.** A vertex has a position, texture coordinates,
+the parameters of a box (half size, corner radius, border width, blur) and an RGBA8 color. A command is a range of
+indices, a clip rectangle and a texture id. One pipeline with one shader pair draws all of it
+(`Library/Shaders/Painter.hlsl`), with premultiplied alpha blending. An engine that draws GLWidgets' lists itself needs
+exactly that shader and one pipeline.
+
+`glw::paint::Renderer` draws draw lists with the RHI: it uploads a list's geometry into the buffers of its target, then
+draws it inside the target's pass, one draw call per command. Texture ids are mapped to RHI textures by the renderer; 0 is
+white.
+
+**For charts:** points are mapped from data to dips by the chart, in double precision, before they reach the painter.
+Tens of thousands of points per frame are fine for the tessellated polylines. Beyond that, a draw list will hold *custom
+commands* *(planned, M6)*: a callback that draws with the RHI directly (instanced markers, a line shader over a storage
+buffer of points) in the same pass, between the commands around it. Custom commands exist only when GLWidgets renders the
+list itself.
+
+## Embedding *(planned, M6)*
+
+Three ways to use GLWidgets in a 3D application, from the most integrated to the least:
+
+| Mode | Who owns the window and the device | How the UI is drawn |
+|---|---|---|
+| **Standalone** | GLWidgets (`Platform`, `rhi::Device`) | The application draws its scene with the RHI into a texture or in the window's pass, and the UI goes on top. A viewport widget shows a texture rendered by the application. |
+| **Engine** | The engine | The engine gives GLWidgets its input as `Event` structs and gets draw lists back. It draws them with its own renderer, using GLWidgets' shader and vertex format, the way Dear ImGui is integrated with its backends. |
+| **In the world** | Either | A widget tree drawn into a texture (`beginTexturePass`, or the engine's own render target), which the scene puts on a surface. Input is the scene's ray hit turned into positions in the texture. |
+
+What this asks of the widget layer: a UI root that is not tied to a platform window (it has a size, a scale, receives
+events, produces a draw list), and textures referred to by id everywhere.
+
+## Text *(planned, M2)*
+
+The editor needs hit testing, cursor movement and selection in text that mixes Persian, English and code, so GLWidgets
+has its own text stack instead of SDL_ttf:
+
+| Step | Library | License |
+|---|---|---|
+| Bidirectional algorithm (UAX #9) | SheenBidi | Apache-2.0 |
+| Line breaking (UAX #14) | libunibreak | zlib |
+| Shaping | HarfBuzz | MIT |
+| Rasterization | FreeType | FTL (BSD-like, credit in the documentation) |
+| Font discovery and fallback | DirectWrite / CoreText / fontconfig | system / MIT |
+| Default Persian font | Vazirmatn | OFL |
+
+The order is: paragraph → bidi runs → script and font runs (with fallback) → shaping → line breaking → visual reordering of
+each line. A laid-out paragraph keeps the cluster mapping between UTF-8 offsets and glyphs. Cursor movement (logical and
+visual), selection rectangles across direction changes and hit testing all work from that mapping.
+
+Glyphs are rasterized into a shared atlas, keyed by font, glyph id, size and scale. Text on the zoomable node canvas may
+use MSDF glyphs instead. Which one is decided by measurement in M2.
+
+## Widgets *(planned, M3–M4)*
+
+- **A tree of widgets.** A parent owns its children (`std::unique_ptr`); everything else holds non-owning pointers or
+  handles. New widget types derive from `Widget` or one of its subclasses and override what they need: `paint`, `measure`,
+  `arrange`, the event handlers.
+- **Layout in two passes:** `measure` (the size wanted for the space offered), then `arrange` (the rectangle given). Layout
+  objects are separate from widgets, so any container can take any layout.
+- **Events:** hit test, then a capture phase from the root down and a bubble phase back up. Focus and mouse capture are
+  separate from hit testing.
+- **Retained, invalidated:** a widget marks its layout or its paint dirty, and only dirty parts are laid out or painted
+  again. A window whose content did not change is not drawn.
+- **Widgets can move between windows** (docking). No widget may keep anything that depends on its window, such as its scale
+  or its surface, without being told when that changes. Changing the parent re-runs layout and font resolution.
+- **Window chrome is widgets:** the title bar, its tab strip and the window buttons are ordinary widgets, and the
+  window's hit test asks the widget tree what is under a point.
+
+## Docking *(planned, M5)*
+
+Two kinds of tabs, as in Slate:
+
+- **Major tabs** are documents or workspaces: a script, a level, a chart sheet. They live only in the tab strip at the top
+  of a window, which is the window's title bar, as in Chrome or Firefox. Dragging a major tab out of its strip makes a new
+  window with it. Dropping it on another window's strip moves it there. Dragging the only tab of a window drags the window,
+  so windows merge and split by their tabs.
+- **Panel tabs** are tools: a node palette, a property inspector, an output log. They dock inside the content area of a
+  major tab, in a tree of splits and tab stacks. Dragged out, a panel tab floats in a panel window: a window with a small
+  title bar and a dock area of its own, where more panel tabs can be docked. A panel tab never goes into a major tab strip,
+  and a major tab never goes into a dock area.
+
+The layout is a model of its own, separate from the widgets it shows and serializable (it is saved with the user's
+workspace): a list of windows, each with its major tabs, each major tab with its tree of splits and panel tab stacks, and
+the panel windows. A tab moving between windows is a reparent in the widget tree.
+
+Which major tab a panel belongs to is still open (see [Open questions](#open-questions)): Slate gives every major tab its
+own panels, and a window-wide panel (a log, a search) is the other common need.
+
+Tearing off and docking back needs what not every system gives:
+
+| Need | Windows, macOS, X11 | Wayland |
+|---|---|---|
+| Place a floating window where the mouse is | `SDL_SetWindowPosition` | Not allowed for clients |
+| Mouse position outside our windows while dragging | `SDL_GetGlobalMouseState`, `SDL_CaptureMouse` | Not available |
+| Move a window with the mouse and dock it back | Our own drag loop | `xdg-toplevel-drag` protocol: KDE Plasma yes, GNOME and sway no (2026) |
+
+So docking has two modes:
+
+- **Full** (Windows, macOS, X11): our own drag loop. Drop indicators are drawn inside the target window, not as separate
+  overlay windows.
+- **Restricted** (Wayland): tabs are dragged with an ordinary drag-and-drop session, and the drop targets are inside our
+  windows. A tab dropped outside every window becomes a new window where the compositor places it.
+  `xdg-toplevel-drag` will be used through SDL's `wl_display` / `wl_surface` where the compositor has it.
+
+An application can also run on XWayland to get the full mode (`SDL_VIDEO_DRIVER=x11`).
+
+## Localization and right-to-left *(planned, M4)*
+
+- **Translatable text is a value of its own.** Widgets hold a `LocalizedText` (a key, the source text and arguments), not a
+  `std::string`. When the language changes, an event goes through the widget tree and every widget resolves its texts
+  again. Plain strings remain for user data, which is never translated.
+- **Catalogs:** one file per language with the source text kept next to each translation, as in FlowGraph's
+  `Translations`, so an outdated translation is never shown. Plural rules come from the CLDR data (Unicode license).
+- **Formatting:** numbers, dates and times go through a `Locale` interface. That covers Persian digits and the Solar Hijri
+  (Jalali) calendar. A small implementation comes first. ICU, with its data trimmed to the languages shipped, can replace it
+  behind the same interface if the need grows.
+- **Layout direction:** every widget has a `LayoutDirection` (inherited, overridable). In right-to-left, layouts, scroll
+  bars, tab order, docking and directional icons are mirrored. A text field takes its paragraph direction from its content
+  unless told otherwise. A code editor stays left-to-right while still shaping the Persian inside strings and comments.
+
+## Metadata and C++26
+
+Qt needs moc for properties and signals. GLWidgets uses no code generator: the metadata comes from C++ itself.
+
+**A runtime description is the contract.** Whatever needs metadata (the style system, serialization of layouts and
+settings, an inspector, data binding) reads a runtime description: a type's name, base, properties (name, type, getter,
+setter) and enum values. Today these descriptions are written with macros next to the class. With C++26 reflection
+(P2996) and annotations (P3394) a `consteval` function produces exactly the same descriptions from the class itself:
+
+```cpp
+// C++20
+class Button : public Widget {
+    LocalizedText text_;
+    bool flat_ = false;
+    GLW_PROPERTIES(Button, text_, flat_)
+};
+
+// C++26: same descriptions, no list to keep up to date
+class Button : public Widget {
+    [[=glw::property]] LocalizedText text_;
+    [[=glw::property]] bool flat_ = false;
+};
+```
+
+What uses the descriptions does not change. Rules that keep that true:
+
+- Properties are ordinary data members (or light wrappers), so reflection can enumerate them.
+- No code generator, no external description files that duplicate the classes.
+- Events, descriptors, vertices and settings are plain aggregates.
+- Macros are only allowed where reflection will remove them, and are kept out of the hot paths of the API.
+
+**Contracts.** `GLW_EXPECTS`, `GLW_ENSURES` and `GLW_ASSERT` (`Core/Assert.hpp`) become `pre`, `post` and
+`contract_assert` when compilers ship contracts. Their conditions must have no side effects.
+
+**Modules.** Headers for now, one public header per component and no macros needed by users except the export macro, so
+that a `import glw;` module can be added once CMake and the three compilers handle modules well.
+
+**`std::execution`.** Background work (file loading, font loading, search) will be designed around senders and receivers,
+starting from a small task interface that can be implemented on top of `std::execution` later.
+
+## Dependencies
+
+| Library | Used for | License | Status |
+|---|---|---|---|
+| SDL3 3.4.18 | Platform, RHI | zlib | In use (pinned tarball, SHA-256 checked) |
+| HarfBuzz | Shaping | MIT | Planned (M2) |
+| FreeType | Glyph rasterization | FTL | Planned (M2) |
+| SheenBidi | Bidirectional text | Apache-2.0 | Planned (M2) |
+| libunibreak | Line breaking | zlib | Planned (M2) |
+| Vazirmatn | Default Persian font | OFL | Planned (M2) |
+| CLDR data | Plural rules, locale data | Unicode | Planned (M4) |
+
+Shader tools, needed only to change a shader (`Tools/CompileShaders.py`): `fxc` (Windows SDK), DXC (MIT /
+University of Illinois license), SPIRV-Cross (Apache-2.0).
+
+The `GLW_USE_SYSTEM_SDL3` option uses an installed SDL3 instead of the pinned release (for Linux distributions).
+
+## Conventions
+
+- C++20, `std::string` holds UTF-8 everywhere.
+- Namespace `glw`, one nested namespace per layer (`glw::platform`, `glw::rhi`, `glw::paint`). Types are `PascalCase`;
+  functions and variables are `camelCase`; data members end with `_`.
+- Files are `PascalCase.hpp` / `.cpp`; public headers live in `Include/GLWidgets/<Layer>/` and are included as
+  `<GLWidgets/<Layer>/X.hpp>`.
+- Every file starts with SPDX headers (copyright and `MIT`).
+- Errors of the environment (no GPU, no display) throw `glw::Error`. Bugs of the caller are contract failures, which abort.
+- Comments say what and why: a header comment for each file, a comment for each non-obvious function.
+
+## Milestones
+
+| | Content | Status |
+|---|---|---|
+| M0 | CMake, SDL3, the Platform and Rhi interfaces, windows in dips, events, several windows on one GPU device, CI on the three systems | Done |
+| M1 | RHI resources and passes into textures, the shader pipeline, `Painter` / `DrawList` / `Renderer` (boxes, shadows, polylines, polygons, images, clipping, transforms), borderless windows with hit testing | In progress: SPIR-V and MSL shaders missing |
+| M2 | Text: HarfBuzz and FreeType, glyph atlas, bidi, line breaking, text layout with cursor and selection | |
+| M3 | Widget core: tree, events, focus, layout, a UI root independent of the platform, window chrome as widgets (with the native extras), live resize | |
+| M4 | Basic widgets (label, button, line edit, scroll area, splitter), styles, `LocalizedText` and catalogs, right-to-left layouts | |
+| M5 | Docking: major and panel tabs, windows merging and splitting by their tabs, both modes, layout persistence | |
+| M6 | Validation: a node canvas and a code editor (FlowGraph), a chart widget with custom commands, an engine embedding example | |
+
+## Open questions
+
+- Panels and major tabs: does every major tab have its own panels (Slate), are panels window-wide, or both (a panel says
+  which)?
+- Where GPU support for older machines would be needed (no Vulkan 1.0 / Direct3D 12): if it ever is, an OpenGL backend.
+- Text on the node canvas: atlas re-rasterized per zoom level or MSDF (measure in M2).
+- Whether ICU is needed at all, or the small `Locale` implementation is enough.
