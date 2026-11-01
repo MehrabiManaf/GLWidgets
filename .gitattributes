@@ -1,2 +1,5 @@
 # Batch files need CRLF line endings: cmd.exe misreads labels (goto) in files with LF only.
 *.bat text eol=crlf
+# Fonts are embedded in the library as they are.
+*.ttf binary
+*.otf binary

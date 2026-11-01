@@ -3,12 +3,13 @@
 // The shader of draw lists (GLWidgets/Paint/DrawList.hpp): everything a Painter records is drawn by this one pair, with
 // premultiplied alpha blending. An engine drawing GLWidgets' draw lists itself uses it as it is.
 //
-// Two kinds of vertices, by shape.z:
-//   0  textured: the color times the texture at uv (a white texel for tessellated lines and polygons, the glyph atlas,
-//      an image). The anti-aliasing of lines and polygons is in their geometry (a fringe whose color fades to 0).
+// Three kinds of vertices, by shape.z:
+//   0  textured: the color times the texture at uv (a white texel for tessellated lines and polygons, an image). The
+//      anti-aliasing of lines and polygons is in their geometry (a fringe whose color fades to 0).
 //   1  box: a rounded rectangle as a signed distance field. uv is the point relative to the box's center and halfSize its
 //      half size, in dips; shape.x is the corner radius, shape.y the border width (0: filled), shape.w the blur (0: a
 //      one-pixel anti-aliased edge).
+//   2  mask: the color times the red channel of the texture at uv, a coverage (the glyph atlas, one channel).
 //
 // Resources are numbered as SDL's GPU API wants them (SDL_CreateGPUShader): the vertex shader's uniform buffer in space1
 // (descriptor set 1 in SPIR-V), the fragment shader's texture and sampler in space2 (set 2, one combined image sampler).
@@ -16,11 +17,11 @@
 
 #ifdef __spirv__
 #define VK_LOCATION(n) [[vk::location(n)]]
-#define VK_BINDING(binding, set) [[vk::binding(binding, set)]]
+#define VK_BINDING(index, set) [[vk::binding(index, set)]]
 #define VK_COMBINED [[vk::combinedImageSampler]]
 #else
 #define VK_LOCATION(n)
-#define VK_BINDING(binding, set)
+#define VK_BINDING(index, set)
 #define VK_COMBINED
 #endif
 
@@ -71,8 +72,10 @@ float coverage(float d, float width) {
 }
 
 float4 fragmentMain(VertexOutput input) : SV_Target {
-    // both kinds computed, then one chosen: derivatives (fwidth, the texture's) need uniform control flow
-    float4 textured = input.color * image.Sample(imageSampler, input.uv);
+    // every kind computed, then one chosen: derivatives (fwidth, the texture's) need uniform control flow
+    float4 texel = image.Sample(imageSampler, input.uv);
+    float4 textured = input.color * texel;
+    float4 mask = input.color * texel.r;
 
     float d = roundedBox(input.uv, input.halfSize, input.shape.x);
     float edge = max(fwidth(d) * 0.5, input.shape.w);
@@ -80,5 +83,5 @@ float4 fragmentMain(VertexOutput input) : SV_Target {
     float hole = input.shape.y > 0.0 ? coverage(d + input.shape.y, edge) : 0.0;
     float4 box = input.color * (inside * (1.0 - hole));
 
-    return input.shape.z > 0.5 ? box : textured;
+    return input.shape.z > 1.5 ? mask : input.shape.z > 0.5 ? box : textured;
 }

@@ -19,7 +19,7 @@ namespace glw::paint {
 using TextureId = std::uint64_t;
 inline constexpr TextureId whiteTexture = 0;
 
-enum class VertexKind : std::uint8_t { Textured = 0, Box = 1 };
+enum class VertexKind : std::uint8_t { Textured = 0, Box = 1, Mask = 2 };
 
 // What the fields mean for each kind is in Painter.hlsl. The layout is the shader's input: TEXCOORD0 position, 1 uv,
 // 2 halfSize, 3 (radius, border, kind, blur) as one float4, 4 color as four normalized bytes.

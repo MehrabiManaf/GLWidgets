@@ -31,5 +31,11 @@
     { "name": "windows-debug", "configurePreset": "windows-debug" },
     { "name": "unix-release", "configurePreset": "unix-release" },
     { "name": "unix-debug", "configurePreset": "unix-debug" }
+  ],
+  "testPresets": [
+    { "name": "windows-release", "configurePreset": "windows-release", "output": { "outputOnFailure": true } },
+    { "name": "windows-debug", "configurePreset": "windows-debug", "output": { "outputOnFailure": true } },
+    { "name": "unix-release", "configurePreset": "unix-release", "output": { "outputOnFailure": true } },
+    { "name": "unix-debug", "configurePreset": "unix-debug", "output": { "outputOnFailure": true } }
   ]
 }

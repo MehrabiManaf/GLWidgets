@@ -12,13 +12,12 @@ namespace glw::paint {
 namespace {
 
 constexpr float boxKind = static_cast<float>(VertexKind::Box);
-constexpr float texturedKind = static_cast<float>(VertexKind::Textured);
 
-Vertex texturedVertex(Point position, Point uv, std::uint32_t color) {
+Vertex texturedVertex(Point position, Point uv, std::uint32_t color, VertexKind kind = VertexKind::Textured) {
     Vertex v;
     v.position = position;
     v.uv = uv;
-    v.kind = texturedKind;
+    v.kind = static_cast<float>(kind);
     v.color = color;
     return v;
 }
@@ -209,16 +208,23 @@ void Painter::fillConvexPolygon(std::span<const Point> points, Color color) {
 // ---- images ----
 
 void Painter::drawImage(const Rect& rect, TextureId texture, Color tint, const Rect& uv) {
-    const Rect r = transform().map(rect);
-    if (r.empty() || tint.a <= 0 || culled(r))
+    quad(transform().map(rect), texture, tint, uv, VertexKind::Textured);
+}
+
+void Painter::drawMask(const Rect& targetRect, TextureId texture, Color color, const Rect& uv) {
+    quad(targetRect, texture, color, uv, VertexKind::Mask);
+}
+
+void Painter::quad(const Rect& r, TextureId texture, Color color, const Rect& uv, VertexKind kind) {
+    if (r.empty() || color.a <= 0 || culled(r))
         return;
-    const std::uint32_t color = packColor(tint);
+    const std::uint32_t packed = packColor(color);
     DrawCommand& cmd = command(texture, false);
     const auto base = static_cast<std::uint32_t>(list_.vertices.size());
-    list_.vertices.push_back(texturedVertex({r.left(), r.top()}, {uv.left(), uv.top()}, color));
-    list_.vertices.push_back(texturedVertex({r.right(), r.top()}, {uv.right(), uv.top()}, color));
-    list_.vertices.push_back(texturedVertex({r.right(), r.bottom()}, {uv.right(), uv.bottom()}, color));
-    list_.vertices.push_back(texturedVertex({r.left(), r.bottom()}, {uv.left(), uv.bottom()}, color));
+    list_.vertices.push_back(texturedVertex({r.left(), r.top()}, {uv.left(), uv.top()}, packed, kind));
+    list_.vertices.push_back(texturedVertex({r.right(), r.top()}, {uv.right(), uv.top()}, packed, kind));
+    list_.vertices.push_back(texturedVertex({r.right(), r.bottom()}, {uv.right(), uv.bottom()}, packed, kind));
+    list_.vertices.push_back(texturedVertex({r.left(), r.bottom()}, {uv.left(), uv.bottom()}, packed, kind));
     list_.indices.insert(list_.indices.end(), {base, base + 1, base + 2, base, base + 2, base + 3});
     cmd.indexCount += 6;
 }

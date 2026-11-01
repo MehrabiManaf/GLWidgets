@@ -35,7 +35,7 @@ Application
    │
 Widgets        Widget tree, layout, events, focus, styles, docking, window chrome     (planned)
    │
-Text           Fonts, shaping, bidi, line breaking, glyph atlas                        (planned)
+Text           Fonts, shaping, bidi, line breaking, glyph atlas, carets               Library/Include/GLWidgets/Text
    │
 Paint          Painter → DrawList (portable)    Renderer: DrawList → Rhi              Library/Include/GLWidgets/Paint
    │
@@ -135,8 +135,10 @@ into a window's surface or into a texture.
   is done with them.
 - **Shaders** are written once in HLSL (`Library/Shaders`) and compiled ahead of time by `Tools/CompileShaders.py` into
   DXBC (Direct3D 12, with `fxc` from the Windows SDK), SPIR-V (Vulkan, with DXC) and MSL (Metal, SPIR-V through
-  SPIRV-Cross). The results are committed as headers, so building GLWidgets needs no shader compiler. A shader names its
-  resources as SDL's GPU API requires (see the comment at the top of `Library/Shaders/Painter.hlsl`).
+  SPIRV-Cross). The results are committed as headers, so building GLWidgets needs no shader compiler. To change a shader
+  you need the Windows SDK and the Vulkan SDK, which has DXC with SPIR-V and SPIRV-Cross; the script finds both by itself.
+  A shader names its resources as SDL's GPU API requires (see the comment at the top of `Library/Shaders/Painter.hlsl`).
+  On Windows, setting `SDL_GPU_DRIVER=vulkan` runs the Vulkan path instead of Direct3D 12, to try both on one machine.
 - **Colors** are sRGB, written as they are into non-sRGB swap chains. Color management and HDR are deliberately left for
   later.
 
@@ -154,11 +156,11 @@ for zooming and panning a canvas) and a stack of clip rectangles apply to what i
 - **Lines and polygons:** polylines of any width with mitered joins, and convex polygons, tessellated on the CPU with a
   one-pixel anti-aliasing fringe. This is what charts and node connections are made of.
 - **Images:** a texture (by id) on a rectangle, tinted.
-- **Text** *(planned, M2)*: glyph quads from the glyph atlas.
+- **Masks:** the red channel of a texture as coverage, in a color. Glyphs are masks of the glyph atlas (see [Text](#text)).
 
 **The vertex format and one shader are the whole contract of a draw list.** A vertex has a position, texture coordinates,
-the parameters of a box (half size, corner radius, border width, blur) and an RGBA8 color. A command is a range of
-indices, a clip rectangle and a texture id. One pipeline with one shader pair draws all of it
+the parameters of a box (half size, corner radius, border width, blur), its kind (textured, box, mask) and an RGBA8
+color. A command is a range of indices, a clip rectangle and a texture id. One pipeline with one shader pair draws all of it
 (`Library/Shaders/Painter.hlsl`), with premultiplied alpha blending. An engine that draws GLWidgets' lists itself needs
 exactly that shader and one pipeline.
 
@@ -185,26 +187,53 @@ Three ways to use GLWidgets in a 3D application, from the most integrated to the
 What this asks of the widget layer: a UI root that is not tied to a platform window (it has a size, a scale, receives
 events, produces a draw list), and textures referred to by id everywhere.
 
-## Text *(planned, M2)*
+## Text
 
 The editor needs hit testing, cursor movement and selection in text that mixes Persian, English and code, so GLWidgets
-has its own text stack instead of SDL_ttf:
+has its own text stack instead of SDL_ttf (`glw::text`, `Library/Include/GLWidgets/Text`):
 
 | Step | Library | License |
 |---|---|---|
-| Bidirectional algorithm (UAX #9) | SheenBidi | Apache-2.0 |
-| Line breaking (UAX #14) | libunibreak | zlib |
+| Bidirectional algorithm (UAX #9), script runs | SheenBidi | Apache-2.0 |
+| Line breaking (UAX #14), graphemes (UAX #29) | libunibreak | zlib |
 | Shaping | HarfBuzz | MIT |
-| Rasterization | FreeType | FTL (BSD-like, credit in the documentation) |
-| Font discovery and fallback | DirectWrite / CoreText / fontconfig | system / MIT |
-| Default Persian font | Vazirmatn | OFL |
+| Rasterization | FreeType | FTL (BSD-like, credit in the documentation: [ThirdPartyNotices.md](ThirdPartyNotices.md)) |
+| Default font, Persian and Latin | Vazirmatn, compiled into the library | OFL |
+| Font discovery and fallback *(planned)* | DirectWrite / CoreText / fontconfig | system / MIT |
 
-The order is: paragraph → bidi runs → script and font runs (with fallback) → shaping → line breaking → visual reordering of
-each line. A laid-out paragraph keeps the cluster mapping between UTF-8 offsets and glyphs. Cursor movement (logical and
-visual), selection rectangles across direction changes and hit testing all work from that mapping.
+**`FontLibrary` and `Font`.** A library owns its fonts, loaded from memory or files. It starts with the default font.
 
-Glyphs are rasterized into a shared atlas, keyed by font, glyph id, size and scale. Text on the zoomable node canvas may
-use MSDF glyphs instead. Which one is decided by measurement in M2.
+**`TextLayout`** lays out a text with a `TextStyle` (fonts in fallback order, size, line spacing) and `TextOptions`
+(maximum width, direction, alignment, language). All offsets are UTF-8 byte offsets, the same for every library involved.
+The steps:
+
+1. **Paragraphs** at Unicode's paragraph separators. Each has its direction, given or from its first strong character.
+2. **Items:** runs of one bidi level, one script (Common characters such as spaces and digits take the script around
+   them) and one font (the first of the style that has the character; spaces and marks stay in the font around them).
+3. **Shaping** of each item by HarfBuzz, with the whole text as context, so letters join across item boundaries.
+4. **Lines:** greedy, at the break opportunities of UAX #14. Spaces may hang past the end. A word longer than the line is
+   broken between graphemes.
+5. **Visual order** of each line from SheenBidi's line runs; the glyphs of each run placed left to right.
+6. **Alignment** in the maximum width, or in the widest line when there is none. Start and End follow each paragraph's
+   direction.
+
+A laid-out line keeps its clusters as boxes in visual order. A box is a range of characters and the span of x they cover. A
+cluster of several graphemes (a ligature such as لا) is shared evenly between them. `caret`, `hitTest`, `selectionRects`
+and `nextOffset` / `previousOffset` (by grapheme) work from them.
+
+**`GlyphAtlas`** rasterizes glyphs on demand into one single-channel texture (2048 × 2048 by default). It is shared by all
+text of all windows, and keyed by font, glyph, size in quarter pixels and horizontal position in quarter pixels. Placing
+glyphs to a quarter of a pixel matters for Persian: rounded to whole pixels, joined letters can show gaps. Hinting is light
+(vertical only), so the shaper's horizontal positions stand. When the atlas is full it starts again empty, and `upload` says
+so: what was painted that frame is painted again. The atlas is in memory; an engine takes its pixels and dirty rectangle
+itself.
+
+**`drawText`** draws a layout through a painter: each glyph as a mask quad, rasterized at the size it has on the target's
+pixels (scale and zoom included). Text on the zoomable node canvas therefore stays sharp, at the cost of more atlas entries
+while zooming. Whether MSDF glyphs are needed for the canvas is measured in M5.
+
+Still to come: system fonts and fallback through the system, visual cursor movement (arrow keys across direction
+changes), the composition of input methods in text fields, and tab stops.
 
 ## Widgets *(planned, M3–M4)*
 
@@ -235,12 +264,21 @@ Two kinds of tabs, as in Slate:
   title bar and a dock area of its own, where more panel tabs can be docked. A panel tab never goes into a major tab strip,
   and a major tab never goes into a dock area.
 
-The layout is a model of its own, separate from the widgets it shows and serializable (it is saved with the user's
-workspace): a list of windows, each with its major tabs, each major tab with its tree of splits and panel tab stacks, and
-the panel windows. A tab moving between windows is a reparent in the widget tree.
+**Every panel says who owns it.** A panel tab type declares its scope:
 
-Which major tab a panel belongs to is still open (see [Open questions](#open-questions)): Slate gives every major tab its
-own panels, and a window-wide panel (a log, a search) is the other common need.
+- **Major tab:** the panel belongs to one major tab, as in Slate (the node palette and the inspector of one script). It
+  docks only in that major tab's dock area, or floats in a panel window. While its major tab is not the active one, the
+  panel and its floating windows are hidden.
+- **Global:** the panel belongs to the application (an output log, a search across files). Every window has a dock area of
+  its own around the content of its major tabs, as the side bars of an editor are around its documents. Global panels
+  dock there, or float, and stay whichever major tab is active.
+
+A panel never moves into a dock area of the other scope, so what owns it never changes while it is dragged.
+
+The layout is a model of its own, separate from the widgets it shows and serializable (it is saved with the user's
+workspace): a list of windows, each with its window dock area of global panels and its major tabs, each major tab with
+its tree of splits and panel tab stacks, and the panel windows. A tab moving between windows is a reparent in the widget
+tree.
 
 Tearing off and docking back needs what not every system gives:
 
@@ -319,11 +357,11 @@ starting from a small task interface that can be implemented on top of `std::exe
 | Library | Used for | License | Status |
 |---|---|---|---|
 | SDL3 3.4.18 | Platform, RHI | zlib | In use (pinned tarball, SHA-256 checked) |
-| HarfBuzz | Shaping | MIT | Planned (M2) |
-| FreeType | Glyph rasterization | FTL | Planned (M2) |
-| SheenBidi | Bidirectional text | Apache-2.0 | Planned (M2) |
-| libunibreak | Line breaking | zlib | Planned (M2) |
-| Vazirmatn | Default Persian font | OFL | Planned (M2) |
+| FreeType 2.15.0 | Glyph rasterization | FTL | In use (pinned, SHA-256 checked) |
+| HarfBuzz 14.6.0 | Shaping | MIT | In use (pinned, SHA-256 checked) |
+| SheenBidi 3.0.0 | Bidirectional text, script runs | Apache-2.0 | In use (pinned, SHA-256 checked) |
+| libunibreak 8.0 | Line breaks, graphemes | zlib | In use (pinned, SHA-256 checked) |
+| Vazirmatn 33.003 | Default font | OFL | In the repository (`Library/Fonts`), compiled in |
 | CLDR data | Plural rules, locale data | Unicode | Planned (M4) |
 
 Shader tools, needed only to change a shader (`Tools/CompileShaders.py`): `fxc` (Windows SDK), DXC (MIT /
@@ -347,8 +385,8 @@ The `GLW_USE_SYSTEM_SDL3` option uses an installed SDL3 instead of the pinned re
 | | Content | Status |
 |---|---|---|
 | M0 | CMake, SDL3, the Platform and Rhi interfaces, windows in dips, events, several windows on one GPU device, CI on the three systems | Done |
-| M1 | RHI resources and passes into textures, the shader pipeline, `Painter` / `DrawList` / `Renderer` (boxes, shadows, polylines, polygons, images, clipping, transforms), borderless windows with hit testing | In progress: SPIR-V and MSL shaders missing |
-| M2 | Text: HarfBuzz and FreeType, glyph atlas, bidi, line breaking, text layout with cursor and selection | |
+| M1 | RHI resources and passes into textures, the shader pipeline, `Painter` / `DrawList` / `Renderer` (boxes, shadows, polylines, polygons, images, clipping, transforms), borderless windows with hit testing | Done: run on Direct3D 12 and Vulkan (Windows); Metal built, not yet run |
+| M2 | Text: HarfBuzz and FreeType, glyph atlas, bidi, line breaking, text layout with cursor and selection | Done, apart from system fonts and visual cursor movement (see [Text](#text)) |
 | M3 | Widget core: tree, events, focus, layout, a UI root independent of the platform, window chrome as widgets (with the native extras), live resize | |
 | M4 | Basic widgets (label, button, line edit, scroll area, splitter), styles, `LocalizedText` and catalogs, right-to-left layouts | |
 | M5 | Docking: major and panel tabs, windows merging and splitting by their tabs, both modes, layout persistence | |
@@ -356,8 +394,6 @@ The `GLW_USE_SYSTEM_SDL3` option uses an installed SDL3 instead of the pinned re
 
 ## Open questions
 
-- Panels and major tabs: does every major tab have its own panels (Slate), are panels window-wide, or both (a panel says
-  which)?
 - Where GPU support for older machines would be needed (no Vulkan 1.0 / Direct3D 12): if it ever is, an OpenGL backend.
-- Text on the node canvas: atlas re-rasterized per zoom level or MSDF (measure in M2).
+- Text on the node canvas: glyphs rasterized at each zoom level (as now) or MSDF (measure in M5, with a real canvas).
 - Whether ICU is needed at all, or the small `Locale` implementation is enough.

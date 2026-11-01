@@ -14,6 +14,7 @@ set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 
 option(GLW_SHARED          "Build GLWidgets as a shared library"                  ON)
 option(GLW_BUILD_EXAMPLES  "Build the examples"                                   ON)
+option(GLW_BUILD_TESTS     "Build the tests"                                      ON)
 option(GLW_USE_SYSTEM_SDL3 "Use an installed SDL3 (find_package) instead of the pinned release" OFF)
 
 if(GLW_SHARED)
@@ -35,6 +36,11 @@ else()
 endif()
 
 add_subdirectory(Library)
+
+if(GLW_BUILD_TESTS)
+    enable_testing()
+    add_subdirectory(Tests)
+endif()
 
 if(GLW_BUILD_EXAMPLES)
     add_subdirectory(Examples)

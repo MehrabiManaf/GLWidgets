@@ -11,6 +11,7 @@
 #include <GLWidgets/Rhi/Device.hpp>
 
 #include <algorithm>
+#include <chrono>
 #include <cstdio>
 #include <cstdlib>
 #include <exception>
@@ -77,12 +78,20 @@ int main(int argc, char** argv) {
                 view->dirty = true;
         };
 
+        // a minimized window is not drawn: it is when it is restored
+        auto needsDrawing = [](const View& v) { return v.dirty && v.window->state() != platform::WindowState::Minimized; };
+
         int drawn = 0;
         bool quit = false;
+        bool retry = false;     // a window had no image to draw into: drawn again soon
         while (!quit && !views.empty()) {
-            const bool dirty = std::any_of(views.begin(), views.end(), [](const View& v) { return v.dirty; });
-            if (frames < 0 && !dirty)
-                system->waitForEvents();
+            if (frames < 0) {
+                if (!std::any_of(views.begin(), views.end(), needsDrawing))
+                    system->waitForEvents();
+                else if (retry)
+                    system->waitForEvents(std::chrono::milliseconds(16));
+            }
+            retry = false;
 
             platform::Event event;
             while (system->pollEvent(event)) {
@@ -109,17 +118,21 @@ int main(int argc, char** argv) {
                 for (View& view : views)
                     view.dirty = true;
             }
-            if (std::none_of(views.begin(), views.end(), [](const View& v) { return v.dirty; }))
+            if (std::none_of(views.begin(), views.end(), needsDrawing))
                 continue;
 
             // one command list for every window drawn this frame
             auto commands = device->beginCommands();
             for (View& view : views) {
-                if (!view.dirty)
+                if (!needsDrawing(view))
                     continue;
-                if (commands->beginSurfacePass(*view.surface, view.background))
+                // no image (Vulkan remakes its swap chain after the window is shown or resized): it stays dirty
+                if (commands->beginSurfacePass(*view.surface, view.background)) {
                     commands->endPass();
-                view.dirty = false;
+                    view.dirty = false;
+                } else {
+                    retry = true;
+                }
             }
             commands->submit();
 

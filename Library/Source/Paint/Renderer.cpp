@@ -67,10 +67,15 @@ Renderer::Renderer(rhi::Device& device) : device_(device) {
 
 Renderer::~Renderer() = default;
 
-TextureId Renderer::addTexture(const rhi::Texture& texture) {
+TextureId Renderer::addTexture(const rhi::Texture* texture) {
     const TextureId id = nextTexture_++;
-    textures_.emplace(id, &texture);
+    textures_.emplace(id, texture);
     return id;
+}
+
+void Renderer::setTexture(TextureId id, const rhi::Texture* texture) {
+    GLW_EXPECTS(textures_.contains(id));
+    textures_[id] = texture;
 }
 
 void Renderer::removeTexture(TextureId id) {
@@ -143,7 +148,7 @@ const rhi::Pipeline& Renderer::pipeline(rhi::TextureFormat format) {
 const rhi::Texture& Renderer::texture(TextureId id) const {
     if (id != whiteTexture) {
         const auto it = textures_.find(id);
-        if (it != textures_.end())
+        if (it != textures_.end() && it->second)
             return *it->second;
     }
     return *white_;

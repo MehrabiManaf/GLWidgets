@@ -41,8 +41,11 @@ public:
     Renderer(const Renderer&) = delete;
     Renderer& operator=(const Renderer&) = delete;
 
-    // An id for draw lists to refer to `texture`, which must live while the id is used. Not owned.
-    TextureId addTexture(const rhi::Texture& texture);
+    // An id for draw lists to refer to `texture`, which must live while the id is used (not owned). None yet: lists may use
+    // the id before setTexture gives it its texture (the glyph atlas is painted with before it is uploaded); until then it
+    // draws as white.
+    TextureId addTexture(const rhi::Texture* texture = nullptr);
+    void setTexture(TextureId id, const rhi::Texture* texture);
     void removeTexture(TextureId id);
 
     // Outside passes, before the pass that draws `list`.

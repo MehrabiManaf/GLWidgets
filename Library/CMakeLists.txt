@@ -1,5 +1,17 @@
 # SPDX-FileCopyrightText: 2026 Abdolmanaf Mehrabi Sisakht
 # SPDX-License-Identifier: MIT
+
+# ---- the default font, compiled in ----
+set(GLW_DEFAULT_FONT ${CMAKE_CURRENT_SOURCE_DIR}/Fonts/Vazirmatn-Regular.ttf)
+set(GLW_DEFAULT_FONT_SOURCE ${CMAKE_CURRENT_BINARY_DIR}/Generated/DefaultFont.cpp)
+add_custom_command(
+    OUTPUT ${GLW_DEFAULT_FONT_SOURCE}
+    COMMAND ${CMAKE_COMMAND} -DINPUT=${GLW_DEFAULT_FONT} -DOUTPUT=${GLW_DEFAULT_FONT_SOURCE}
+            -DNAMESPACE=glw::text::detail -DNAME=defaultFont -P ${PROJECT_SOURCE_DIR}/cmake/EmbedFile.cmake
+    DEPENDS ${GLW_DEFAULT_FONT} ${PROJECT_SOURCE_DIR}/cmake/EmbedFile.cmake
+    COMMENT "Embedding the default font"
+    VERBATIM)
+
 add_library(GLWidgets ${GLW_LIB_TYPE}
     Source/Core/Assert.cpp
     Source/Core/Error.cpp
@@ -10,7 +22,12 @@ add_library(GLWidgets ${GLW_LIB_TYPE}
     Source/Platform/Sdl/SdlPlatform.cpp
     Source/Platform/Sdl/SdlWindow.cpp
     Source/Rhi/Device.cpp
-    Source/Rhi/SdlGpu/SdlGpuDevice.cpp)
+    Source/Rhi/SdlGpu/SdlGpuDevice.cpp
+    Source/Text/DrawText.cpp
+    Source/Text/Font.cpp
+    Source/Text/GlyphAtlas.cpp
+    Source/Text/TextLayout.cpp
+    ${GLW_DEFAULT_FONT_SOURCE})
 add_library(GLWidgets::GLWidgets ALIAS GLWidgets)
 set_target_properties(GLWidgets PROPERTIES
     VERSION ${PROJECT_VERSION}
@@ -32,4 +49,4 @@ target_include_directories(GLWidgets
     PRIVATE
         Source)
 target_compile_features(GLWidgets PUBLIC cxx_std_20)
-target_link_libraries(GLWidgets PRIVATE ${GLW_SDL3_TARGET})
+target_link_libraries(GLWidgets PRIVATE ${GLW_SDL3_TARGET} glw_freetype glw_harfbuzz glw_sheenbidi glw_unibreak)

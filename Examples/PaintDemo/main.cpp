@@ -2,18 +2,24 @@
 // SPDX-License-Identifier: MIT
 // A borderless window with chrome of its own, drawn by the painter: a title bar holding major tabs (as a browser's),
 // window buttons, resize borders given to the system by hit testing. Each tab shows a part of the painter: a chart, the
-// shapes, a node canvas that zooms with the mouse wheel. There are no widgets yet: this is what they will be made of.
+// shapes, a node canvas that zooms with the mouse wheel, text in Persian and English (drag over the first paragraph to
+// select). There are no widgets yet: this is what they will be made of.
 //
 //   paint_demo [--tab N] [--frames N]
 //
-// --tab N opens on tab N (0 to 2). --frames N draws N frames in a row (switching tabs) and exits: a smoke test of the
-// painter and the renderer.
+// --tab N opens on tab N (0 to 3). --frames N draws N frames in a row (switching tabs) and exits: a smoke test of the
+// painter, the text and the renderer.
 #include <GLWidgets/Paint/Painter.hpp>
 #include <GLWidgets/Paint/Renderer.hpp>
 #include <GLWidgets/Platform/Platform.hpp>
 #include <GLWidgets/Rhi/Device.hpp>
+#include <GLWidgets/Text/DrawText.hpp>
+#include <GLWidgets/Text/Font.hpp>
+#include <GLWidgets/Text/GlyphAtlas.hpp>
+#include <GLWidgets/Text/TextLayout.hpp>
 
 #include <algorithm>
+#include <chrono>
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
@@ -29,6 +35,7 @@ namespace {
 
 namespace paint = glw::paint;
 namespace platform = glw::platform;
+namespace text = glw::text;
 using glw::Color;
 using glw::Point;
 using glw::Rect;
@@ -44,8 +51,9 @@ Overloaded(F...) -> Overloaded<F...>;
 constexpr float captionHeight = 40;
 constexpr float buttonWidth = 46;
 constexpr float resizeBorder = 6;
-constexpr float tabWidth = 180;
-constexpr int tabCount = 3;
+constexpr float tabWidth = 150;
+constexpr int tabCount = 4;
+constexpr const char* tabTitles[tabCount] = {"Chart", "Shapes", "Nodes", "متن — Text"};
 
 namespace colors {
 constexpr Color caption{0.09f, 0.10f, 0.12f, 1};
@@ -60,9 +68,21 @@ constexpr Color hover{1, 1, 1, 0.08f};
 constexpr Color closeHover{0.80f, 0.16f, 0.18f, 1};
 constexpr Color shadow{0, 0, 0, 0.45f};
 constexpr Color series[] = {{0.35f, 0.65f, 1.00f, 1}, {1.00f, 0.60f, 0.25f, 1}, {0.45f, 0.85f, 0.50f, 1}};
+constexpr Color selection{0.35f, 0.65f, 1.00f, 0.35f};
+constexpr Color caret{0.35f, 0.65f, 1.00f, 1};
 } // namespace colors
 
-enum class Part { None, Tab0, Tab1, Tab2, Minimize, Maximize, Close };
+enum class Part { None, Tab0, Tab1, Tab2, Tab3, Minimize, Maximize, Close };
+
+// What text is drawn with, shared by every window.
+struct TextKit {
+    const text::FontLibrary& fonts;
+    text::GlyphAtlas& atlas;
+
+    text::TextLayout layout(std::string s, float size, text::TextOptions options = {}) const {
+        return text::TextLayout(std::move(s), text::TextStyle{{&fonts.defaultFont()}, size}, options);
+    }
+};
 
 struct View {
     std::unique_ptr<platform::Window> window;
@@ -73,6 +93,12 @@ struct View {
     Part hovered = Part::None;
     Part pressed = Part::None;
     float zoom = 1;                 // of the node canvas
+    // the paragraph of the text tab that can be selected, as last painted
+    text::TextLayout sample;
+    Point sampleOrigin;
+    std::size_t anchor = 0;         // where the selection started
+    std::size_t caret = 0;          // where it ends, and the caret is
+    bool selecting = false;
     bool dirty = true;
 };
 
@@ -122,7 +148,7 @@ platform::HitArea hitTest(const platform::Window& window, Point p) {
 
 // ---- the chrome ----
 
-void paintTitleBar(paint::Painter& p, const View& view, Size size) {
+void paintTitleBar(paint::Painter& p, const TextKit& kit, const View& view, Size size) {
     p.fillRect({0, 0, size.width, captionHeight}, colors::caption);
 
     for (int i = 0; i < tabCount; ++i) {
@@ -134,10 +160,11 @@ void paintTitleBar(paint::Painter& p, const View& view, Size size) {
         p.pushClip({tab.x, tab.y, tab.width, captionHeight - tab.y});
         p.fillRoundedRect({tab.x, tab.y, tab.width, tab.height + 12}, 8, background);
         p.popClip();
-        // where its icon and title will be, once there is text
         const float middle = tab.y + tab.height / 2;
-        p.fillCircle({tab.x + 18, middle}, 5, colors::series[i]);
-        p.fillRoundedRect({tab.x + 32, middle - 3, 96.0f - 18 * i, 6}, 3, active ? colors::text : colors::line);
+        p.fillCircle({tab.x + 18, middle}, 5, colors::series[i % 3]);
+        const text::TextLayout title = kit.layout(tabTitles[i], 13, {.direction = text::TextDirection::LeftToRight});
+        text::drawText(p, kit.atlas, title, {tab.x + 32, middle - title.size().height / 2},
+                       active ? colors::glyph : colors::text);
     }
 
     for (Part button : {Part::Minimize, Part::Maximize, Part::Close}) {
@@ -284,17 +311,64 @@ void paintNodes(paint::Painter& p, const Rect& area, float zoom) {
     p.popClip();
 }
 
-void paintView(View& view) {
+constexpr const char* persianSample =
+    "زبان فارسی از راست به چپ نوشته می‌شود و حروفش به هم می‌چسبند؛ شکل هر حرف به جایش در کلمه بستگی دارد. "
+    "GLWidgets متن را با HarfBuzz شکل می‌دهد و با الگوریتم دوجهتهٔ یونیکد مرتب می‌کند، پس عددهایی مثل ۱۴۰۵ و 2026 "
+    "و کلمه‌های انگلیسی مثل FlowGraph در جای درست خود می‌نشینند.\n"
+    "این پاراگراف را با ماوس انتخاب کنید.";
+
+constexpr const char* englishSample =
+    "Text is shaped by HarfBuzz, ordered by the Unicode bidirectional algorithm, broken into lines where Unicode allows "
+    "and drawn from a glyph atlas, placed to a quarter of a pixel. A Persian word such as «سلام» or a number like ۱۲۳ "
+    "sits in an English sentence in the right order.";
+
+void paintText(paint::Painter& p, const TextKit& kit, View& view, const Rect& area) {
+    const float columnWidth = std::max(200.0f, (area.width - 72) / 2);
+    const Rect left = card(p, {area.x + 24, area.y + 24, columnWidth, area.height - 200});
+    const Rect right = card(p, {left.right() + 24, area.y + 24, columnWidth, area.height - 200});
+
+    // the Persian paragraph, which can be selected
+    view.sample = kit.layout(persianSample, 17, {.maxWidth = left.width - 40});
+    view.sampleOrigin = {left.x + 20, left.y + 20};
+    p.pushClip(left);
+    for (const Rect& r : view.sample.selectionRects(view.anchor, view.caret))
+        p.fillRect({r.x + view.sampleOrigin.x, r.y + view.sampleOrigin.y, r.width, r.height}, colors::selection);
+    text::drawText(p, kit.atlas, view.sample, view.sampleOrigin, colors::glyph);
+    const text::TextLayout::Caret caret = view.sample.caret(view.caret);
+    p.fillRect({view.sampleOrigin.x + caret.top.x - 0.75f, view.sampleOrigin.y + caret.top.y, 1.5f, caret.height}, colors::caret);
+    p.popClip();
+
+    p.pushClip(right);
+    const text::TextLayout english = kit.layout(englishSample, 15, {.maxWidth = right.width - 40});
+    text::drawText(p, kit.atlas, english, {right.x + 20, right.y + 20}, colors::text);
+    const text::TextLayout centered =
+        kit.layout("وسط‌چین — Centered", 15, {.maxWidth = right.width - 40, .alignment = text::TextAlignment::Center});
+    text::drawText(p, kit.atlas, centered, {right.x + 20, right.y + 40 + english.size().height}, colors::series[1]);
+    p.popClip();
+
+    // sizes, from small to large
+    float x = area.x + 24;
+    const float baseline = area.bottom() - 60;
+    for (float size : {10.0f, 12.0f, 14.0f, 18.0f, 24.0f, 32.0f, 48.0f}) {
+        const text::TextLayout sample = kit.layout("Aa گل", size, {.direction = text::TextDirection::LeftToRight});
+        const text::TextLine& line = sample.lines()[0];
+        text::drawText(p, kit.atlas, sample, {x, baseline - line.baseline}, colors::glyph);
+        x += sample.size().width + 28;
+    }
+}
+
+void paintView(View& view, const TextKit& kit) {
     view.list.clear();
     const Size size = view.window->size();
     paint::Painter p(view.list, {0, 0, size.width, size.height}, view.window->scale());
-    paintTitleBar(p, view, size);
+    paintTitleBar(p, kit, view, size);
     const Rect content{0, captionHeight, size.width, size.height - captionHeight};
     p.fillRect(content, colors::content);
     switch (view.activeTab) {
     case 0: paintChart(p, content); break;
     case 1: paintShapes(p, content); break;
-    default: paintNodes(p, content, view.zoom); break;
+    case 2: paintNodes(p, content, view.zoom); break;
+    default: paintText(p, kit, view, content); break;
     }
 }
 
@@ -319,6 +393,10 @@ int main(int argc, char** argv) {
 #endif
         paint::Renderer renderer(*device);
         std::printf("platform: %s, GPU: %s\n", std::string(system->name()).c_str(), std::string(device->backendName()).c_str());
+
+        const text::FontLibrary fonts;
+        text::GlyphAtlas atlas(renderer.addTexture());
+        const TextKit kit{fonts, atlas};
 
         std::vector<std::unique_ptr<View>> views;
         {
@@ -346,12 +424,23 @@ int main(int argc, char** argv) {
             std::erase_if(views, [&](const auto& v) { return v->window->id() == id; });
         };
 
+        // a minimized window is not drawn: it is when it is restored
+        auto needsDrawing = [](const std::unique_ptr<View>& v) {
+            return v->dirty && v->window->state() != platform::WindowState::Minimized;
+        };
+
         int drawn = 0;
+        int attempts = 0;
         bool quit = false;
+        bool retry = false;     // a window had no image to draw into: drawn again soon
         while (!quit && !views.empty()) {
-            const bool dirty = std::any_of(views.begin(), views.end(), [](const auto& v) { return v->dirty; });
-            if (frames < 0 && !dirty)
-                system->waitForEvents();
+            if (frames < 0) {
+                if (!std::any_of(views.begin(), views.end(), needsDrawing))
+                    system->waitForEvents();
+                else if (retry)
+                    system->waitForEvents(std::chrono::milliseconds(16));
+            }
+            retry = false;
 
             platform::Event event;
             while (!quit && system->pollEvent(event)) {
@@ -383,6 +472,10 @@ int main(int argc, char** argv) {
                                        v->hovered = part;
                                        v->dirty = true;
                                    }
+                                   if (v->selecting) {
+                                       v->caret = v->sample.hitTest(e.position - v->sampleOrigin);
+                                       v->dirty = true;
+                                   }
                                },
                                [&](const platform::MouseCrossed& e) {
                                    View* v = find(e.window);
@@ -398,12 +491,18 @@ int main(int argc, char** argv) {
                                    const Part part = partAt(e.position, v->window->size());
                                    if (e.pressed) {
                                        v->pressed = part;
-                                       if (part >= Part::Tab0 && part <= Part::Tab2) {
+                                       if (part >= Part::Tab0 && part <= Part::Tab3) {
                                            v->activeTab = static_cast<int>(part) - static_cast<int>(Part::Tab0);
+                                           v->dirty = true;
+                                       } else if (part == Part::None && v->activeTab == 3 && e.position.y >= captionHeight) {
+                                           // a click in the text tab: the caret there, and a selection from it while dragging
+                                           v->anchor = v->caret = v->sample.hitTest(e.position - v->sampleOrigin);
+                                           v->selecting = true;
                                            v->dirty = true;
                                        }
                                        return;
                                    }
+                                   v->selecting = false;
                                    // a window button acts when released over the button it was pressed on
                                    const Part pressed = std::exchange(v->pressed, Part::None);
                                    if (part != pressed)
@@ -443,26 +542,48 @@ int main(int argc, char** argv) {
                     v->dirty = true;
                 }
             }
-            if (std::none_of(views.begin(), views.end(), [](const auto& v) { return v->dirty; }))
+            if (std::none_of(views.begin(), views.end(), needsDrawing))
                 continue;
 
-            auto commands = device->beginCommands();
+            // paint first: it fills the glyph atlas, which goes to the GPU before any pass draws with it
+            std::vector<View*> painted;
             for (auto& v : views) {
-                if (!v->dirty)
-                    continue;
-                paintView(*v);
+                if (needsDrawing(v)) {
+                    paintView(*v, kit);
+                    painted.push_back(v.get());
+                }
+            }
+            auto commands = device->beginCommands();
+            if (atlas.upload(*device, *commands, renderer)) {
+                // the atlas was full and started again: what was painted with it, again
+                for (View* v : painted)
+                    paintView(*v, kit);
+                atlas.upload(*device, *commands, renderer);
+            }
+            for (View* v : painted) {
                 renderer.upload(*commands, v->list, v->buffers);
+                // no image (Vulkan remakes its swap chain after the window is shown or resized): it stays dirty
                 if (auto size = commands->beginSurfacePass(*v->surface, colors::content)) {
                     renderer.draw(*commands, v->list, v->buffers, v->surface->format(), *size, v->window->scale());
                     commands->endPass();
+                    v->dirty = false;
+                } else {
+                    retry = true;
                 }
-                v->dirty = false;
             }
             commands->submit();
 
-            if (frames >= 0 && ++drawn == frames) {
-                std::printf("drew %d frames, %zu vertices in the last\n", drawn, views.front()->list.vertices.size());
-                break;
+            // the smoke test counts the frames that reached the window, and fails when they do not
+            if (frames >= 0) {
+                drawn += retry ? 0 : 1;
+                if (drawn == frames) {
+                    std::printf("drew %d frames, %zu vertices in the last\n", drawn, views.front()->list.vertices.size());
+                    break;
+                }
+                if (++attempts == frames * 10) {
+                    std::fprintf(stderr, "paint_demo: %d of %d frames reached the window\n", drawn, attempts);
+                    return 1;
+                }
             }
         }
         views.clear();      // the surfaces before the device, the windows before the platform

@@ -8,6 +8,9 @@ GLWidgets needs no shader compiler, changing a shader does.
                         Vulkan SDK; not the dxc of the Windows SDK)
   MSL    (Metal)        SPIRV-Cross, from the SPIR-V
 
+DXC and SPIRV-Cross are taken from the Vulkan SDK when it is installed (VULKAN_SDK, or the newest C:\\VulkanSDK\\<version>),
+otherwise from PATH.
+
   python Tools/CompileShaders.py [--fxc PATH] [--dxc PATH] [--spirv-cross PATH] [--allow-missing]
 
 Without --allow-missing every format must be compiled. With it, a format whose tool is missing is written empty: the
@@ -42,6 +45,19 @@ def find_fxc():
     kits = os.path.join(os.environ.get("ProgramFiles(x86)", r"C:\Program Files (x86)"), "Windows Kits", "10", "bin")
     candidates = sorted(glob.glob(os.path.join(kits, "10.*", "x64", "fxc.exe")))
     return candidates[-1] if candidates else None
+
+
+def find_in_vulkan_sdk(tool):
+    """`tool` of the Vulkan SDK (DXC there has SPIR-V code generation), or None."""
+    roots = [os.environ["VULKAN_SDK"]] if os.environ.get("VULKAN_SDK") else []
+    roots += sorted(glob.glob(r"C:\VulkanSDK\*"), reverse=True)
+    for root in roots:
+        for folder in ("Bin", "bin"):
+            for name in (f"{tool}.exe", tool):
+                path = os.path.join(root, folder, name)
+                if os.path.isfile(path):
+                    return path
+    return None
 
 
 def run(command):
@@ -113,8 +129,8 @@ def main():
 
     tools = {
         "fxc": args.fxc or find_fxc(),
-        "dxc": args.dxc or shutil.which("dxc"),
-        "spirv_cross": args.spirv_cross or shutil.which("spirv-cross"),
+        "dxc": args.dxc or find_in_vulkan_sdk("dxc") or shutil.which("dxc"),
+        "spirv_cross": args.spirv_cross or find_in_vulkan_sdk("spirv-cross") or shutil.which("spirv-cross"),
     }
     absent = [name for name, path in tools.items() if not path]
     if absent and not args.allow_missing:

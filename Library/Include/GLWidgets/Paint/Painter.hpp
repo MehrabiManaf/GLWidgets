@@ -61,6 +61,9 @@ public:
 
     // `uv` is the part of the texture shown, in [0, 1].
     void drawImage(const Rect& rect, TextureId texture, Color tint = {1, 1, 1, 1}, const Rect& uv = {0, 0, 1, 1});
+    // A coverage mask (the red channel of `texture`, as the glyph atlas has it) in `color`. `rect` is in the target's dips
+    // and not transformed: what is drawn with it was placed on the target's pixels already (drawText does).
+    void drawMask(const Rect& targetRect, TextureId texture, Color color, const Rect& uv);
 
     // ---- state ----
 
@@ -80,6 +83,8 @@ private:
     DrawCommand& command(TextureId texture, bool anyTexture);
     // A box in the target's dips.
     void box(const Rect& rect, float radius, float border, float blur, Color color);
+    // A textured quad in the target's dips.
+    void quad(const Rect& rect, TextureId texture, Color color, const Rect& uv, VertexKind kind);
     bool culled(const Rect& bounds) const;
     void transformed(std::span<const Point> points);       // into points_
 
