@@ -5,6 +5,7 @@
 #include <GLWidgets/Core/Assert.hpp>
 #include <GLWidgets/Text/Font.hpp>
 #include <GLWidgets/Text/GlyphAtlas.hpp>
+#include <GLWidgets/Widgets/DockingHost.hpp>
 #include <GLWidgets/Widgets/WindowFrame.hpp>
 
 #include <algorithm>
@@ -31,7 +32,8 @@ platform::WindowId windowOf(const platform::Event& event) {
 
 } // namespace
 
-struct Application::Impl {
+struct Application::Impl final : DockingHost {
+    Application& app;
     std::unique_ptr<platform::Platform> platform;
     std::unique_ptr<rhi::Device> device;
     std::unique_ptr<paint::Renderer> renderer;
@@ -40,9 +42,12 @@ struct Application::Impl {
     std::unique_ptr<Translator> translator;
     std::unique_ptr<UiContext> context;
     std::vector<std::unique_ptr<Window>> windows;      // last: closed before what they draw with
+    std::vector<Window*> order;                         // the windows from the one in front (focused last) back
     bool quitting = false;
     int exitCode = 0;
     bool inFrame = false;
+
+    explicit Impl(Application& app) : app(app) {}
 
     Window* find(platform::WindowId id) const {
         for (const auto& w : windows) {
@@ -50,6 +55,61 @@ struct Application::Impl {
                 return w.get();
         }
         return nullptr;
+    }
+
+    Window* find(const UiRoot& root) const {
+        for (const auto& w : windows) {
+            if (&w->root_ == &root)
+                return w.get();
+        }
+        return nullptr;
+    }
+
+    void toFront(Window* window) {
+        std::erase(order, window);
+        order.insert(order.begin(), window);
+    }
+
+    Window& open(const WindowOptions& options, std::unique_ptr<Widget> content, Window* owner) {
+        windows.push_back(std::unique_ptr<Window>(new Window(app, options, std::move(content), owner)));
+        toFront(windows.back().get());
+        return *windows.back();
+    }
+
+    // `closed` is destroyed: the windows above it are on their own (the system would close them with it).
+    void destroy(std::unique_ptr<Window> closed, bool unparent) {
+        std::erase(order, closed.get());
+        for (const auto& w : windows) {
+            if (w->owner_ == closed.get()) {
+                if (unparent)
+                    w->window_->setParent(nullptr);
+                w->owner_ = nullptr;
+            }
+        }
+        closed.reset();
+    }
+
+    // The windows closed during the events go: told first, while every tree is whole (a floating panel goes home from its
+    // window), then destroyed one at a time (what one destroys may close others).
+    void closeWindows() {
+        for (bool told = true; told;) {
+            told = false;
+            for (std::size_t i = 0; i < windows.size(); ++i) {
+                if (Window& w = *windows[i]; w.closing_ && !w.told_) {
+                    w.told_ = true;
+                    w.root_.windowClosing();
+                    told = true;
+                }
+            }
+        }
+        for (;;) {
+            const auto it = std::find_if(windows.begin(), windows.end(), [](const auto& w) { return w->closing_; });
+            if (it == windows.end())
+                break;
+            std::unique_ptr<Window> closed = std::move(*it);
+            windows.erase(it);
+            destroy(std::move(closed), true);
+        }
     }
 
     // Lays out, paints and presents `which`. False when one had no image to draw into (Vulkan remakes its swap chain after a
@@ -84,7 +144,7 @@ struct Application::Impl {
     std::vector<Window*> windowsToDraw(bool all) const {
         std::vector<Window*> result;
         for (const auto& w : windows) {
-            if (w->closing_ || w->windowState() == platform::WindowState::Minimized)
+            if (w->closing_ || !w->window_->visible() || w->windowState() == platform::WindowState::Minimized)
                 continue;
             if (all || w->root_.needsPaint() || w->root_.needsLayout())
                 result.push_back(w.get());
@@ -100,6 +160,8 @@ struct Application::Impl {
         Window* window = find(windowOf(event));
         if (!window)
             return;
+        if (const auto* focus = std::get_if<platform::WindowFocusChanged>(&event); focus && focus->focused)
+            toFront(window);
         if (std::holds_alternative<platform::WindowCloseRequested>(event))
             window->close();
         else
@@ -116,16 +178,97 @@ struct Application::Impl {
         window->root_.invalidatePaint();
         draw({window});
     }
+
+    // ---- docking across the windows ----
+
+    Point mouseOnScreen() const override { return platform->mousePosition(); }
+
+    Point toScreen(const UiRoot& root, Point point) const override {
+        const Window* w = find(root);
+        return w ? w->window_->toScreen(point) : point;
+    }
+
+    Hit windowAt(Point screen, const UiRoot* except) const override {
+        for (Window* w : order) {
+            if (w->closing_ || &w->root_ == except || !w->window_->visible() || w->windowState() == platform::WindowState::Minimized)
+                continue;
+            const Point at = w->window_->position();
+            const Size size = w->window_->screenSize();
+            if (Rect{at.x, at.y, size.width, size.height}.contains(screen))
+                return {&w->root_, w->window_->fromScreen(screen)};
+        }
+        return {};
+    }
+
+    void captureMouse(bool capture) override { platform->captureMouse(capture); }
+
+    UiRoot& openWindow(NewWindow window) override {
+        Window* owner = window.owner ? find(*window.owner) : nullptr;
+        Window& opened = open({.title = window.title, .size = window.size, .position = window.position}, std::move(window.content), owner);
+        if (window.titleCenter && opened.frame_)
+            opened.frame_->titleBar().setCenter(std::move(window.titleCenter));
+        return opened.root_;
+    }
+
+    void closeWindow(const UiRoot& root) override {
+        if (Window* w = find(root))
+            w->close();
+    }
+
+    void setWindowVisible(const UiRoot& root, bool visible) override {
+        Window* w = find(root);
+        if (!w || w->closing_ || w->window_->visible() == visible)
+            return;
+        if (visible) {
+            w->window_->show();
+            w->root_.invalidatePaint();
+        } else {
+            w->window_->hide();
+        }
+    }
+
+    void setWindowOwner(const UiRoot& root, const UiRoot* owner) override {
+        Window* w = find(root);
+        Window* o = owner ? find(*owner) : nullptr;
+        if (!w || w == o || w->owner_ == o)
+            return;
+        w->owner_ = o;
+        w->window_->setParent(o ? o->window_.get() : nullptr);
+    }
+
+    void raiseWindow(const UiRoot& root) override {
+        if (Window* w = find(root)) {
+            w->window_->raise();
+            toFront(w);
+        }
+    }
+
+    Point windowPosition(const UiRoot& root) const override {
+        const Window* w = find(root);
+        return w ? w->window_->position() : Point{};
+    }
+
+    void moveWindow(const UiRoot& root, Point position) override {
+        if (Window* w = find(root))
+            w->window_->setPosition(position);
+    }
 };
+
+DockingHost::~DockingHost() = default;
 
 // ---- window ----
 
-Window::Window(Application& app, const WindowOptions& options, std::unique_ptr<Widget> content)
-    : app_(app), root_(*app.impl_->context, this) {
+Window::Window(Application& app, const WindowOptions& options, std::unique_ptr<Widget> content, Window* owner)
+    : app_(app), root_(*app.impl_->context, this), owner_(owner) {
     Application::Impl& impl = *app.impl_;
     title_ = options.title;
-    window_ = impl.platform->createWindow(
-        {.title = impl.translator->resolve(title_), .size = options.size, .borderless = options.customChrome});
+    window_ = impl.platform->createWindow({.title = impl.translator->resolve(title_),
+                                           .size = options.size,
+                                           .borderless = options.customChrome,
+                                           .position = options.position,
+                                           .tool = owner != nullptr});
+    if (owner)
+        window_->setParent(owner->window_.get());
     surface_ = impl.device->createSurface(*window_);
     if (impl.translator->rightToLeft())
         root_.setLayoutDirection(LayoutDirection::RightToLeft);
@@ -201,7 +344,7 @@ void Window::setClipboardText(const std::string& text) {
 
 // ---- application ----
 
-Application::Application() : impl_(std::make_unique<Impl>()) {
+Application::Application() : impl_(std::make_unique<Impl>(*this)) {
     Impl& d = *impl_;
     d.platform = platform::createPlatform();
 #ifdef NDEBUG
@@ -213,18 +356,23 @@ Application::Application() : impl_(std::make_unique<Impl>()) {
     d.fonts = std::make_unique<text::FontLibrary>();
     d.atlas = std::make_unique<text::GlyphAtlas>(d.renderer->addTexture());
     d.translator = std::make_unique<Translator>();
-    d.context = std::make_unique<UiContext>(UiContext{*d.fonts, *d.atlas, *d.translator, Theme::dark()});
+    d.context = std::make_unique<UiContext>(UiContext{*d.fonts, *d.atlas, *d.translator, Theme::dark(), &d});
     d.platform->setExposeHandler([&d](platform::WindowId id) { d.exposed(id); });
 }
 
 Application::~Application() {
-    impl_->platform->setExposeHandler(nullptr);
-    impl_->windows.clear();
+    Impl& d = *impl_;
+    d.platform->setExposeHandler(nullptr);
+    // the last opened first (a floating panel's window before its owner), one at a time: what one destroys may close others
+    while (!d.windows.empty()) {
+        std::unique_ptr<Window> closed = std::move(d.windows.back());
+        d.windows.pop_back();
+        d.destroy(std::move(closed), false);
+    }
 }
 
 Window& Application::openWindow(const WindowOptions& options, std::unique_ptr<Widget> content) {
-    impl_->windows.push_back(std::unique_ptr<Window>(new Window(*this, options, std::move(content))));
-    return *impl_->windows.back();
+    return impl_->open(options, std::move(content), nullptr);
 }
 
 std::span<const std::unique_ptr<Window>> Application::windows() const {
@@ -247,7 +395,7 @@ int Application::run(int frames) {
         platform::Event event;
         while (!d.quitting && d.platform->pollEvent(event))
             d.handle(event);
-        std::erase_if(d.windows, [](const auto& w) { return w->closing_; });
+        d.closeWindows();
         if (d.quitting || d.windows.empty())
             break;
 

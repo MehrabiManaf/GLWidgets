@@ -3,6 +3,7 @@
 #include <GLWidgets/Widgets/MajorTabs.hpp>
 
 #include <GLWidgets/Paint/Painter.hpp>
+#include <GLWidgets/Widgets/DockingHost.hpp>
 #include <GLWidgets/Widgets/Label.hpp>
 #include <GLWidgets/Widgets/Layout.hpp>
 #include <GLWidgets/Widgets/UiRoot.hpp>
@@ -16,6 +17,21 @@ namespace glw {
 namespace {
 
 constexpr float dragThreshold = 6;
+constexpr float stripReach = 24;        // dips above and below a strip where a tab dragged from it stays in it
+
+DockingHost* dockingOf(const Widget& widget) {
+    const UiRoot* r = widget.root();
+    return r ? r->context().docking : nullptr;
+}
+
+// The tab strip (with its tabs) under `point` of `root`.
+MajorTabStrip* stripAt(const UiRoot& root, Point point) {
+    for (Widget* w = root.widgetAt(point); w; w = w->parent()) {
+        if (auto* strip = dynamic_cast<MajorTabStrip*>(w))
+            return strip->tabs() ? strip : nullptr;
+    }
+    return nullptr;
+}
 
 void later(const Widget& widget, std::function<void()> call) {
     if (UiRoot* r = widget.root())
@@ -209,11 +225,21 @@ const MajorTabStyle& MajorTabs::style() const {
 }
 
 std::size_t MajorTabs::addTab(LocalizedText title, std::unique_ptr<Widget> content, bool closable) {
-    Widget& shown = addChild(content ? std::move(content) : std::make_unique<Widget>());
-    tabs_.push_back(Tab{std::move(title), &shown, closable});
-    changed();
-    setActive(tabs_.size() - 1);
+    insertTab(tabs_.size(), std::move(title), std::move(content), closable);
     return tabs_.size() - 1;
+}
+
+void MajorTabs::insertTab(std::size_t index, LocalizedText title, std::unique_ptr<Widget> content, bool closable) {
+    index = std::min(index, tabs_.size());
+    Widget& shown = addChild(content ? std::move(content) : std::make_unique<Widget>());
+    tabs_.insert(tabs_.begin() + static_cast<std::ptrdiff_t>(index), Tab{std::move(title), &shown, closable});
+    if (tabs_.size() > 1 && index <= active_)
+        ++active_;          // the one shown moved along
+    changed();
+    const bool first = tabs_.size() == 1;
+    setActive(index);
+    if (first && onActiveChanged_)
+        onActiveChanged_(*this, active_);       // shown, though the index did not change
 }
 
 std::unique_ptr<Widget> MajorTabs::removeTab(std::size_t index) {
@@ -227,7 +253,7 @@ std::unique_ptr<Widget> MajorTabs::removeTab(std::size_t index) {
     for (std::size_t i = 0; i < tabs_.size(); ++i)
         tabs_[i].content->setVisible(i == active_);
     if (onActiveChanged_ && !tabs_.empty())
-        onActiveChanged_(active_);
+        onActiveChanged_(*this, active_);
     return content;
 }
 
@@ -259,7 +285,7 @@ void MajorTabs::setActive(std::size_t index) {
     if (strip_)
         strip_->refreshActive();
     if (changedTab && onActiveChanged_)
-        onActiveChanged_(active_);
+        onActiveChanged_(*this, active_);
 }
 
 void MajorTabs::setTitle(std::size_t index, LocalizedText title) {
@@ -267,7 +293,7 @@ void MajorTabs::setTitle(std::size_t index, LocalizedText title) {
     changed();
 }
 
-void MajorTabs::setOnNewTab(std::function<void()> handler) {
+void MajorTabs::setOnNewTab(std::function<void(MajorTabs&)> handler) {
     onNewTab_ = std::move(handler);
     changed();
 }
@@ -284,15 +310,18 @@ void MajorTabs::changed() {
 void MajorTabs::requestClose(std::size_t index) {
     if (index >= tabs_.size())
         return;
-    if (onCloseRequested_)
-        onCloseRequested_(index);
-    else
-        removeTab(index);
+    if (onCloseRequested_) {
+        onCloseRequested_(*this, index);
+        return;
+    }
+    removeTab(index);
+    if (UiRoot* r = root(); r && r->host() && tabs_.empty())
+        r->host()->closeWindow();
 }
 
 void MajorTabs::requestNew() {
     if (const auto handler = onNewTab_)
-        handler();
+        handler(*this);
 }
 
 // ---- the strip ----
@@ -380,30 +409,128 @@ std::pair<std::size_t, float> MajorTabStrip::slotAt(Point point) const {
 
 void MajorTabStrip::beginDrag(std::size_t index) {
     dragging_ = index;
-    invalidatePaint();
+    const UiRoot* r = root();
+    DockingHost* host = dockingOf(*this);
+    // the only tab of a window drags the window (not a maximized one, which stays where it is)
+    movingWindow_ = host && r && tabs_ && tabs_->count() == 1 &&
+                    !(r->host() && r->host()->windowState() == platform::WindowState::Maximized);
+    if (host) {
+        host->captureMouse(true);
+        if (movingWindow_)
+            grab_ = host->mouseOnScreen() - host->windowPosition(*r);
+    }
 }
 
 void MajorTabStrip::dragTo(Point point) {
     if (!dragging_)
         return;
-    insertionX_ = slotAt(point).second;
-    invalidatePaint();
+    UiRoot* r = root();
+    DockingHost* host = dockingOf(*this);
+    if (!host || !r) {
+        setTarget(this, point);
+        return;
+    }
+    if (movingWindow_) {
+        // the window follows the mouse; under it, another window's strip takes the tab
+        const Point mouse = host->mouseOnScreen();
+        host->moveWindow(*r, mouse - grab_);
+        const DockingHost::Hit hit = host->windowAt(mouse, r);
+        MajorTabStrip* target = hit.root ? stripAt(*hit.root, hit.point) : nullptr;
+        setTarget(target, hit.point);
+        return;
+    }
+    // along this strip (a little above or below it too), the tab moves in it
+    const Point local = mapFromRoot(point);
+    if (local.x >= 0 && local.x <= size().width && local.y >= -stripReach && local.y <= size().height + stripReach) {
+        setTarget(this, point);
+        return;
+    }
+    const DockingHost::Hit hit = host->windowAt(host->toScreen(*r, point));
+    MajorTabStrip* target = hit.root ? stripAt(*hit.root, hit.point) : nullptr;
+    setTarget(target, hit.point);
 }
 
 void MajorTabStrip::endDrag(Point point) {
     if (!dragging_)
         return;
+    dragTo(point);
     const std::size_t from = *dragging_;
-    const std::size_t slot = slotAt(point).first;
+    MajorTabStrip* target = target_;
+    const Point at = targetPoint_;
+    const bool moved = movingWindow_;
     dragging_.reset();
-    insertionX_.reset();
-    invalidatePaint();
-    const std::size_t to = slot > from ? slot - 1 : slot;
-    if (to != from)
-        later(*this, [tabs = tabs_, from, to] {
-            if (tabs)
-                tabs->moveTab(from, to);
+    movingWindow_ = false;
+    setTarget(nullptr, {});
+    UiRoot* r = root();
+    DockingHost* host = dockingOf(*this);
+    if (host)
+        host->captureMouse(false);
+    if (!tabs_ || !r)
+        return;
+
+    if (target == this) {
+        const std::size_t slot = slotAt(at).first;
+        const std::size_t to = slot > from ? slot - 1 : slot;
+        if (to != from)
+            later(*this, [tabs = tabs_, from, to] {
+                if (tabs)
+                    tabs->moveTab(from, to);
+            });
+        return;
+    }
+    if (!host)
+        return;
+    if (target) {
+        // into another window's strip; this window goes when it has no tab left
+        MajorTabs* into = target->tabs_;
+        const std::size_t slot = target->slotAt(at).first;
+        later(*this, [tabs = tabs_, from, into, slot, host, r] {
+            if (!tabs || from >= tabs->count())
+                return;
+            LocalizedText title = tabs->title(from);
+            const bool closable = tabs->closable(from);
+            std::unique_ptr<Widget> content = tabs->removeTab(from);
+            into->insertTab(slot, std::move(title), std::move(content), closable);
+            if (const UiRoot* intoRoot = into->root())
+                host->raiseWindow(*intoRoot);
+            if (tabs->count() == 0)
+                host->closeWindow(*r);
         });
+        return;
+    }
+    if (moved || tabs_->count() < 2)
+        return;
+    // out of every strip: a window of its own, where it was let go
+    const Point screen = host->toScreen(*r, point);
+    const float firstTab = r->rightToLeft() ? r->size().width - 60 : 60;
+    const Point grabbed = host->toScreen(*r, {firstTab, std::min(point.y, 20.0f)}) - host->toScreen(*r, {});
+    later(*this, [tabs = tabs_, from, host, position = screen - grabbed, size = r->size()] {
+        if (!tabs || from >= tabs->count())
+            return;
+        auto torn = std::make_unique<MajorTabs>();
+        torn->onActiveChanged_ = tabs->onActiveChanged_;
+        torn->onNewTab_ = tabs->onNewTab_;
+        torn->onCloseRequested_ = tabs->onCloseRequested_;
+        const bool closable = tabs->closable(from);
+        LocalizedText title = tabs->title(from);
+        torn->insertTab(0, title, tabs->removeTab(from), closable);
+        std::unique_ptr<MajorTabStrip> strip = torn->makeStrip();
+        host->openWindow({.title = std::move(title), .content = std::move(torn), .titleCenter = std::move(strip), .position = position, .size = size, .owner = nullptr});
+    });
+}
+
+void MajorTabStrip::setTarget(MajorTabStrip* target, Point point) {
+    if (target != target_ && target_)
+        target_->showInsertion(std::nullopt);
+    target_ = target;
+    targetPoint_ = point;
+    if (target_)
+        target_->showInsertion(target_->slotAt(point).second);
+}
+
+void MajorTabStrip::showInsertion(std::optional<float> x) {
+    insertionX_ = x;
+    invalidatePaint();
 }
 
 void MajorTabStrip::paintOver(PaintContext& context) {

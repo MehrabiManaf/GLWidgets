@@ -44,6 +44,11 @@ public:
     // show nothing new meanwhile. Also called for windows exposed otherwise (from pollEvent then). None: not called.
     virtual void setExposeHandler(std::function<void(WindowId)> handler) = 0;
 
+    // Where the mouse is, in screen coordinates (Window::position), wherever it is.
+    virtual Point mousePosition() const = 0;
+    // While on, the window the mouse was pressed in gets the mouse's events outside of it too (dragging out of it).
+    virtual void captureMouse(bool capture) = 0;
+
     // The text of the system's clipboard (UTF-8; empty when it holds none).
     virtual std::string clipboardText() const = 0;
     virtual void setClipboardText(std::string_view text) = 0;

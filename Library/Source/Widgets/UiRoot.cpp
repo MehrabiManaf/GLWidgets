@@ -106,6 +106,11 @@ void UiRoot::languageChanged() {
     invalidateLayout();
 }
 
+void UiRoot::windowClosing() {
+    if (content_)
+        tell(*content_, [](Widget& w) { w.onWindowClosing(); });
+}
+
 void UiRoot::invalidateLayout() {
     needsLayout_ = true;
     needsPaint_ = true;

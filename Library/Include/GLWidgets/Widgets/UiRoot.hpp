@@ -26,12 +26,15 @@ class GlyphAtlas;
 
 namespace glw {
 
+class DockingHost;
+
 // What every root of an application shares.
 struct UiContext {
     const text::FontLibrary& fonts;
     text::GlyphAtlas& atlas;
     const Translator& translator;
     Theme theme;
+    DockingHost* docking = nullptr;         // the windows, for docking across them; none: in its window only
 };
 
 // What a root asks of the window it is in.
@@ -99,6 +102,8 @@ public:
     // The theme / the language of the context changed: every widget is told, and the tree laid out again.
     void styleChanged();
     void languageChanged();
+    // Its window is about to close: every widget is told, while the tree is whole.
+    void windowClosing();
     void invalidateLayout();
     void invalidatePaint() { needsPaint_ = true; }
     // Changes with every invalidateLayout: a widget's measure for the same space in the same generation is kept.

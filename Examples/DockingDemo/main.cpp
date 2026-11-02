@@ -5,6 +5,10 @@
 // Drag a panel's tab onto another stack's tabs to join them, or to an edge of a stack to split it; drag the line between
 // two stacks to share their room.
 //
+// Across windows: a script's tab dragged out of the title bar opens in a window of its own, and dropped on another
+// window's title bar goes there. A panel's tab let go out of its script floats in a window of its own; its tab dragged
+// back onto a stack docks it again.
+//
 //   docking_demo [--frames N] [--language fa]
 //
 // --frames N draws N frames and exits: a smoke test.
@@ -39,6 +43,8 @@ constexpr const char* persianCatalog = R"({
     "The graph of script {n}": "گراف اسکریپت {n}",
     "Drag a tab onto another stack's tabs to join them, or to an edge of a stack to split it. Drag the line between two stacks to share their room. The + in the title bar adds a script.":
       "یک تب را روی تب‌های پشته‌ای دیگر بکشید تا به آن بپیوندد، یا به لبه‌ی یک پشته تا آن را تقسیم کند. خط میان دو پشته را بکشید تا جایشان را جابه‌جا کنید. + در نوار عنوان یک اسکریپت می‌افزاید.",
+    "Drag a tab out of its window to float it, a script's tab out of the title bar to open it in a window of its own.":
+      "یک تب را از پنجره‌اش بیرون بکشید تا شناور شود، و تب یک اسکریپت را از نوار عنوان بیرون بکشید تا در پنجره‌ای جدا باز شود.",
     "Name": "نام",
     "Pure": "خالص",
     "Comment": "توضیح",
@@ -71,6 +77,10 @@ struct Studio {
                                                       "it. Drag the line between two stacks to share their room. The + in the title bar adds "
                                                       "a script."),
                                            .muted = true,
+                                           .wrap = true}),
+                                ui::Label({.text = tr("Drag a tab out of its window to float it, a script's tab out of the title bar to open it "
+                                                      "in a window of its own."),
+                                           .muted = true,
                                            .wrap = true}))
                          .padding(glw::Insets::all(24));
         glw::DockTabs& middle = area->addPanel({"graph", tr("Graph"), std::move(graph), false});
@@ -95,9 +105,10 @@ struct Studio {
         return area;
     }
 
-    void addScript() {
+    // In `into`: the first window's tabs, or those of a window a script was dragged out to.
+    void addScript(glw::MajorTabs& into) {
         ++scripts;
-        documents->addTab(tr("Script {n}").arg("n", std::to_string(scripts)), script(scripts));
+        into.addTab(tr("Script {n}").arg("n", std::to_string(scripts)), script(scripts));
     }
 };
 
@@ -121,10 +132,10 @@ int main(int argc, char** argv) {
         Studio studio{app};
         auto tabs = std::make_unique<glw::MajorTabs>();
         studio.documents = tabs.get();
-        studio.addScript();
-        studio.addScript();
+        studio.addScript(*tabs);
+        studio.addScript(*tabs);
         tabs->setActive(0);
-        tabs->setOnNewTab([&studio] { studio.addScript(); });
+        tabs->setOnNewTab([&studio](glw::MajorTabs& into) { studio.addScript(into); });
 
         glw::Window& window = app.openWindow({.title = tr("Docking"), .size = {1280, 800}}, std::move(tabs));
         window.frame()->titleBar().setCenter(studio.documents->makeStrip());

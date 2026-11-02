@@ -223,6 +223,24 @@ void Widget::setVisible(bool visible) {
     if (UiRoot* r = root(); r && !visible)
         r->forget(*this);
     invalidateLayout();
+    if (!parent_ || parent_->visibleInTree())
+        notifyVisibleChanged(visible);
+}
+
+bool Widget::visibleInTree() const {
+    for (const Widget* w = this; w; w = w->parent_) {
+        if (!w->visible_)
+            return false;
+    }
+    return true;
+}
+
+void Widget::notifyVisibleChanged(bool visible) {
+    onVisibleChanged(visible);
+    for (const auto& child : children_) {
+        if (child->visible_)        // a hidden one stays hidden
+            child->notifyVisibleChanged(visible);
+    }
 }
 
 void Widget::setEnabled(bool enabled) {

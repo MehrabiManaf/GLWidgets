@@ -10,6 +10,7 @@
 
 #include <SDL3/SDL_clipboard.h>
 #include <SDL3/SDL_hints.h>
+#include <SDL3/SDL_mouse.h>
 #include <SDL3/SDL_init.h>
 #include <SDL3/SDL_version.h>
 #include <SDL3/SDL_video.h>
@@ -42,6 +43,8 @@ SdlPlatform::SdlPlatform() {
         throw Error("there is a platform already: one per process");
     // closing the last window is the application's business (QuitRequested, Event.hpp)
     SDL_SetHint(SDL_HINT_QUIT_ON_LAST_WINDOW_CLOSE, "0");
+    // a click on a window of the application that is not in front acts too (a tab of it, after a floating panel's window)
+    SDL_SetHint(SDL_HINT_MOUSE_FOCUS_CLICKTHROUGH, "1");
     if (!SDL_Init(SDL_INIT_VIDEO)) {
         std::string error = sdlError("SDL_Init");
         platformExists = false;
@@ -94,6 +97,16 @@ void SdlPlatform::setExposeHandler(std::function<void(WindowId)> handler) {
     exposeHandler_ = std::move(handler);
     if (exposeHandler_ && !watching_)
         watching_ = SDL_AddEventWatch(&SdlPlatform::watch, this);
+}
+
+Point SdlPlatform::mousePosition() const {
+    float x = 0, y = 0;
+    SDL_GetGlobalMouseState(&x, &y);
+    return {x, y};
+}
+
+void SdlPlatform::captureMouse(bool capture) {
+    SDL_CaptureMouse(capture);
 }
 
 std::string SdlPlatform::clipboardText() const {

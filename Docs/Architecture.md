@@ -364,7 +364,8 @@ corners and snap layouts).
 
 ## Docking
 
-*In a window: done (`Widgets/Docking.hpp`, `Widgets/MajorTabs.hpp`). Across windows: planned (M5b).*
+*In a window and across windows: done (`Widgets/Docking.hpp`, `Widgets/MajorTabs.hpp`, `Widgets/DockingHost.hpp`), in
+the full mode. Global panels, saving windows, and Wayland's mode: planned (M5c).*
 
 Two kinds of tabs, as in Slate:
 
@@ -410,8 +411,26 @@ In a dock area:
 browser does: a click shows a tab, its × closes it, dragging moves it along the strip, and + asks for a new one. Where the
 strip has no tab, it drags the window.
 
-Planned for M5b: dragging a major tab out of its strip into a window of its own, and onto another window's strip; panel
-windows; global panels; saving the major tabs with their layouts.
+**Across windows**, what docking needs from the application is a `DockingHost`: where the windows are on the screen,
+which one is under the mouse, opening, closing, moving, raising and hiding them. `Application` is one, given to every
+root as `UiContext::docking`. Without one (an engine's root, a test of one window), tabs and panels stay in their window.
+The tests use a host of their own, with windows that are only roots at places of a pretend screen.
+
+- **A major tab** dragged along its strip (or a little above or below it) moves in it. Let go over another window's
+  strip, it goes there and that window comes to the front. Let go anywhere else, it opens in a window of its own where
+  it was let go, with a strip and the same handlers (they are given the `MajorTabs` they are for, so + adds to the right
+  window). The only tab of a window drags the window instead, and let go over another window's strip, merges it into
+  that window. A window left without tabs closes.
+- **A panel tab** let go where no stack takes it, out of its dock area, floats: its panel goes into a tool window above
+  its area's window, with a `DockArea` of its own. The areas of a major tab and of its floating windows are one group:
+  a tab of any of them docks in any of them, and the stack it would go to shows it in its own window. The only tab of
+  a floating window drags the window, and docks where it is let go. A floating window goes when its last panel leaves.
+  Closed by the user, its panels go back to their area. The floating windows hide while their area does (another major
+  tab is shown), follow their area to another window, and close when it is destroyed.
+
+A window closed during the events is told (`onWindowClosing`) while every tree is still whole, and destroyed after the
+events, one at a time: what one destroys may close others. Before a window is destroyed, the tool windows above it are
+detached from it, since the system would otherwise close them with it.
 
 Tearing off and docking back needs what not every system gives:
 
@@ -528,7 +547,7 @@ The `GLW_USE_SYSTEM_SDL3` option uses an installed SDL3 instead of the pinned re
 | M2 | Text: HarfBuzz and FreeType, glyph atlas, bidi, line breaking, text layout with cursor and selection | Done, apart from system fonts and visual cursor movement (see [Text](#text)) |
 | M3 | Widget core: tree, events, focus, layout, a UI root independent of the platform, window chrome as widgets (with the native extras), live resize | Done, apart from the native extras of the chrome and what is listed in [Widgets](#widgets) |
 | M4 | Basic widgets (label, button, line edit, scroll area, splitter), styles, `LocalizedText` and catalogs, right-to-left layouts | Done, apart from plural rules and the formatting of numbers and dates (see [Localization](#localization-and-right-to-left)) |
-| M5 | Docking: major and panel tabs, windows merging and splitting by their tabs, both modes, layout persistence | In progress: docking in a window, major tabs and saved layouts done (M5a); across windows next (M5b), then Wayland's mode (M5c) |
+| M5 | Docking: major and panel tabs, windows merging and splitting by their tabs, both modes, layout persistence | In progress: docking in a window, major tabs and saved layouts (M5a), and across windows in the full mode (M5b) done; global panels, saving windows and Wayland's mode next (M5c) |
 | M6 | Validation: a node canvas and a code editor (FlowGraph), a chart widget with custom commands, an engine embedding example | |
 
 ## Open questions

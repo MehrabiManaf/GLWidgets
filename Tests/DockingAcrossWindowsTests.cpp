@@ -1,0 +1,382 @@
+// SPDX-FileCopyrightText: 2026 Abdolmanaf Mehrabi Sisakht
+// SPDX-License-Identifier: MIT
+// Docking across windows, with windows that are only roots at places of a pretend screen: major tabs moved from one window
+// to another, torn off into a new one, a window dragged by its only tab and merged; panels floated, docked back, sent home
+// when their window closes, hidden with their area and closed with it.
+#include "Check.hpp"
+#include "TestUi.hpp"
+
+#include <GLWidgets/Widgets/Docking.hpp>
+#include <GLWidgets/Widgets/DockingHost.hpp>
+#include <GLWidgets/Widgets/MajorTabs.hpp>
+#include <GLWidgets/Widgets/UiRoot.hpp>
+#include <GLWidgets/Widgets/WindowFrame.hpp>
+
+#include <algorithm>
+#include <memory>
+#include <string>
+#include <vector>
+
+using namespace glw;
+
+namespace {
+
+// The windows: a screen of dips (one screen unit per dip), the one in front first.
+struct Screen final : DockingHost {
+    struct Win {
+        tests::FakeHost host;               // its closeWindow counts: closing
+        std::unique_ptr<UiRoot> root;
+        Point position;
+        bool visible = true;
+        bool closing = false;
+        bool told = false;                  // its root was told it closes
+        const UiRoot* owner = nullptr;
+        LocalizedText title;
+    };
+
+    UiContext context{tests::testContext()};
+    std::vector<std::unique_ptr<Win>> windows;
+    Point mouse;
+    int captures = 0;
+
+    Screen() { context.docking = this; }
+
+    // A window at `position` showing `content` in a frame, with `titleCenter` in its title bar.
+    Win& open(std::unique_ptr<Widget> content, Point position, Size size, std::unique_ptr<Widget> titleCenter = nullptr) {
+        auto w = std::make_unique<Win>();
+        w->root = std::make_unique<UiRoot>(context, &w->host);
+        w->root->setSize(size);
+        auto frame = std::make_unique<WindowFrame>(std::move(content));
+        if (titleCenter)
+            frame->titleBar().setCenter(std::move(titleCenter));
+        w->root->setContent(std::move(frame));
+        w->position = position;
+        windows.insert(windows.begin(), std::move(w));
+        windows.front()->root->layout();
+        return *windows.front();
+    }
+
+    Win* find(const UiRoot& root) const {
+        for (const auto& w : windows) {
+            if (w->root.get() == &root)
+                return w.get();
+        }
+        return nullptr;
+    }
+
+    bool closing(const Win& w) const { return w.closing || w.host.closed > 0; }
+
+    // What the application does after the events: the windows closed are told, then go.
+    void closeWindows() {
+        for (bool told = true; told;) {
+            told = false;
+            for (std::size_t i = 0; i < windows.size(); ++i) {
+                if (Win& w = *windows[i]; closing(w) && !w.told) {
+                    w.told = true;
+                    w.root->windowClosing();
+                    told = true;
+                }
+            }
+        }
+        for (;;) {
+            const auto it = std::find_if(windows.begin(), windows.end(), [&](const auto& w) { return closing(*w); });
+            if (it == windows.end())
+                break;
+            std::unique_ptr<Win> closed = std::move(*it);
+            windows.erase(it);
+            closed.reset();
+        }
+    }
+
+    void layout() {
+        for (const auto& w : windows)
+            w->root->layout();
+    }
+
+    // The mouse, at `screen`, given to `w` (the window it was pressed in).
+    void press(Win& w, Point screen) {
+        mouse = screen;
+        w.root->dispatch(platform::MouseButtonChanged{1, platform::MouseButton::Left, true, 1, screen - w.position});
+    }
+    void moveTo(Win& w, Point screen) {
+        mouse = screen;
+        w.root->dispatch(platform::MouseMoved{1, screen - w.position});
+    }
+    void release(Win& w, Point screen) {
+        mouse = screen;
+        w.root->dispatch(platform::MouseButtonChanged{1, platform::MouseButton::Left, false, 1, screen - w.position});
+    }
+    void drag(Win& w, Point from, Point to) {
+        press(w, from);
+        moveTo(w, {from.x + 10, from.y});
+        moveTo(w, {(from.x + to.x) / 2, (from.y + to.y) / 2});
+        moveTo(w, to);
+        release(w, to);
+        closeWindows();
+        layout();
+    }
+
+    // ---- DockingHost ----
+
+    Point mouseOnScreen() const override { return mouse; }
+    Point toScreen(const UiRoot& root, Point point) const override {
+        const Win* w = find(root);
+        return w ? point + w->position : point;
+    }
+    Hit windowAt(Point screen, const UiRoot* except) const override {
+        for (const auto& w : windows) {
+            const Size size = w->root->size();
+            if (w->root.get() != except && w->visible && !closing(*w) &&
+                Rect{w->position.x, w->position.y, size.width, size.height}.contains(screen))
+                return {w->root.get(), screen - w->position};
+        }
+        return {};
+    }
+    void captureMouse(bool capture) override { captures += capture ? 1 : -1; }
+    UiRoot& openWindow(NewWindow window) override {
+        Win& w = open(std::move(window.content), window.position, window.size, std::move(window.titleCenter));
+        w.owner = window.owner;
+        w.title = window.title;
+        return *w.root;
+    }
+    void closeWindow(const UiRoot& root) override {
+        if (Win* w = find(root))
+            w->closing = true;
+    }
+    void setWindowVisible(const UiRoot& root, bool visible) override {
+        if (Win* w = find(root))
+            w->visible = visible;
+    }
+    void setWindowOwner(const UiRoot& root, const UiRoot* owner) override {
+        if (Win* w = find(root))
+            w->owner = owner;
+    }
+    void raiseWindow(const UiRoot& root) override {
+        const auto it = std::find_if(windows.begin(), windows.end(), [&](const auto& w) { return w->root.get() == &root; });
+        if (it != windows.end())
+            std::rotate(windows.begin(), it, it + 1);
+    }
+    Point windowPosition(const UiRoot& root) const override {
+        const Win* w = find(root);
+        return w ? w->position : Point{};
+    }
+    void moveWindow(const UiRoot& root, Point position) override {
+        if (Win* w = find(root))
+            w->position = position;
+    }
+};
+
+// A window of documents: its major tabs, their strip in the title bar.
+struct Documents {
+    MajorTabs* tabs = nullptr;
+    Screen::Win* window = nullptr;
+
+    Documents(Screen& screen, Point position, std::initializer_list<const char*> titles) {
+        auto t = std::make_unique<MajorTabs>();
+        tabs = t.get();
+        for (const char* title : titles)
+            tabs->addTab(title, std::make_unique<Widget>());
+        tabs->setActive(0);
+        auto strip = tabs->makeStrip();
+        window = &screen.open(std::move(t), position, {800, 600}, std::move(strip));
+    }
+};
+
+// The screen point of the middle of major tab `index` of `tabs`' window.
+Point majorTab(const Screen& screen, const MajorTabs& tabs, std::size_t index) {
+    const UiRoot* r = tabs.root();
+    // the strip: the title bar's center, found from the root down
+    const MajorTabStrip* strip = nullptr;
+    std::vector<const Widget*> todo{r->content()};
+    while (!todo.empty() && !strip) {
+        const Widget* w = todo.back();
+        todo.pop_back();
+        strip = dynamic_cast<const MajorTabStrip*>(w);
+        for (const auto& child : w->children())
+            todo.push_back(child.get());
+    }
+    const Widget& tab = *strip->children()[0]->children()[index];
+    return tab.mapToRoot({tab.size().width / 2, tab.size().height / 2}) + screen.windowPosition(*r);
+}
+
+std::vector<std::string> titles(const MajorTabs& tabs) {
+    std::vector<std::string> result;
+    for (std::size_t i = 0; i < tabs.count(); ++i)
+        result.push_back(tabs.title(i).source);
+    return result;
+}
+
+DockPanel panel(const std::string& id) {
+    return DockPanel{id, LocalizedText(id), std::make_unique<Widget>()};
+}
+
+// A window with a dock area: graph, palette at its start.
+struct Tools {
+    DockArea* area = nullptr;
+    DockTabs* graph = nullptr;
+    Screen::Win* window = nullptr;
+
+    Tools(Screen& screen, Point position) {
+        auto a = std::make_unique<DockArea>();
+        area = a.get();
+        graph = &area->addPanel(panel("graph"));
+        area->addPanel(panel("palette"), graph, DockSide::Start, 0.3f);
+        window = &screen.open(std::move(a), position, {800, 600});
+    }
+};
+
+// The screen point of the tab of panel `id`.
+Point panelTab(const Screen& screen, const DockArea& area, const std::string& id) {
+    DockTabs* tabs = area.tabsOf(id);
+    const Widget& tab = *tabs->children()[0]->children()[*tabs->indexOf(id)];
+    return tab.mapToRoot({10, 10}) + screen.windowPosition(*tabs->root());
+}
+
+Point middleOf(const Screen& screen, const Widget& w) {
+    return w.mapToRoot({w.size().width / 2, w.size().height / 2 + 15}) + screen.windowPosition(*w.root());
+}
+
+} // namespace
+
+TEST(majorTabMovesToAnotherWindow) {
+    Screen screen;
+    Documents a(screen, {0, 0}, {"one", "two"});
+    Documents b(screen, {1000, 0}, {"three"});
+
+    // "two" onto the end of b's strip: it goes there, shown; a keeps "one"
+    const Point end = majorTab(screen, *b.tabs, 0) + Point{60, 0};
+    screen.drag(*a.window, majorTab(screen, *a.tabs, 1), end);
+    CHECK((titles(*a.tabs) == std::vector<std::string>{"one"}));
+    CHECK((titles(*b.tabs) == std::vector<std::string>{"three", "two"}));
+    CHECK(b.tabs->active() == 1 && b.tabs->content(1)->visible());
+    CHECK(screen.windows.front()->root.get() == b.tabs->root());     // raised
+    CHECK(screen.windows.size() == 2 && screen.captures == 0);
+}
+
+TEST(windowDraggedByItsOnlyTabMerges) {
+    Screen screen;
+    Documents b(screen, {1000, 0}, {"three", "four"});
+    Documents a(screen, {0, 0}, {"one"});
+
+    // the only tab drags its window: it follows the mouse
+    const Point from = majorTab(screen, *a.tabs, 0);
+    screen.press(*a.window, from);
+    screen.moveTo(*a.window, {from.x + 10, from.y});
+    screen.moveTo(*a.window, {from.x + 200, from.y + 100});
+    CHECK(a.window->position.x == 190 && a.window->position.y == 100);
+    screen.release(*a.window, {from.x + 200, from.y + 100});
+    screen.closeWindows();
+    CHECK(screen.windows.size() == 2 && a.tabs->count() == 1);
+
+    // let go over b's strip: its tab goes there, and the window, empty, closes
+    screen.layout();
+    const Point start = majorTab(screen, *a.tabs, 0);
+    const Point onto = majorTab(screen, *b.tabs, 0);
+    screen.drag(*a.window, start, onto);
+    CHECK(screen.windows.size() == 1);
+    CHECK((titles(*b.tabs) == std::vector<std::string>{"one", "three", "four"}) ||
+          (titles(*b.tabs) == std::vector<std::string>{"three", "one", "four"}));
+}
+
+TEST(majorTabTornOffIntoANewWindow) {
+    Screen screen;
+    Documents a(screen, {0, 0}, {"one", "two", "three"});
+    int added = 0;
+    a.tabs->setOnNewTab([&](MajorTabs& into) {
+        ++added;
+        into.addTab("new", std::make_unique<Widget>());
+    });
+    screen.layout();        // the strip has a + now
+
+    // let go far below the strip: a window of its own, with the same handlers
+    screen.drag(*a.window, majorTab(screen, *a.tabs, 1), {300, 900});
+    CHECK((titles(*a.tabs) == std::vector<std::string>{"one", "three"}));
+    CHECK(screen.windows.size() == 2);
+    Screen::Win& torn = *screen.windows.front();
+    CHECK(torn.title.source == "two" && torn.owner == nullptr);
+    CHECK(torn.position.y > 600);
+    // its tabs: the one dragged, with a + that calls the handler with them
+    auto* frame = dynamic_cast<WindowFrame*>(torn.root->content());
+    auto* tornTabs = frame ? dynamic_cast<MajorTabs*>(frame->content()) : nullptr;
+    CHECK(tornTabs && (titles(*tornTabs) == std::vector<std::string>{"two"}));
+    const auto* strip = dynamic_cast<MajorTabStrip*>(frame->titleBar().center());
+    CHECK(strip && strip->tabs() == tornTabs);
+    const Widget& plus = *strip->children()[0]->children()[1];
+    const Point p = plus.mapToRoot({plus.size().width / 2, plus.size().height / 2}) + torn.position;
+    screen.press(torn, p);
+    screen.release(torn, p);
+    CHECK(added == 1 && tornTabs->count() == 2);
+
+    // its last tab's × closes it
+    screen.layout();
+    tornTabs->removeTab(1);
+    screen.layout();
+    const Widget& tab = *strip->children()[0]->children()[0];
+    const Point close = tab.mapToRoot({tab.size().width - 18, tab.size().height / 2}) + torn.position;
+    screen.press(torn, close);
+    screen.release(torn, close);
+    screen.closeWindows();
+    CHECK(screen.windows.size() == 1);
+}
+
+TEST(panelFloatsAndDocksBack) {
+    Screen screen;
+    Tools t(screen, {0, 0});
+
+    // let go out of the window: a floating window above it, with the panel
+    screen.drag(*t.window, panelTab(screen, *t.area, "palette"), {1200, 300});
+    CHECK(screen.windows.size() == 2);
+    Screen::Win& floating = *screen.windows.front();
+    CHECK(floating.owner == t.window->root.get() && floating.title.source == "palette");
+    CHECK(t.area->floatingAreas().size() == 1);
+    DockArea* away = t.area->floatingAreas()[0];
+    CHECK(away->floating() && away->home() == t.area && t.area->tabsOf("palette")->area() == away);
+    CHECK(t.area->panelIds().size() == 2);      // the floating windows' panels too
+    CHECK(t.area->tabsOf("graph")->parent() == t.area);     // the split it left gave way
+
+    // its only tab drags the floating window
+    const Point from = panelTab(screen, *t.area, "palette");
+    const Point before = floating.position;
+    screen.press(floating, from);
+    screen.moveTo(floating, {from.x + 10, from.y});
+    screen.moveTo(floating, {from.x + 50, from.y + 40});
+    // (from where it was when the drag began, past the threshold)
+    CHECK(floating.position.x == before.x + 40 && floating.position.y == before.y + 40);
+    // over the graph's stack: shown there, and docked there when let go
+    const Point onto = middleOf(screen, *t.graph);
+    screen.moveTo(floating, onto);
+    screen.release(floating, onto);
+    screen.closeWindows();
+    screen.layout();
+    CHECK(screen.windows.size() == 1);
+    CHECK(t.area->tabsOf("palette") == t.area->tabsOf("graph"));
+    CHECK(t.area->floatingAreas().empty());
+}
+
+TEST(floatingPanelsGoHomeAndFollowTheirArea) {
+    Screen screen;
+    Tools t(screen, {0, 0});
+    screen.drag(*t.window, panelTab(screen, *t.area, "palette"), {1200, 300});
+    CHECK(screen.windows.size() == 2);
+
+    // the area hidden (its major tab not shown): its floating windows hide; shown again, they show
+    t.area->setVisible(false);
+    CHECK(!screen.windows.front()->visible);
+    t.area->setVisible(true);
+    CHECK(screen.windows.front()->visible);
+
+    // the floating window closed: its panel goes back to the area
+    screen.windows.front()->host.closeWindow();
+    screen.closeWindows();
+    CHECK(screen.windows.size() == 1);
+    CHECK(t.area->tabsOf("palette") && t.area->tabsOf("palette")->area() == t.area);
+
+    // floated again, then the area goes: its floating windows close
+    screen.layout();
+    screen.drag(*t.window, panelTab(screen, *t.area, "palette"), {1200, 300});
+    CHECK(screen.windows.size() == 2);
+    auto* frame = dynamic_cast<WindowFrame*>(t.window->root->content());
+    frame->setContent(nullptr);
+    screen.closeWindows();
+    CHECK(screen.windows.size() == 1);
+}

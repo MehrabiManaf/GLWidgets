@@ -167,7 +167,7 @@ TEST(majorTabs) {
     root.setContent(std::move(page));
 
     std::vector<std::size_t> shown;
-    documents.setOnActiveChanged([&](std::size_t i) { shown.push_back(i); });
+    documents.setOnActiveChanged([&](MajorTabs&, std::size_t i) { shown.push_back(i); });
     documents.addTab("one", std::make_unique<Widget>());
     documents.addTab("two", std::make_unique<Widget>());
     documents.addTab("three", std::make_unique<Widget>());

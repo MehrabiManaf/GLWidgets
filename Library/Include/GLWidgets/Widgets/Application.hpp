@@ -8,7 +8,8 @@
 //   app.openWindow({.title = "Hello"}, std::move(content));
 //   return app.run();
 //
-// One application per process, on the main thread.
+// One application per process, on the main thread. It is the DockingHost of its windows (DockingHost.hpp): tabs and panels
+// are dragged from one to another.
 #include <GLWidgets/Core/Geometry.hpp>
 #include <GLWidgets/Export.hpp>
 #include <GLWidgets/Paint/DrawList.hpp>
@@ -19,6 +20,7 @@
 #include <GLWidgets/Widgets/Widget.hpp>
 
 #include <memory>
+#include <optional>
 #include <span>
 #include <string>
 
@@ -34,6 +36,7 @@ class WindowFrame;
 struct WindowOptions {
     LocalizedText title = "GLWidgets";
     Size size{960, 640};
+    std::optional<Point> position;          // its top left corner on the screen (platform::Window::position); none: centered
     // A borderless window in a WindowFrame: its title bar and buttons drawn by GLWidgets. Otherwise the system's.
     bool customChrome = true;
 };
@@ -63,7 +66,8 @@ public:
 
 private:
     friend class Application;
-    Window(Application& app, const WindowOptions& options, std::unique_ptr<Widget> content);
+    // With an owner: a tool window above it.
+    Window(Application& app, const WindowOptions& options, std::unique_ptr<Widget> content, Window* owner = nullptr);
     void languageChanged();
 
     Application& app_;
@@ -74,7 +78,9 @@ private:
     WindowFrame* frame_ = nullptr;
     paint::DrawList list_;
     paint::RenderBuffers buffers_;
+    Window* owner_ = nullptr;
     bool closing_ = false;
+    bool told_ = false;                                 // its root was told it closes
 };
 
 class GLW_EXPORT Application {

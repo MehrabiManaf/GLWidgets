@@ -22,6 +22,8 @@ public:
     void waitForEvents(std::optional<std::chrono::milliseconds> timeout) override;
     void wakeUp() override;
     void setExposeHandler(std::function<void(WindowId)> handler) override;
+    Point mousePosition() const override;
+    void captureMouse(bool capture) override;
     std::string clipboardText() const override;
     void setClipboardText(std::string_view text) override;
 

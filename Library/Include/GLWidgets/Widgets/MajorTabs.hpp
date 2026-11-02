@@ -5,6 +5,11 @@
 // one chosen; its MajorTabStrip, in the title bar, shows their tabs. A tab is chosen by a click, closed by its ×, moved
 // along the strip by dragging it; the strip's + asks for a new one. Where the strip has no tab, it drags the window.
 //
+// Across windows (with a DockingHost: Application): a tab dragged out of its strip goes into a new window of its own;
+// dropped on another window's strip, it goes there. Dragging the only tab of a window drags the window, and dropping it on
+// another window's strip merges them. A window left without tabs closes. The new windows' MajorTabs have the same
+// handlers, which are given the MajorTabs they are for.
+//
 //   auto tabs = std::make_unique<glw::MajorTabs>();
 //   tabs->addTab(glw::tr("Script"), std::move(dockArea));
 //   glw::MajorTabs& documents = *tabs;
@@ -32,6 +37,8 @@ public:
 
     // Adds a tab showing `content`, at the end, and shows it. Its index.
     std::size_t addTab(LocalizedText title, std::unique_ptr<Widget> content, bool closable = true);
+    // The same at `index`.
+    void insertTab(std::size_t index, LocalizedText title, std::unique_ptr<Widget> content, bool closable = true);
     // Takes the tab at `index` out: its content goes back to the caller.
     std::unique_ptr<Widget> removeTab(std::size_t index);
     // The tab at `from` goes to `to` (its index after the move).
@@ -45,11 +52,12 @@ public:
     bool closable(std::size_t index) const { return tabs_[index].closable; }
     const MajorTabStyle& style() const;
 
-    void setOnActiveChanged(std::function<void(std::size_t)> handler) { onActiveChanged_ = std::move(handler); }
+    void setOnActiveChanged(std::function<void(MajorTabs&, std::size_t)> handler) { onActiveChanged_ = std::move(handler); }
     // The strip's + was pressed: without a handler, the strip has no +.
-    void setOnNewTab(std::function<void()> handler);
-    // A tab's × was pressed: without a handler, the tab is removed (and its content destroyed).
-    void setOnCloseRequested(std::function<void(std::size_t)> handler) { onCloseRequested_ = std::move(handler); }
+    void setOnNewTab(std::function<void(MajorTabs&)> handler);
+    // A tab's × was pressed: without a handler, the tab is removed (and its content destroyed), and a window left without
+    // tabs closes.
+    void setOnCloseRequested(std::function<void(MajorTabs&, std::size_t)> handler) { onCloseRequested_ = std::move(handler); }
 
     // The strip that shows the tabs, for the title bar (TitleBar::setCenter). One at a time.
     std::unique_ptr<MajorTabStrip> makeStrip();
@@ -68,9 +76,9 @@ private:
     std::vector<Tab> tabs_;
     std::size_t active_ = 0;
     MajorTabStrip* strip_ = nullptr;
-    std::function<void(std::size_t)> onActiveChanged_;
-    std::function<void()> onNewTab_;
-    std::function<void(std::size_t)> onCloseRequested_;
+    std::function<void(MajorTabs&, std::size_t)> onActiveChanged_;
+    std::function<void(MajorTabs&)> onNewTab_;
+    std::function<void(MajorTabs&, std::size_t)> onCloseRequested_;
 };
 
 class GLW_EXPORT MajorTabStrip : public Widget {
@@ -98,11 +106,18 @@ private:
     void refreshActive();               // the tabs told which one is shown, in place (one may be in its own handler)
     // Where a tab dropped at `point` would go: an index from 0 to the number of tabs, and its x on the strip.
     std::pair<std::size_t, float> slotAt(Point point) const;
+    // The strip a dragged tab would go to (this one, another window's, or none), and where in it.
+    void setTarget(MajorTabStrip* target, Point point);
+    void showInsertion(std::optional<float> x);
 
     MajorTabs* tabs_;
     Widget* row_ = nullptr;
     std::optional<std::size_t> dragging_;
-    std::optional<float> insertionX_;
+    bool movingWindow_ = false;         // the only tab dragged: the window follows the mouse
+    Point grab_;                        // the mouse on the screen less the window's position, while it moves
+    MajorTabStrip* target_ = nullptr;
+    Point targetPoint_;                 // in the target's root
+    std::optional<float> insertionX_;   // shown on this strip, by the strip a tab is dragged from
 };
 
 } // namespace glw

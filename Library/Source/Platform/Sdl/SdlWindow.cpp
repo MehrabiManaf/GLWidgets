@@ -23,13 +23,18 @@ SdlWindow::SdlWindow(SdlPlatform& platform, const WindowDesc& desc) : platform_(
         flags |= SDL_WINDOW_RESIZABLE;
     if (desc.borderless)
         flags |= SDL_WINDOW_BORDERLESS;
+    if (desc.tool)
+        flags |= SDL_WINDOW_UTILITY;
     window_ = SDL_CreateWindow(desc.title.c_str(), static_cast<int>(desc.size.width), static_cast<int>(desc.size.height), flags);
     if (!window_)
         throw Error(std::string("SDL_CreateWindow: ") + SDL_GetError());
     // SDL made it in its window coordinates, not dips everywhere: now that the window has a screen (and so a scale), give it
     // the size asked for, and center it again with that size
     setSize(desc.size);
-    SDL_SetWindowPosition(window_, SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED);
+    if (desc.position)
+        setPosition(*desc.position);
+    else
+        SDL_SetWindowPosition(window_, SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED);
     platform_.windowCreated();
 }
 
@@ -70,6 +75,48 @@ void SdlWindow::show() {
 
 void SdlWindow::hide() {
     SDL_HideWindow(window_);
+}
+
+bool SdlWindow::visible() const {
+    return (SDL_GetWindowFlags(window_) & SDL_WINDOW_HIDDEN) == 0;
+}
+
+void SdlWindow::raise() {
+    SDL_RaiseWindow(window_);
+}
+
+void SdlWindow::setParent(Window* parent) {
+    auto* sdlParent = dynamic_cast<SdlWindow*>(parent);
+    SDL_SetWindowParent(window_, sdlParent ? sdlParent->window_ : nullptr);
+}
+
+Point SdlWindow::position() const {
+    int x = 0, y = 0;
+    SDL_GetWindowPosition(window_, &x, &y);
+    return {static_cast<float>(x), static_cast<float>(y)};
+}
+
+void SdlWindow::setPosition(Point position) {
+    SDL_SetWindowPosition(window_, static_cast<int>(std::lround(position.x)), static_cast<int>(std::lround(position.y)));
+}
+
+Point SdlWindow::toScreen(Point point) const {
+    // SDL's window coordinates are the screen's, from the window's corner
+    const float f = dipsPerUnit(window_);
+    const Point corner = position();
+    return {corner.x + point.x / f, corner.y + point.y / f};
+}
+
+Point SdlWindow::fromScreen(Point point) const {
+    const float f = dipsPerUnit(window_);
+    const Point corner = position();
+    return {(point.x - corner.x) * f, (point.y - corner.y) * f};
+}
+
+Size SdlWindow::screenSize() const {
+    int w = 0, h = 0;
+    SDL_GetWindowSize(window_, &w, &h);
+    return {static_cast<float>(w), static_cast<float>(h)};
 }
 
 WindowState SdlWindow::state() const {

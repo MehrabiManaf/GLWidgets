@@ -11,8 +11,9 @@ interfaces inside 3D applications and games, and for charts. Every dependency is
 The project has just started. Windows (with chrome of their own, redrawn while they are resized), events, the GPU layer, the
 2D painter, text (Persian and English, mixed, shaped, wrapped, selectable), the widget core (layout, events, focus,
 right-to-left mirroring), themes and translations work, with the basic widgets: label, button, check box, text field,
-panel, card, scroll area, splitter; and docking in a window, with major tabs in the title bar. Docking across windows
-comes next. The design, and what comes next, is in
+panel, card, scroll area, splitter; and docking, with major tabs in the title bar: tabs and panels move between
+windows, tear off into windows of their own, and float (on Windows, macOS and X11; Wayland's mode comes next). The design,
+and what comes next, is in
 [Docs/Architecture.md](Docs/Architecture.md); the libraries it is built with, and their notices, in
 [Docs/ThirdPartyNotices.md](Docs/ThirdPartyNotices.md).
 
@@ -32,7 +33,9 @@ On Linux, SDL3 needs the development packages of X11, Wayland and IBus: see `.gi
 Then, in `build/<preset>/bin`:
 
 - `docking_demo` is laid out as a script editor: scripts as major tabs in the title bar (+ adds one), each with its
-  panels (graph, palette, inspector, output, search) docked around it; drag the tabs to rearrange them.
+  panels (graph, palette, inspector, output, search) docked around it; drag the tabs to rearrange them. A script's tab
+  dragged out of the title bar opens in a window of its own, and dragged onto another window's title bar goes there; a
+  panel's tab dragged out of its window floats, and dragged back onto a stack docks again.
 - `widgets_demo` is an application made of widgets, written with the declarative builders (`glw::ui`): a window with its
   own chrome, split in two by a handle, a form (text field, check boxes, buttons; Tab moves the focus) and a long list,
   each scrolling; buttons switch to Persian (the window is mirrored) and to the light theme. `--language fa` and

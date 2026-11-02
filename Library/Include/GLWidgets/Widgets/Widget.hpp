@@ -189,6 +189,7 @@ public:
 
     void setVisible(bool visible);
     bool visible() const { return visible_; }
+    bool visibleInTree() const;                         // it and its ancestors
     // A disabled widget, and everything in it, gets no events and cannot have the focus.
     void setEnabled(bool enabled);
     bool enabled() const { return enabled_; }
@@ -235,6 +236,10 @@ protected:
     // The theme / the language of its root changed.
     virtual void onStyleChanged() {}
     virtual void onLanguageChanged() {}
+    // It shows now, or does not: setVisible changed it or one of its ancestors.
+    virtual void onVisibleChanged(bool visible) {}
+    // The window showing it is about to close (UiRoot::windowClosing).
+    virtual void onWindowClosing() {}
 
     // For a widget filling a borderless window: what the point (its own coordinates) is for the window before the widget
     // under it is asked (WindowFrame: its resize borders).
@@ -255,6 +260,7 @@ private:
     friend class UiRoot;
     void setRootOfTree(UiRoot* root);
     void notifyRootChanged();
+    void notifyVisibleChanged(bool visible);
 
     Widget* parent_ = nullptr;
     UiRoot* uiRoot_ = nullptr;                          // set on the root's content only

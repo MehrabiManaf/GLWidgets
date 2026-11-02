@@ -10,6 +10,7 @@
 
 #include <cstdint>
 #include <functional>
+#include <optional>
 #include <string>
 #include <string_view>
 
@@ -21,6 +22,10 @@ struct WindowDesc {
     bool resizable = true;
     // No title bar or borders of the system: the application draws them, and says with setHitTest where they are.
     bool borderless = false;
+    // Its top left corner on the screen (screen coordinates, Window::position). None: centered.
+    std::optional<Point> position;
+    // A tool window: not in the task bar; above its parent (setParent).
+    bool tool = false;
 };
 
 // What a point of a window is, for the system to move and resize it (Window::setHitTest).
@@ -51,6 +56,20 @@ public:
     // A new window is hidden: show it once what it shows is ready.
     virtual void show() = 0;
     virtual void hide() = 0;
+    virtual bool visible() const = 0;
+    // Above the other windows, and with the focus.
+    virtual void raise() = 0;
+    // A tool window stays above `parent` (and goes with it); none: on its own.
+    virtual void setParent(Window* parent) = 0;
+
+    // Screen coordinates: the system's, for the whole desktop (pixels on Windows and X11, points on macOS). Its top left
+    // corner (of the whole window), and from its dips to the screen and back.
+    virtual Point position() const = 0;
+    virtual void setPosition(Point position) = 0;
+    virtual Point toScreen(Point point) const = 0;
+    virtual Point fromScreen(Point point) const = 0;
+    // Its size in screen coordinates.
+    virtual Size screenSize() const = 0;
 
     virtual WindowState state() const = 0;
     virtual void minimize() = 0;
