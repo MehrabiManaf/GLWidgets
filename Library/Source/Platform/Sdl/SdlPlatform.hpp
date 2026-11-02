@@ -22,6 +22,8 @@ public:
     void waitForEvents(std::optional<std::chrono::milliseconds> timeout) override;
     void wakeUp() override;
     void setExposeHandler(std::function<void(WindowId)> handler) override;
+    std::string clipboardText() const override;
+    void setClipboardText(std::string_view text) override;
 
     // SdlWindow: the windows there are, which must all be gone before the platform
     void windowCreated() { ++windows_; }

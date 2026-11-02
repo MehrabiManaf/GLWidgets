@@ -3,10 +3,9 @@
 // Widget trees in a UiRoot, without a window or a GPU: layout, mirroring, the routes of events, focus, the window's hit
 // areas.
 #include "Check.hpp"
+#include "TestUi.hpp"
 
 #include <GLWidgets/Paint/DrawList.hpp>
-#include <GLWidgets/Text/Font.hpp>
-#include <GLWidgets/Text/GlyphAtlas.hpp>
 #include <GLWidgets/Widgets/Button.hpp>
 #include <GLWidgets/Widgets/Label.hpp>
 #include <GLWidgets/Widgets/Layout.hpp>
@@ -22,27 +21,15 @@ using platform::HitArea;
 
 namespace {
 
+using tests::FakeHost;
+
 UiContext& context() {
-    static text::FontLibrary fonts;
-    static text::GlyphAtlas atlas(1, 256);
-    static UiContext ui{fonts, atlas, Theme{}};
-    return ui;
+    return tests::testContext();
 }
 
 bool near(float a, float b) {
     return std::abs(a - b) < 0.01f;
 }
-
-struct FakeHost : UiHost {
-    platform::WindowState state = platform::WindowState::Normal;
-    int minimized = 0, toggled = 0, closed = 0;
-    platform::WindowState windowState() const override { return state; }
-    void minimizeWindow() override { ++minimized; }
-    void toggleMaximizeWindow() override { ++toggled; }
-    void closeWindow() override { ++closed; }
-    void startTextInput() override {}
-    void stopTextInput() override {}
-};
 
 // A widget of a fixed size that writes down the events it gets.
 struct Probe : Widget {
@@ -234,14 +221,14 @@ TEST(windowFrameHitAreas) {
     WindowFrame* f = frame.get();
     root.setContent(std::move(frame));
     root.layout();
-    CHECK(near(f->titleBar().bounds().height, context().theme.titleBarHeight));
+    CHECK(near(f->titleBar().bounds().height, context().theme.titleBar.height));
     CHECK(root.windowHitTest({400, 20}) == HitArea::Caption);
     CHECK(root.windowHitTest({400, 300}) == HitArea::Client);
     CHECK(root.windowHitTest({2, 2}) == HitArea::ResizeTopLeft);
     CHECK(root.windowHitTest({798, 300}) == HitArea::ResizeRight);
     CHECK(root.windowHitTest({400, 599}) == HitArea::ResizeBottom);
     // the buttons, at the end: close is the last one, on the right
-    const bool atEnd = !context().theme.windowButtonsAtStart;
+    const bool atEnd = !context().theme.frame.buttonsAtStart;
     const Point close = atEnd ? Point{800 - 20, 20} : Point{20, 20};
     CHECK(root.windowHitTest(close) == HitArea::Client);
     root.dispatch(press(close));

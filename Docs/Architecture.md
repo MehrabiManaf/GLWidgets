@@ -304,8 +304,40 @@ inspector will then come from them without code written per widget (see [Metadat
 to come, with the property system of M4: binding widgets to values that change (reactive state), and loading interfaces
 from markup.
 
-Still to come in the widget core: per-widget invalidation, shrinking below the desired size, scrolling, cursors, the native
-extras of the chrome (Windows 11 shadow, rounded corners and snap layouts), and a property system for styles (M4).
+### Styles
+
+How widgets look is in `Theme` (`Widgets/Theme.hpp`): a `Palette` (the colors everything is made of) and a style for each
+kind of widget, made from the palette by `Theme::fromPalette` (`Theme::dark()`, `Theme::light()`).
+
+- **A style is a typed struct** (`ButtonStyle`, `LineEditStyle`, `CardStyle`, `TitleBarStyle`...) of colors and measures.
+  Colors that change with the widget's state are `StateColor`s: a normal color, and optional ones for hovered, pressed,
+  focused and disabled, which win in that order (disabled first).
+- **A widget takes its style from the theme of its root, unless it has its own** (`setStyle`, or `.style` in its Props).
+  A widget given explicit colors (a `Panel`) keeps them; a `Card` or a muted `Label` takes the theme's, so they follow a
+  change of theme.
+- **The theme changes while the application runs** (`Application::setTheme`): every widget is told (`onStyleChanged`) and
+  the windows are laid out again, since paddings and sizes are part of the styles.
+
+Typed structs rather than style sheets: the compiler checks them, a widget reads them without lookups, and they are plain
+aggregates that C++26 reflection will load from files. Selectors in the manner of CSS (a style for every button in a
+toolbar) can come on top of them later.
+
+### Basic widgets
+
+`Label`, `Button`, `Panel`, `Card`, and `LineEdit`: a field of one line of text in any mix of directions. In `LineEdit`:
+
+- Arrow keys move the caret left and right on the screen, also across a change of direction; Home and End go to the
+  logical ends.
+- With Shift they select. With the word modifier (Control, Option on macOS) they move by words, forward in the text's
+  direction.
+- Shortcuts use the platform's modifier: Control, Command on macOS (`platform::shortcutModifier`).
+- The clipboard and the position of the input method's window go through the `UiHost`. The input method's composition
+  shows underlined at the caret until it is typed.
+- A text longer than the field scrolls to keep the caret in view.
+
+Still to come in the widget core: per-widget invalidation, shrinking below the desired size, scrolling containers
+(`ScrollArea`), `Splitter`, `CheckBox`, a blinking caret (it needs timers), cursors, and the native extras of the chrome
+(Windows 11 shadow, rounded corners and snap layouts).
 
 ## Docking *(planned, M5)*
 
@@ -354,16 +386,21 @@ So docking has two modes:
 
 An application can also run on XWayland to get the full mode (`SDL_VIDEO_DRIVER=x11`).
 
-## Localization and right-to-left *(planned, M4)*
+## Localization and right-to-left
 
-- **Translatable text is a value of its own.** Widgets hold a `LocalizedText` (a key, the source text and arguments), not a
-  `std::string`. When the language changes, an event goes through the widget tree and every widget resolves its texts
-  again. Plain strings remain for user data, which is never translated.
-- **Catalogs:** one file per language with the source text kept next to each translation, as in FlowGraph's
-  `Translations`, so an outdated translation is never shown. Plural rules come from the CLDR data (Unicode license).
-- **Formatting:** numbers, dates and times go through a `Locale` interface. That covers Persian digits and the Solar Hijri
-  (Jalali) calendar. A small implementation comes first. ICU, with its data trimmed to the languages shipped, can replace it
-  behind the same interface if the need grows.
+- **Translatable text is a value of its own** (`Widgets/Localization.hpp`). Widgets hold a `LocalizedText`, not a
+  `std::string`. A text made from a string is shown as it is (user data, names, numbers). A text made by `glw::tr("...")`
+  is translated: its English source is looked up by its key (the source itself unless one is given). Its arguments
+  (`{name}`) are put in after translation, so a translator can move them.
+- **Catalogs** are JSON, one per language, read by `Translator`. A text is its translation, or [the English it
+  translates, its translation]. When the English changed since, the translation is outdated and the English shows, as in
+  FlowGraph's catalogs.
+- **The language changes while the application runs** (`Application::setLanguage`). Every widget is told
+  (`onLanguageChanged`) and shows its texts again, window titles too. A language written right to left (Persian, Arabic,
+  Hebrew, Urdu...) mirrors the windows.
+- **Still to come:** plural rules (from the CLDR data, Unicode license); numbers, dates and times through a `Locale`
+  interface (Persian digits, the Solar Hijri calendar), with a small implementation first and ICU behind the same interface
+  if the need grows; and a tool that writes and updates catalogs from the texts of an application.
 - **Layout direction:** every widget has a `LayoutDirection` (inherited, overridable). In right-to-left, layouts, scroll
   bars, tab order, docking and directional icons are mirrored. A text field takes its paragraph direction from its content
   unless told otherwise. A code editor stays left-to-right while still shaping the Persian inside strings and comments.
@@ -445,7 +482,7 @@ The `GLW_USE_SYSTEM_SDL3` option uses an installed SDL3 instead of the pinned re
 | M1 | RHI resources and passes into textures, the shader pipeline, `Painter` / `DrawList` / `Renderer` (boxes, shadows, polylines, polygons, images, clipping, transforms), borderless windows with hit testing | Done: run on Direct3D 12 and Vulkan (Windows); Metal built, not yet run |
 | M2 | Text: HarfBuzz and FreeType, glyph atlas, bidi, line breaking, text layout with cursor and selection | Done, apart from system fonts and visual cursor movement (see [Text](#text)) |
 | M3 | Widget core: tree, events, focus, layout, a UI root independent of the platform, window chrome as widgets (with the native extras), live resize | Done, apart from the native extras of the chrome and what is listed in [Widgets](#widgets) |
-| M4 | Basic widgets (label, button, line edit, scroll area, splitter), styles, `LocalizedText` and catalogs, right-to-left layouts | |
+| M4 | Basic widgets (label, button, line edit, scroll area, splitter), styles, `LocalizedText` and catalogs, right-to-left layouts | In progress: styles, themes, translations, `LineEdit` and right-to-left are done; `ScrollArea`, `Splitter`, `CheckBox` next |
 | M5 | Docking: major and panel tabs, windows merging and splitting by their tabs, both modes, layout persistence | |
 | M6 | Validation: a node canvas and a code editor (FlowGraph), a chart widget with custom commands, an engine embedding example | |
 

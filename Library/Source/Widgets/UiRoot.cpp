@@ -84,6 +84,28 @@ void UiRoot::setLayoutDirection(LayoutDirection direction) {
 
 // ---- frames ----
 
+namespace {
+
+void tell(Widget& widget, void (*f)(Widget&)) {
+    f(widget);
+    for (const auto& child : widget.children())
+        tell(*child, f);
+}
+
+} // namespace
+
+void UiRoot::styleChanged() {
+    if (content_)
+        tell(*content_, [](Widget& w) { w.onStyleChanged(); });
+    invalidateLayout();
+}
+
+void UiRoot::languageChanged() {
+    if (content_)
+        tell(*content_, [](Widget& w) { w.onLanguageChanged(); });
+    invalidateLayout();
+}
+
 void UiRoot::invalidateLayout() {
     needsLayout_ = true;
     needsPaint_ = true;

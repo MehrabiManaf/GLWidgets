@@ -2,13 +2,15 @@
 // SPDX-License-Identifier: MIT
 #pragma once
 // A push button with a label: clicked by the mouse (pressed and released on it), or by Enter or Space when it has the
-// focus.
+// focus. It looks as its ButtonStyle says: the theme's, or its own.
 #include <GLWidgets/Export.hpp>
 #include <GLWidgets/Widgets/Label.hpp>
+#include <GLWidgets/Widgets/Localization.hpp>
+#include <GLWidgets/Widgets/Theme.hpp>
 #include <GLWidgets/Widgets/Widget.hpp>
 
 #include <functional>
-#include <string>
+#include <optional>
 
 namespace glw {
 
@@ -16,18 +18,22 @@ class GLW_EXPORT Button : public Widget {
 public:
     // What a button is made with (ui::Button): designated initializers, in this order.
     struct Props {
-        std::string text;
+        LocalizedText text;
         std::function<void()> onClick;
+        std::optional<ButtonStyle> style;               // none: the theme's
     };
 
     explicit Button(Props props);
-    explicit Button(std::string text = {}, std::function<void()> onClick = {});
+    explicit Button(LocalizedText text = {}, std::function<void()> onClick = {});
 
-    void setText(std::string text);
-    const std::string& text() const;
+    void setText(LocalizedText text);
+    const LocalizedText& text() const;
     // Called when it is clicked. It may destroy the button only through something that waits for the event to end
     // (Window::close does).
     void setOnClick(std::function<void()> onClick);
+    void setStyle(std::optional<ButtonStyle> style);
+    // Its own style, or the theme's.
+    const ButtonStyle& style() const;
     Label& label() { return *label_; }
     void click();
 
@@ -37,10 +43,17 @@ protected:
     void onMouse(MouseEvent& event) override;
     void onKey(KeyEvent& event) override;
     void onHoverChanged(bool hovered) override;
+    void onFocusChanged(bool focused) override;
+    void onRootChanged() override;
+    void onStyleChanged() override;
 
 private:
+    VisualState state() const;
+    void applyStyle();
+
     Label* label_ = nullptr;
     std::function<void()> onClick_;
+    std::optional<ButtonStyle> style_;
     bool pressed_ = false;
 };
 

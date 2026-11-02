@@ -134,6 +134,13 @@ void SdlWindow::stopTextInput() {
     SDL_StopTextInput(window_);
 }
 
+void SdlWindow::setTextInputArea(const Rect& area) {
+    const float f = dipsPerUnit(window_);       // SDL wants its window coordinates
+    const SDL_Rect r{static_cast<int>(std::lround(area.x / f)), static_cast<int>(std::lround(area.y / f)),
+                     static_cast<int>(std::lround(area.width / f)), static_cast<int>(std::lround(area.height / f))};
+    SDL_SetTextInputArea(window_, &r, 0);
+}
+
 float SdlWindow::scaleOf(SDL_Window* window) {
     const float scale = window ? SDL_GetWindowDisplayScale(window) : 0.0f;
     return scale > 0 ? scale : 1.0f;

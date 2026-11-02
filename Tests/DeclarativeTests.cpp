@@ -2,11 +2,9 @@
 // SPDX-License-Identifier: MIT
 // The builders of Widgets/Declarative.hpp: the trees they make, the props and settings they give, bind.
 #include "Check.hpp"
+#include "TestUi.hpp"
 
-#include <GLWidgets/Text/Font.hpp>
-#include <GLWidgets/Text/GlyphAtlas.hpp>
 #include <GLWidgets/Widgets/Declarative.hpp>
-#include <GLWidgets/Widgets/UiRoot.hpp>
 
 #include <cmath>
 #include <string>
@@ -17,10 +15,7 @@ namespace ui = glw::ui;
 namespace {
 
 UiContext& context() {
-    static text::FontLibrary fonts;
-    static text::GlyphAtlas atlas(1, 256);
-    static UiContext ui{fonts, atlas, Theme{}};
-    return ui;
+    return tests::testContext();
 }
 
 bool near(float a, float b) {

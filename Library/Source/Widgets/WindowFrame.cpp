@@ -4,6 +4,7 @@
 
 #include <GLWidgets/Paint/Painter.hpp>
 #include <GLWidgets/Widgets/Label.hpp>
+#include <GLWidgets/Widgets/Theme.hpp>
 #include <GLWidgets/Widgets/Layout.hpp>
 #include <GLWidgets/Widgets/UiRoot.hpp>
 
@@ -28,7 +29,7 @@ WindowButton::WindowButton(WindowButtonKind kind) : kind_(kind) {}
 
 Size WindowButton::measureContent(Size) {
     const UiContext* ui = context();
-    return ui ? Size{ui->theme.windowButtonWidth, ui->theme.titleBarHeight} : Size{46, 40};
+    return ui ? Size{ui->theme.windowButton.width, ui->theme.titleBar.height} : Size{46, 40};
 }
 
 void WindowButton::onHoverChanged(bool) {
@@ -57,15 +58,16 @@ void WindowButton::onMouse(MouseEvent& event) {
 }
 
 void WindowButton::paint(PaintContext& context) {
-    const Theme& theme = context.ui.theme;
+    const WindowButtonStyle& style = context.ui.theme.windowButton;
     paint::Painter& p = context.painter;
     const Rect r{0, 0, size().width, size().height};
-    if (hovered()) {
-        const Color background = kind_ == WindowButtonKind::Close ? theme.closeHover : pressed_ ? theme.pressed : theme.hover;
-        p.fillRect(r, background);
-    }
+    const VisualState state{.hovered = hovered(), .pressed = pressed_ && hovered()};
+    const Color background = (kind_ == WindowButtonKind::Close ? style.closeBackground : style.background).resolve(state);
+    p.fillRect(r, background);
     const Point c = r.center();
-    const Color glyph = theme.text;
+    const Color glyph = style.glyph;
+    // what is behind the glyph, to hide the back window of the restore glyph with
+    const Color behind = background.a >= 1 ? background : context.ui.theme.titleBar.background;
     switch (kind_) {
     case WindowButtonKind::Minimize:
         p.drawLine({c.x - 5, c.y}, {c.x + 5, c.y}, 1, glyph);
@@ -75,7 +77,7 @@ void WindowButton::paint(PaintContext& context) {
         if (host && host->windowState() == platform::WindowState::Maximized) {
             // two windows, one behind the other: restore
             p.strokeRoundedRect({c.x - 3, c.y - 5, 8, 8}, 1, 1, glyph);
-            p.fillRect({c.x - 5, c.y - 3, 8, 8}, hovered() ? theme.hover : theme.titleBar);
+            p.fillRect({c.x - 5, c.y - 3, 8, 8}, behind);
             p.strokeRoundedRect({c.x - 5, c.y - 3, 8, 8}, 1, 1, glyph);
         } else {
             p.strokeRoundedRect({c.x - 5, c.y - 5, 10, 10}, 1, 1, glyph);
@@ -106,7 +108,7 @@ TitleBar::TitleBar() {
     buttons_ = &addChild(std::move(buttons));
 }
 
-void TitleBar::setTitle(std::string title) {
+void TitleBar::setTitle(LocalizedText title) {
     if (title_)
         title_->setText(std::move(title));
 }
@@ -118,12 +120,18 @@ void TitleBar::setCenter(std::unique_ptr<Widget> center) {
 }
 
 void TitleBar::onRootChanged() {
+    onStyleChanged();
+}
+
+void TitleBar::onStyleChanged() {
     const UiContext* ui = context();
     if (!ui)
         return;
+    if (title_)
+        title_->setColor(ui->theme.titleBar.title);
     // the order of the system: close first at the start (macOS), close last at the end (elsewhere)
     const std::vector<WindowButtonKind> order =
-        ui->theme.windowButtonsAtStart
+        ui->theme.frame.buttonsAtStart
             ? std::vector{WindowButtonKind::Close, WindowButtonKind::Minimize, WindowButtonKind::Maximize}
             : std::vector{WindowButtonKind::Minimize, WindowButtonKind::Maximize, WindowButtonKind::Close};
     std::vector<WindowButtonKind> current;
@@ -142,7 +150,7 @@ Size TitleBar::measureContent(Size available) {
     const Size buttons = buttons_->measure(available);
     const Insets m = center_->margin();
     const Size center = center_->measure({std::max(0.0f, available.width - buttons.width - m.horizontal()), available.height});
-    const float height = std::max({ui ? ui->theme.titleBarHeight : 40.0f, buttons.height, center.height + m.vertical()});
+    const float height = std::max({ui ? ui->theme.titleBar.height : 40.0f, buttons.height, center.height + m.vertical()});
     return {buttons.width + center.width + m.horizontal(), height};
 }
 
@@ -150,7 +158,7 @@ void TitleBar::arrangeContent(const Rect& content) {
     const UiContext* ui = context();
     const bool rtl = rightToLeft();
     // at the start or at the end, as the theme says; the start is on the right in right to left
-    const bool atStart = ui && ui->theme.windowButtonsAtStart;
+    const bool atStart = ui && ui->theme.frame.buttonsAtStart;
     const bool left = atStart != rtl;
     const float width = std::min(buttons_->desiredSize().width, content.width);
     const Rect buttons{left ? content.x : content.right() - width, content.y, width, content.height};
@@ -160,7 +168,7 @@ void TitleBar::arrangeContent(const Rect& content) {
 }
 
 void TitleBar::paint(PaintContext& context) {
-    context.painter.fillRect({0, 0, size().width, size().height}, context.ui.theme.titleBar);
+    context.painter.fillRect({0, 0, size().width, size().height}, context.ui.theme.titleBar.background);
 }
 
 // ---- frame ----
@@ -181,7 +189,7 @@ void WindowFrame::setContent(std::unique_ptr<Widget> content) {
 }
 
 void WindowFrame::paint(PaintContext& context) {
-    context.painter.fillRect({0, 0, size().width, size().height}, context.ui.theme.window);
+    context.painter.fillRect({0, 0, size().width, size().height}, context.ui.theme.frame.background);
 }
 
 std::optional<platform::HitArea> WindowFrame::frameHitArea(Point p) const {
@@ -190,7 +198,7 @@ std::optional<platform::HitArea> WindowFrame::frameHitArea(Point p) const {
     const UiContext* ui = context();
     if (!host || !ui || host->windowState() != platform::WindowState::Normal)
         return std::nullopt;
-    const float border = ui->theme.resizeBorder;
+    const float border = ui->theme.frame.resizeBorder;
     const Size s = size();
     const bool left = p.x < border, right = p.x >= s.width - border;
     const bool top = p.y < border, bottom = p.y >= s.height - border;

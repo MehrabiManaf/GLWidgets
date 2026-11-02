@@ -8,6 +8,7 @@
 #include <GLWidgets/Core/Assert.hpp>
 #include <GLWidgets/Core/Error.hpp>
 
+#include <SDL3/SDL_clipboard.h>
 #include <SDL3/SDL_hints.h>
 #include <SDL3/SDL_init.h>
 #include <SDL3/SDL_version.h>
@@ -93,6 +94,17 @@ void SdlPlatform::setExposeHandler(std::function<void(WindowId)> handler) {
     exposeHandler_ = std::move(handler);
     if (exposeHandler_ && !watching_)
         watching_ = SDL_AddEventWatch(&SdlPlatform::watch, this);
+}
+
+std::string SdlPlatform::clipboardText() const {
+    char* text = SDL_GetClipboardText();
+    std::string result = text ? text : "";
+    SDL_free(text);
+    return result;
+}
+
+void SdlPlatform::setClipboardText(std::string_view text) {
+    SDL_SetClipboardText(std::string(text).c_str());
 }
 
 bool SDLCALL SdlPlatform::watch(void* data, SDL_Event* event) {

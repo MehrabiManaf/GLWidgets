@@ -9,25 +9,56 @@
 
 namespace glw {
 
-Button::Button(Props props) : onClick_(std::move(props.onClick)) {
+Button::Button(Props props) : onClick_(std::move(props.onClick)), style_(std::move(props.style)) {
     setFocusable(true);
-    setPadding(Insets::symmetric(14, 6));
     setAlignment(Alignment::Start, Alignment::Center);
     label_ = &add(std::make_unique<Label>(Label::Props{.text = std::move(props.text), .alignment = text::TextAlignment::Center}));
+    applyStyle();
 }
 
-Button::Button(std::string text, std::function<void()> onClick) : Button(Props{std::move(text), std::move(onClick)}) {}
+Button::Button(LocalizedText text, std::function<void()> onClick) : Button(Props{std::move(text), std::move(onClick), {}}) {}
 
-void Button::setText(std::string text) {
+void Button::setText(LocalizedText text) {
     label_->setText(std::move(text));
 }
 
-const std::string& Button::text() const {
+const LocalizedText& Button::text() const {
     return label_->text();
 }
 
 void Button::setOnClick(std::function<void()> onClick) {
     onClick_ = std::move(onClick);
+}
+
+void Button::setStyle(std::optional<ButtonStyle> style) {
+    style_ = std::move(style);
+    applyStyle();
+}
+
+const ButtonStyle& Button::style() const {
+    if (style_)
+        return *style_;
+    if (const UiContext* ui = context())
+        return ui->theme.button;
+    static const ButtonStyle unstyled = Theme::dark().button;      // not shown yet: what it will most likely look like
+    return unstyled;
+}
+
+void Button::applyStyle() {
+    setPadding(style().padding);
+    invalidatePaint();
+}
+
+void Button::onRootChanged() {
+    applyStyle();
+}
+
+void Button::onStyleChanged() {
+    applyStyle();
+}
+
+VisualState Button::state() const {
+    return {.hovered = hovered(), .pressed = pressed_ && hovered(), .focused = hasFocus(), .disabled = !enabledInTree()};
 }
 
 void Button::click() {
@@ -62,20 +93,26 @@ void Button::onHoverChanged(bool) {
     invalidatePaint();
 }
 
+void Button::onFocusChanged(bool) {
+    invalidatePaint();
+}
+
 void Button::paint(PaintContext& context) {
-    const Theme& theme = context.ui.theme;
+    const ButtonStyle& s = style();
+    const VisualState v = state();
     const Rect r{0, 0, size().width, size().height};
-    context.painter.fillRoundedRect(r, theme.cornerRadius, theme.surface);
-    if (hovered())
-        context.painter.fillRoundedRect(r, theme.cornerRadius, pressed_ ? theme.pressed : theme.hover);
-    context.painter.strokeRoundedRect(r, theme.cornerRadius, 1, theme.border);
+    context.painter.fillRoundedRect(r, s.cornerRadius, s.background.resolve(v));
+    if (s.borderWidth > 0)
+        context.painter.strokeRoundedRect(r, s.cornerRadius, s.borderWidth, s.border.resolve(v));
+    // the label paints after this, in the color of the state
+    label_->setColor(s.text.resolve(v));
 }
 
 void Button::paintOver(PaintContext& context) {
     if (!hasFocus())
         return;
-    const Theme& theme = context.ui.theme;
-    context.painter.strokeRoundedRect(Rect{0, 0, size().width, size().height}.inflated(2), theme.cornerRadius + 2, 1.5f, theme.accent);
+    const ButtonStyle& s = style();
+    context.painter.strokeRoundedRect(Rect{0, 0, size().width, size().height}.inflated(2), s.cornerRadius + 2, 1.5f, s.focusRing);
 }
 
 } // namespace glw

@@ -84,6 +84,12 @@ const UiContext* Widget::context() const {
     return r ? &r->context() : nullptr;
 }
 
+std::string Widget::translate(const LocalizedText& text) const {
+    if (const UiContext* ui = context())
+        return ui->translator.resolve(text);
+    return Translator().resolve(text);      // the source text, with its arguments
+}
+
 // ---- layout ----
 
 void Widget::setLayout(std::unique_ptr<Layout> layout) {

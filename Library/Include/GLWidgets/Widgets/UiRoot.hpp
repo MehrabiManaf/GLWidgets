@@ -9,10 +9,12 @@
 #include <GLWidgets/Paint/DrawList.hpp>
 #include <GLWidgets/Platform/Event.hpp>
 #include <GLWidgets/Platform/Window.hpp>
+#include <GLWidgets/Widgets/Localization.hpp>
 #include <GLWidgets/Widgets/Theme.hpp>
 #include <GLWidgets/Widgets/Widget.hpp>
 
 #include <memory>
+#include <string>
 #include <vector>
 
 namespace glw::text {
@@ -26,6 +28,7 @@ namespace glw {
 struct UiContext {
     const text::FontLibrary& fonts;
     text::GlyphAtlas& atlas;
+    const Translator& translator;
     Theme theme;
 };
 
@@ -38,9 +41,13 @@ public:
     virtual void minimizeWindow() = 0;
     virtual void toggleMaximizeWindow() = 0;
     virtual void closeWindow() = 0;
-    // Typed text and the input method, while a text field has the focus.
+    // Typed text and the input method, while a text field has the focus; `area` (the root's dips) is where the text is
+    // typed, for the input method to put its window by it.
     virtual void startTextInput() = 0;
     virtual void stopTextInput() = 0;
+    virtual void setTextInputArea(const Rect& area) = 0;
+    virtual std::string clipboardText() const = 0;
+    virtual void setClipboardText(const std::string& text) = 0;
 };
 
 class GLW_EXPORT UiRoot {
@@ -83,6 +90,9 @@ public:
 
     bool needsLayout() const { return needsLayout_; }
     bool needsPaint() const { return needsPaint_; }
+    // The theme / the language of the context changed: every widget is told, and the tree laid out again.
+    void styleChanged();
+    void languageChanged();
     void invalidateLayout();
     void invalidatePaint() { needsPaint_ = true; }
     void layout();

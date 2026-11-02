@@ -37,6 +37,7 @@ struct Application::Impl {
     std::unique_ptr<paint::Renderer> renderer;
     std::unique_ptr<text::FontLibrary> fonts;
     std::unique_ptr<text::GlyphAtlas> atlas;
+    std::unique_ptr<Translator> translator;
     std::unique_ptr<UiContext> context;
     std::vector<std::unique_ptr<Window>> windows;      // last: closed before what they draw with
     bool quitting = false;
@@ -67,7 +68,7 @@ struct Application::Impl {
         bool all = true;
         for (Window* w : which) {
             renderer->upload(*commands, w->list_, w->buffers_);
-            if (const auto size = commands->beginSurfacePass(*w->surface_, context->theme.window)) {
+            if (const auto size = commands->beginSurfacePass(*w->surface_, context->theme.palette.window)) {
                 renderer->draw(*commands, w->list_, w->buffers_, w->surface_->format(), *size, w->root_.scale());
                 commands->endPass();
             } else {
@@ -122,11 +123,15 @@ struct Application::Impl {
 Window::Window(Application& app, const WindowOptions& options, std::unique_ptr<Widget> content)
     : app_(app), root_(*app.impl_->context, this) {
     Application::Impl& impl = *app.impl_;
-    window_ = impl.platform->createWindow({.title = options.title, .size = options.size, .borderless = options.customChrome});
+    title_ = options.title;
+    window_ = impl.platform->createWindow(
+        {.title = impl.translator->resolve(title_), .size = options.size, .borderless = options.customChrome});
     surface_ = impl.device->createSurface(*window_);
+    if (impl.translator->rightToLeft())
+        root_.setLayoutDirection(LayoutDirection::RightToLeft);
     if (options.customChrome) {
         auto frame = std::make_unique<WindowFrame>(std::move(content));
-        frame->titleBar().setTitle(options.title);
+        frame->titleBar().setTitle(title_);
         frame_ = frame.get();
         root_.setContent(std::move(frame));
         window_->setHitTest([this](Point p) { return root_.windowHitTest(p); });
@@ -146,10 +151,17 @@ platform::WindowId Window::id() const {
     return window_->id();
 }
 
-void Window::setTitle(const std::string& title) {
-    window_->setTitle(title);
+void Window::setTitle(LocalizedText title) {
+    title_ = std::move(title);
+    window_->setTitle(app_.impl_->translator->resolve(title_));
     if (frame_)
-        frame_->titleBar().setTitle(title);
+        frame_->titleBar().setTitle(title_);
+}
+
+void Window::languageChanged() {
+    window_->setTitle(app_.impl_->translator->resolve(title_));
+    root_.setLayoutDirection(app_.impl_->translator->rightToLeft() ? LayoutDirection::RightToLeft : LayoutDirection::LeftToRight);
+    root_.languageChanged();
 }
 
 platform::WindowState Window::windowState() const {
@@ -175,6 +187,18 @@ void Window::stopTextInput() {
     window_->stopTextInput();
 }
 
+void Window::setTextInputArea(const Rect& area) {
+    window_->setTextInputArea(area);
+}
+
+std::string Window::clipboardText() const {
+    return app_.impl_->platform->clipboardText();
+}
+
+void Window::setClipboardText(const std::string& text) {
+    app_.impl_->platform->setClipboardText(text);
+}
+
 // ---- application ----
 
 Application::Application() : impl_(std::make_unique<Impl>()) {
@@ -188,7 +212,8 @@ Application::Application() : impl_(std::make_unique<Impl>()) {
     d.renderer = std::make_unique<paint::Renderer>(*d.device);
     d.fonts = std::make_unique<text::FontLibrary>();
     d.atlas = std::make_unique<text::GlyphAtlas>(d.renderer->addTexture());
-    d.context = std::make_unique<UiContext>(UiContext{*d.fonts, *d.atlas, Theme{}});
+    d.translator = std::make_unique<Translator>();
+    d.context = std::make_unique<UiContext>(UiContext{*d.fonts, *d.atlas, *d.translator, Theme::dark()});
     d.platform->setExposeHandler([&d](platform::WindowId id) { d.exposed(id); });
 }
 
@@ -251,8 +276,24 @@ void Application::quit(int exitCode) {
     impl_->platform->wakeUp();
 }
 
-UiContext& Application::context() {
+const UiContext& Application::context() const {
     return *impl_->context;
+}
+
+void Application::setTheme(const Theme& theme) {
+    impl_->context->theme = theme;
+    for (const auto& w : impl_->windows)
+        w->root_.styleChanged();
+}
+
+void Application::setLanguage(const std::string& language) {
+    impl_->translator->setLanguage(language);
+    for (const auto& w : impl_->windows)
+        w->languageChanged();
+}
+
+Translator& Application::translator() {
+    return *impl_->translator;
 }
 
 const text::FontLibrary& Application::fonts() const {

@@ -34,6 +34,19 @@ constexpr KeyModifiers operator&(KeyModifiers a, KeyModifiers b) {
 }
 constexpr bool hasAny(KeyModifiers set, KeyModifiers flags) { return (set & flags) != KeyModifiers::None; }
 
+// The modifier of shortcuts (copy, paste, select all...): Command on macOS, Control elsewhere.
+#ifdef __APPLE__
+inline constexpr KeyModifiers shortcutModifier = KeyModifiers::Super;
+#else
+inline constexpr KeyModifiers shortcutModifier = KeyModifiers::Control;
+#endif
+// The modifier that moves by words: Option on macOS, Control elsewhere.
+#ifdef __APPLE__
+inline constexpr KeyModifiers wordModifier = KeyModifiers::Alt;
+#else
+inline constexpr KeyModifiers wordModifier = KeyModifiers::Control;
+#endif
+
 enum class MouseButton : std::uint8_t { Left, Middle, Right, Back, Forward };
 
 } // namespace glw::platform

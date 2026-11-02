@@ -22,6 +22,7 @@
 #include <GLWidgets/Platform/Event.hpp>
 #include <GLWidgets/Platform/Keys.hpp>
 #include <GLWidgets/Platform/Window.hpp>
+#include <GLWidgets/Widgets/Localization.hpp>
 
 #include <algorithm>
 #include <cstddef>
@@ -227,8 +228,11 @@ protected:
     virtual void onText(TextEvent& event) {}
     virtual void onFocusChanged(bool focused) {}
     virtual void onHoverChanged(bool hovered) {}
-    // It is now shown by another root, or by none: what depends on the root (fonts, scale) must be made again.
+    // It is now shown by another root, or by none: what depends on the root (fonts, theme, language) must be made again.
     virtual void onRootChanged() {}
+    // The theme / the language of its root changed.
+    virtual void onStyleChanged() {}
+    virtual void onLanguageChanged() {}
 
     // For a widget filling a borderless window: what the point (its own coordinates) is for the window before the widget
     // under it is asked (WindowFrame: its resize borders).
@@ -237,6 +241,8 @@ protected:
     // The rectangle of its content in its own coordinates: its bounds at 0, 0 without padding.
     Rect contentRect() const;
     const UiContext* context() const;                   // the root's, when it is shown
+    // What `text` shows in the language of its root (its source text when it is not shown).
+    std::string translate(const LocalizedText& text) const;
 
 private:
     friend class UiRoot;

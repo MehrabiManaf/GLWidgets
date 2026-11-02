@@ -14,6 +14,7 @@
 #include <functional>
 #include <memory>
 #include <optional>
+#include <string>
 #include <string_view>
 
 namespace glw::platform {
@@ -42,6 +43,10 @@ public:
     // window (Windows, macOS), pollEvent and waitForEvents do not return until the mouse is let go, and the window would
     // show nothing new meanwhile. Also called for windows exposed otherwise (from pollEvent then). None: not called.
     virtual void setExposeHandler(std::function<void(WindowId)> handler) = 0;
+
+    // The text of the system's clipboard (UTF-8; empty when it holds none).
+    virtual std::string clipboardText() const = 0;
+    virtual void setClipboardText(std::string_view text) = 0;
 
 protected:
     Platform() = default;

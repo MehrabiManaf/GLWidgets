@@ -29,9 +29,13 @@ add_library(GLWidgets ${GLW_LIB_TYPE}
     Source/Text/TextLayout.cpp
     Source/Widgets/Application.cpp
     Source/Widgets/Button.cpp
+    Source/Widgets/Json.cpp
     Source/Widgets/Label.cpp
     Source/Widgets/Layout.cpp
+    Source/Widgets/LineEdit.cpp
+    Source/Widgets/Localization.cpp
     Source/Widgets/Panel.cpp
+    Source/Widgets/Theme.cpp
     Source/Widgets/UiRoot.cpp
     Source/Widgets/Widget.cpp
     Source/Widgets/WindowFrame.cpp

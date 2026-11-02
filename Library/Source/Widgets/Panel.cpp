@@ -3,6 +3,9 @@
 #include <GLWidgets/Widgets/Panel.hpp>
 
 #include <GLWidgets/Paint/Painter.hpp>
+#include <GLWidgets/Widgets/UiRoot.hpp>
+
+#include <utility>
 
 namespace glw {
 
@@ -33,6 +36,30 @@ void Panel::paint(PaintContext& context) {
         context.painter.fillRoundedRect(r, cornerRadius_, *background_);
     if (border_)
         context.painter.strokeRoundedRect(r, cornerRadius_, borderWidth_, *border_);
+}
+
+// ---- card ----
+
+void Card::setStyle(std::optional<CardStyle> style) {
+    style_ = std::move(style);
+    invalidatePaint();
+}
+
+const CardStyle& Card::style() const {
+    if (style_)
+        return *style_;
+    if (const UiContext* ui = context())
+        return ui->theme.card;
+    static const CardStyle unstyled = Theme::dark().card;
+    return unstyled;
+}
+
+void Card::paint(PaintContext& context) {
+    const CardStyle& s = style();
+    const Rect r{0, 0, size().width, size().height};
+    context.painter.fillRoundedRect(r, s.cornerRadius, s.background);
+    if (s.borderWidth > 0)
+        context.painter.strokeRoundedRect(r, s.cornerRadius, s.borderWidth, s.border);
 }
 
 } // namespace glw

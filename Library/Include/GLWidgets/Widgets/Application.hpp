@@ -32,7 +32,7 @@ class Application;
 class WindowFrame;
 
 struct WindowOptions {
-    std::string title = "GLWidgets";
+    LocalizedText title = "GLWidgets";
     Size size{960, 640};
     // A borderless window in a WindowFrame: its title bar and buttons drawn by GLWidgets. Otherwise the system's.
     bool customChrome = true;
@@ -46,7 +46,7 @@ public:
     platform::WindowId id() const;
     UiRoot& ui() { return root_; }
     WindowFrame* frame() const { return frame_; }       // with custom chrome
-    void setTitle(const std::string& title);
+    void setTitle(LocalizedText title);
     // Closes it once the event being handled is done: a button may close the window it is in.
     void close() { closing_ = true; }
     bool closing() const { return closing_; }
@@ -57,12 +57,17 @@ public:
     void closeWindow() override { close(); }
     void startTextInput() override;
     void stopTextInput() override;
+    void setTextInputArea(const Rect& area) override;
+    std::string clipboardText() const override;
+    void setClipboardText(const std::string& text) override;
 
 private:
     friend class Application;
     Window(Application& app, const WindowOptions& options, std::unique_ptr<Widget> content);
+    void languageChanged();
 
     Application& app_;
+    LocalizedText title_;
     std::unique_ptr<platform::Window> window_;
     std::unique_ptr<rhi::Surface> surface_;             // after the window: destroyed before it
     UiRoot root_;
@@ -89,7 +94,13 @@ public:
     int run(int frames = -1);
     void quit(int exitCode = 0);
 
-    UiContext& context();                               // the theme can be changed before windows are opened
+    const UiContext& context() const;
+    // The theme of every window, which shows it at once.
+    void setTheme(const Theme& theme);
+    // The language every window shows its texts in (its catalog loaded in translator()), which shows them at once; a
+    // language written right to left mirrors the windows.
+    void setLanguage(const std::string& language);
+    Translator& translator();
     const text::FontLibrary& fonts() const;
     platform::Platform& platform();
     rhi::Device& device();

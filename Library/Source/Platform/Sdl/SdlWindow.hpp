@@ -31,6 +31,7 @@ public:
     void setHitTest(HitTest hitTest) override;
     void startTextInput() override;
     void stopTextInput() override;
+    void setTextInputArea(const Rect& area) override;
 
     // Pixels per dip of `window` (1 when there is no window).
     static float scaleOf(SDL_Window* window);

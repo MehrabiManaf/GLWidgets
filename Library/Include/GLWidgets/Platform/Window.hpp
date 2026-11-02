@@ -64,6 +64,8 @@ public:
     // a text field has the focus, off otherwise: with it on, keys may type text instead of being shortcuts.
     virtual void startTextInput() = 0;
     virtual void stopTextInput() = 0;
+    // Where text is typed (dips): the input method puts its candidate window by it.
+    virtual void setTextInputArea(const Rect& area) = 0;
 
 protected:
     Window() = default;

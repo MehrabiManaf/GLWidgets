@@ -1,9 +1,11 @@
 // SPDX-FileCopyrightText: 2026 Abdolmanaf Mehrabi Sisakht
 // SPDX-License-Identifier: MIT
 #pragma once
-// A widget that paints a background and a border, with rounded corners: a container for others.
+// Containers that paint something behind their children. A Panel paints the colors it is given; a Card paints the card
+// style of the theme (its own, if it was given one), so it follows a change of theme.
 #include <GLWidgets/Core/Color.hpp>
 #include <GLWidgets/Export.hpp>
+#include <GLWidgets/Widgets/Theme.hpp>
 #include <GLWidgets/Widgets/Widget.hpp>
 
 #include <optional>
@@ -36,6 +38,20 @@ private:
     std::optional<Color> border_;
     float borderWidth_ = 1;
     float cornerRadius_ = 0;
+};
+
+class GLW_EXPORT Card : public Widget {
+public:
+    explicit Card(std::optional<CardStyle> style = std::nullopt) : style_(std::move(style)) {}
+
+    void setStyle(std::optional<CardStyle> style);
+    const CardStyle& style() const;
+
+protected:
+    void paint(PaintContext& context) override;
+
+private:
+    std::optional<CardStyle> style_;
 };
 
 } // namespace glw

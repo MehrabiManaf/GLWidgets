@@ -6,6 +6,7 @@
 // resize it. They look the same on every system; the buttons are at the side the system puts them (Theme), mirrored with
 // the layout direction.
 #include <GLWidgets/Export.hpp>
+#include <GLWidgets/Widgets/Localization.hpp>
 #include <GLWidgets/Widgets/Widget.hpp>
 
 #include <cstdint>
@@ -38,7 +39,7 @@ class GLW_EXPORT TitleBar : public Widget {
 public:
     TitleBar();
 
-    void setTitle(std::string title);
+    void setTitle(LocalizedText title);
     // What the title bar shows beside its buttons (its title by default; the tab strip of a window...). The title bar
     // drags the window where the center's widgets are not under the mouse.
     void setCenter(std::unique_ptr<Widget> center);
@@ -49,6 +50,7 @@ protected:
     void arrangeContent(const Rect& content) override;
     void paint(PaintContext& context) override;
     void onRootChanged() override;
+    void onStyleChanged() override;
 
 private:
     Widget* center_ = nullptr;

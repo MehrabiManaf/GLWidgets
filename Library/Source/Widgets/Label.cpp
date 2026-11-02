@@ -10,18 +10,27 @@
 namespace glw {
 
 Label::Label(Props props)
-    : text_(std::move(props.text)), fontSize_(props.fontSize), color_(props.color), alignment_(props.alignment), wrap_(props.wrap) {
+    : text_(std::move(props.text)),
+      fontSize_(props.fontSize),
+      color_(props.color),
+      muted_(props.muted),
+      alignment_(props.alignment),
+      wrap_(props.wrap) {
     setHitTestVisible(false);
 }
 
-Label::Label(std::string text) : Label(Props{.text = std::move(text)}) {}
+Label::Label(LocalizedText text) : Label(Props{.text = std::move(text)}) {}
 
-void Label::setText(std::string text) {
+void Label::setText(LocalizedText text) {
     if (text != text_) {
         text_ = std::move(text);
-        layout_.reset();
-        invalidateLayout();
+        textChanged();
     }
+}
+
+void Label::textChanged() {
+    layout_.reset();
+    invalidateLayout();
 }
 
 void Label::setFontSize(float size) {
@@ -33,8 +42,10 @@ void Label::setFontSize(float size) {
 }
 
 void Label::setColor(std::optional<Color> color) {
-    color_ = color;
-    invalidatePaint();
+    if (color != color_) {
+        color_ = color;
+        invalidatePaint();
+    }
 }
 
 void Label::setTextAlignment(text::TextAlignment alignment) {
@@ -57,6 +68,14 @@ void Label::onRootChanged() {
     layout_.reset();
 }
 
+void Label::onStyleChanged() {
+    layout_.reset();        // the theme's font size
+}
+
+void Label::onLanguageChanged() {
+    layout_.reset();
+}
+
 const text::TextLayout* Label::textLayout(float width) {
     const UiContext* ui = context();
     if (!ui)
@@ -73,7 +92,7 @@ const text::TextLayout* Label::textLayout(float width) {
         else if (alignment_ == text::TextAlignment::End)
             options.alignment = rtl ? text::TextAlignment::Left : text::TextAlignment::Right;
         const float size = fontSize_ > 0 ? fontSize_ : ui->theme.fontSize;
-        layout_.emplace(text_, text::TextStyle{{&ui->fonts.defaultFont()}, size}, options);
+        layout_.emplace(ui->translator.resolve(text_), text::TextStyle{{&ui->fonts.defaultFont()}, size}, options);
         layoutWidth_ = maxWidth;
         layoutRightToLeft_ = rtl;
     }
@@ -106,7 +125,8 @@ void Label::paint(PaintContext& context) {
             x += content_.width - size.width;
     }
     const float y = content_.y + (content_.height - size.height) / 2;
-    context.drawText(*layout, {x, y}, color_ ? *color_ : context.ui.theme.text);
+    const Palette& palette = context.ui.theme.palette;
+    context.drawText(*layout, {x, y}, color_ ? *color_ : muted_ ? palette.mutedText : palette.text);
 }
 
 } // namespace glw

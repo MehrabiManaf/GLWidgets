@@ -33,6 +33,7 @@
 #include <GLWidgets/Widgets/Button.hpp>
 #include <GLWidgets/Widgets/Label.hpp>
 #include <GLWidgets/Widgets/Layout.hpp>
+#include <GLWidgets/Widgets/LineEdit.hpp>
 #include <GLWidgets/Widgets/Panel.hpp>
 #include <GLWidgets/Widgets/Widget.hpp>
 
@@ -163,6 +164,12 @@ Element<glw::Panel> Panel(glw::Panel::Props props, C&&... items) {
     return withChildren(std::make_unique<glw::Panel>(std::move(props)), children(std::forward<C>(items)...));
 }
 
+// The theme's card behind its children.
+template <Child... C>
+Element<glw::Card> Card(C&&... items) {
+    return withChildren(std::make_unique<glw::Card>(), children(std::forward<C>(items)...));
+}
+
 // Nothing, taking `stretch` shares of what a stack has left: pushes what follows it to the end.
 inline Element<Widget> Spacer(float stretch = 1) {
     return make<Widget>().stretch(stretch);
@@ -176,6 +183,10 @@ inline Element<glw::Label> Label(glw::Label::Props props) {
 
 inline Element<glw::Button> Button(glw::Button::Props props) {
     return make<glw::Button>(std::move(props));
+}
+
+inline Element<glw::LineEdit> LineEdit(glw::LineEdit::Props props) {
+    return make<glw::LineEdit>(std::move(props));
 }
 
 } // namespace glw::ui
