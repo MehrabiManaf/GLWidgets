@@ -135,6 +135,8 @@ struct Screen final : DockingHost {
     void captureMouse(bool capture) override { captures += capture ? 1 : -1; }
     UiRoot& openWindow(NewWindow window) override {
         Win& w = open(std::move(window.content), window.position, window.size, std::move(window.titleCenter));
+        if (!window.titleBar)
+            static_cast<WindowFrame&>(*w.root->content()).titleBar().setVisible(false);
         w.owner = window.owner;
         w.title = window.title;
         return *w.root;
@@ -333,6 +335,20 @@ TEST(panelFloatsAndDocksBack) {
     CHECK(away->floating() && away->home() == t.area && t.area->tabsOf("palette")->area() == away);
     CHECK(t.area->panelIds().size() == 2);      // the floating windows' panels too
     CHECK(t.area->tabsOf("graph")->parent() == t.area);     // the split it left gave way
+
+    // no title bar: the tab bar is, dragging the window after its tab, with the buttons at its end
+    auto& frame = static_cast<WindowFrame&>(*floating.root->content());
+    CHECK(!frame.titleBar().visible());
+    const DockTabs& stack = *away->tabsOf("palette");
+    const Widget& firstTab = *stack.children()[0]->children()[0];
+    const float barMiddle = firstTab.mapToRoot({}).y + firstTab.size().height / 2;
+    const float afterTab = firstTab.mapToRoot({}).x + firstTab.size().width + 10;
+    CHECK(floating.root->windowHitTest({afterTab, barMiddle}) == platform::HitArea::Caption);
+    CHECK(floating.root->windowHitTest(firstTab.mapToRoot({10, 10})) == platform::HitArea::Client);
+    const Point close{floating.root->size().width - 20, barMiddle};
+    CHECK(dynamic_cast<const WindowButton*>(floating.root->widgetAt(close)) != nullptr);
+    CHECK(floating.root->windowHitTest(close) == platform::HitArea::Client);
+    CHECK(firstTab.mapToRoot({}).x + firstTab.size().width < close.x - 40);      // the tabs leave the buttons room
 
     // its only tab drags the floating window
     const Point from = panelTab(screen, *t.area, "palette");

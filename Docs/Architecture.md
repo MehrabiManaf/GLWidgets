@@ -374,8 +374,9 @@ Two kinds of tabs, as in Slate:
   window with it. Dropping it on another window's strip moves it there. Dragging the only tab of a window drags the window,
   so windows merge and split by their tabs.
 - **Panel tabs** are tools: a node palette, a property inspector, an output log. They dock inside the content area of a
-  major tab, in a tree of splits and tab stacks. Dragged out, a panel tab floats in a panel window: a window with a small
-  title bar and a dock area of its own, where more panel tabs can be docked. A panel tab never goes into a major tab strip,
+  major tab, in a tree of splits and tab stacks. Dragged out, a panel tab floats in a panel window: a window with a dock
+  area of its own, where more panel tabs can be docked. It has no title bar apart from its tabs: the tab bars along its
+  top drag it where they have no tab, and the window buttons are at their end, as in Unreal Engine. A panel tab never goes into a major tab strip,
   and a major tab never goes into a dock area.
 
 **Every panel says who owns it.** A panel tab type declares its scope:

@@ -207,6 +207,8 @@ struct Application::Impl final : DockingHost {
         Window& opened = open({.title = window.title, .size = window.size, .position = window.position}, std::move(window.content), owner);
         if (window.titleCenter && opened.frame_)
             opened.frame_->titleBar().setCenter(std::move(window.titleCenter));
+        if (!window.titleBar && opened.frame_)
+            opened.frame_->titleBar().setVisible(false);
         return opened.root_;
     }
 

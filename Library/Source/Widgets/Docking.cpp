@@ -9,6 +9,7 @@
 #include <GLWidgets/Widgets/Label.hpp>
 #include <GLWidgets/Widgets/Layout.hpp>
 #include <GLWidgets/Widgets/UiRoot.hpp>
+#include <GLWidgets/Widgets/WindowFrame.hpp>
 
 #include <algorithm>
 #include <cmath>
@@ -284,7 +285,6 @@ DockTabs::DockTabs() {
     setClipsChildren(true);
     auto bar = std::make_unique<Widget>();
     bar->setLayout(std::make_unique<StackLayout>(Orientation::Horizontal));
-    bar->setHitTestVisible(false);      // between and after the tabs: the stack
     bar_ = &addChild(std::move(bar));
 }
 
@@ -366,12 +366,22 @@ Size DockTabs::measureContent(Size available) {
 void DockTabs::arrangeContent(const Rect& content) {
     const float bar = style().tabHeight;
     const bool rtl = rightToLeft();
-    arrangeInCell(*bar_, {content.x, content.y, content.width, bar}, rtl);
+    const float reserve = std::min(reserve_, content.width);
+    arrangeInCell(*bar_, {reserveLeft_ ? content.x + reserve : content.x, content.y, content.width - reserve, bar}, rtl);
     const Rect below{content.x, content.y + bar, content.width, std::max(0.0f, content.height - bar)};
     for (const Entry& e : entries_) {
         if (e.content->visible())
             arrangeInCell(*e.content, below, rtl);
     }
+}
+
+void DockTabs::setTitleArea(bool caption, float reserve, bool left) {
+    bar_->setWindowArea(caption ? platform::HitArea::Caption : platform::HitArea::Client);
+    if (reserve == reserve_ && left == reserveLeft_)
+        return;
+    reserve_ = reserve;
+    reserveLeft_ = left;
+    arrange(bounds());      // in its area's arrangement: the bar again, nothing measured again
 }
 
 void DockTabs::paint(PaintContext& context) {
@@ -421,7 +431,7 @@ std::vector<DockArea*> DockArea::floatingAreas() const {
 }
 
 Widget* DockArea::node() const {
-    return children().empty() ? nullptr : children().front().get();
+    return children().empty() || children().front().get() == buttons_ ? nullptr : children().front().get();
 }
 
 DockTabs* DockArea::firstTabs() const {
@@ -455,7 +465,7 @@ std::vector<std::string> DockArea::panelIds() const {
 
 DockTabs& DockArea::addPanel(DockPanel panel, DockTabs* nextTo, DockSide side, float share) {
     if (!node()) {
-        DockTabs& tabs = add(std::make_unique<DockTabs>());
+        auto& tabs = static_cast<DockTabs&>(addChild(std::make_unique<DockTabs>(), 0));     // under the window buttons
         tabs.add(std::move(panel));
         return tabs;
     }
@@ -582,7 +592,13 @@ void DockArea::floatPanel(const std::string& id, Point position, Size size) {
     LocalizedText title = panel.title;
     area->addPanel(std::move(panel));
     const UiRoot* owner = group_->home ? group_->home->root() : root();
-    h->openWindow({.title = std::move(title), .content = std::move(area), .titleCenter = nullptr, .position = position, .size = size, .owner = owner});
+    h->openWindow({.title = std::move(title),
+                   .content = std::move(area),
+                   .titleCenter = nullptr,
+                   .position = position,
+                   .size = size,
+                   .owner = owner,
+                   .titleBar = false});
     from->closeIfEmpty();
 }
 
@@ -611,6 +627,55 @@ void DockArea::onRootChanged() {
         group_->host = h;
     if (root())
         showFloating(visibleInTree());
+    makeButtons();
+}
+
+void DockArea::onStyleChanged() {
+    makeButtons();
+}
+
+void DockArea::makeButtons() {
+    const UiContext* ui = context();
+    if (!floating_ || !ui)
+        return;
+    const bool atStart = ui->theme.frame.buttonsAtStart;
+    if (buttons_ && atStart == (static_cast<const WindowButton&>(*buttons_->children().front()).kind() == WindowButtonKind::Close))
+        return;
+    if (buttons_)
+        removeChild(*buttons_);
+    auto buttons = std::make_unique<Widget>();
+    buttons->setLayout(std::make_unique<StackLayout>(Orientation::Horizontal));
+    buttons->setHitTestVisible(false);      // between them, the bar under them
+    // the order of the system (TitleBar); a tool window is not minimized on its own
+    for (WindowButtonKind kind : atStart ? std::vector{WindowButtonKind::Close, WindowButtonKind::Maximize}
+                                         : std::vector{WindowButtonKind::Maximize, WindowButtonKind::Close})
+        buttons->add(std::make_unique<WindowButton>(kind));
+    buttons_ = &addChild(std::move(buttons));       // last: over the node
+}
+
+void DockArea::arrangeContent(const Rect& content) {
+    const bool rtl = rightToLeft();
+    Widget* n = node();
+    if (n)
+        arrangeInCell(*n, content, rtl);
+    if (!buttons_)
+        return;
+    // the buttons at the top, at the side of the system (mirrored with the direction), as high as a tab bar
+    const UiContext* ui = context();
+    const bool left = (ui && ui->theme.frame.buttonsAtStart) != rtl;
+    const float height = ui ? ui->theme.dock.tabHeight : 30.0f;
+    const float width = std::min(buttons_->measure({unbounded, height}).width, content.width);
+    buttons_->arrange({left ? content.x : content.right() - width, content.y, width, height});
+    // the stacks along the top drag the window; the one under the buttons leaves them room
+    if (!n)
+        return;
+    const Point origin = mapToRoot({});
+    forEachTabs(*n, [&](DockTabs& tabs) {
+        const Point at = tabs.mapToRoot({}) - origin;
+        const bool top = at.y <= content.y + 0.5f;
+        const bool under = top && (left ? at.x <= content.x + 0.5f : at.x + tabs.size().width >= content.right() - 0.5f);
+        tabs.setTitleArea(top, under ? width : 0.0f, left);
+    });
 }
 
 void DockArea::onVisibleChanged(bool visible) {
@@ -763,7 +828,7 @@ void DockArea::endDrag(Point point, bool drop) {
     } else if (h && r && done.outside && !done.movingWindow) {
         // let go out of the area, where no stack takes it: it floats where it was let go, the size of its stack
         const Point grabbed = h->toScreen(*r, {40, 16}) - h->toScreen(*r, {});
-        const Size size{std::max(done.source->size().width, 240.0f), std::max(done.source->size().height, 160.0f) + 36};
+        const Size size{std::max(done.source->size().width, 240.0f), std::max(done.source->size().height, 160.0f)};
         apply = [this, id = done.id, position = h->toScreen(*r, point) - grabbed, size] { floatPanel(id, position, size); };
     } else {
         return;
@@ -817,7 +882,7 @@ bool DockArea::restoreLayout(std::string_view layout, std::string* error) {
         removeChild(*n);
     }
     if (auto built = buildNode(*saved, panels))
-        addChild(std::move(built));
+        addChild(std::move(built), 0);
     for (auto& [id, panel] : panels)
         addPanel(std::move(panel));
     return true;

@@ -10,7 +10,9 @@
 // tree is saved and restored as JSON (saveLayout / restoreLayout), panels known by their ids.
 //
 // Across windows (with a DockingHost: Application): a tab let go where no stack takes it, out of its area, floats: its panel
-// goes into a window of its own, a tool window above the area's, with a DockArea of the same group. Panels move between the
+// goes into a window of its own, a tool window above the area's, with a DockArea of the same group. A floating window has
+// no title bar of its own: the tab bars along its top are, dragging it where they have no tab, with the window buttons at
+// their end. Panels move between the
 // areas of a group as within one; a floating window goes when its last panel leaves, and its panels go back to the area
 // they came from when it is closed. Dragging the only tab of a floating window drags the window. The floating windows show
 // while their area does (they hide with its major tab), and close with it.
@@ -80,6 +82,7 @@ protected:
     void paint(PaintContext& context) override;
 
 private:
+    friend class DockArea;
     struct Entry {
         std::string id;
         LocalizedText title;
@@ -87,10 +90,15 @@ private:
         bool closable = true;
     };
     void rebuildBar();
+    // In a floating window: its bar drags the window where it has no tab (`caption`), and leaves `reserve` at its `left`
+    // or right for the window buttons.
+    void setTitleArea(bool caption, float reserve, bool left);
 
     std::vector<Entry> entries_;
     std::size_t active_ = 0;
     Widget* bar_ = nullptr;
+    float reserve_ = 0;
+    bool reserveLeft_ = false;
 };
 
 // Nodes side by side (horizontal) or one above the other, with handles between them.
@@ -138,8 +146,10 @@ public:
     void closePanel(std::string_view id);
 
 protected:
+    void arrangeContent(const Rect& content) override;
     void paintOver(PaintContext& context) override;
     void onRootChanged() override;
+    void onStyleChanged() override;
     void onVisibleChanged(bool visible) override;
     void onWindowClosing() override;
 
@@ -155,7 +165,7 @@ private:
         Point grab;                         // the mouse on the screen less the window's position, while it moves
     };
 
-    Widget* node() const;                   // its one child: the root of the tree
+    Widget* node() const;                   // its first child: the root of the tree
     DockTabs* firstTabs() const;
     DockingHost* host() const;
     // The stack of the group under `point` of `root`.
@@ -171,11 +181,14 @@ private:
     void closeIfEmpty();
     // Its floating windows above its window, shown when it is.
     void showFloating(bool visible);
+    // A floating area: its window buttons, in the order of the system.
+    void makeButtons();
 
     std::shared_ptr<DockGroup> group_;
     bool floating_ = false;
     std::optional<Drag> drag_;
     std::optional<Rect> indicator_;         // where a tab dragged (from this area or another) would go
+    Widget* buttons_ = nullptr;             // a floating area's window buttons, over its node
     std::function<void(DockPanel)> onPanelClosed_;
 };
 
