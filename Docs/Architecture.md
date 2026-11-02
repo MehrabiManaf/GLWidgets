@@ -273,6 +273,37 @@ The widget layer is the face of the library, so it lives in `glw` itself (`glw::
   waits until the event being handled is done, so a button can close its own window. During live resize (Windows, macOS),
   the platform's expose handler draws the window from inside the system's loop.
 
+### Declarative construction
+
+Interfaces can be written as the tree they are (`Widgets/Declarative.hpp`, namespace `glw::ui`), in plain C++20: no macro,
+no code generator.
+
+```cpp
+ui::VStack({.spacing = 16},
+    ui::Label({.text = "GLWidgets", .fontSize = 26}),
+    ui::HStack({.spacing = 10},
+        ui::Button({.text = "Hello", .onClick = [this] { status->setText("Hello"); }}),
+        ui::Button({.text = "Close", .onClick = [this] { window->close(); }})),
+    ui::Label({.text = "Nothing clicked yet."}).bind(status))
+    .padding(glw::Insets::all(28));
+```
+
+- **A builder per widget**, named after it, takes the widget's `Props`: a plain aggregate of its own settings, written
+  with designated initializers. Containers (`VStack`, `HStack`, `Overlay`, `Panel`) take their children after it, as
+  arguments or as a vector made in a loop. `ui::make<W>(...)` builds any widget, an application's own included.
+- **What every widget has** (stretch, margin, padding, alignments, sizes, direction, enabled...) is set by calls chained
+  after the builder. C++20 designated initializers cannot reach a base's members, so these settings cannot be part of each
+  `Props`. `with(f)` gives the widget to a function for anything else.
+- **`bind(pointer)`** gives back the widget made, as Slate's `SAssignNew` does. The pointer must live as long as the
+  handlers that use it: it is a member of the class that builds the interface, and the handlers capture `this`.
+- **A builder becomes a `std::unique_ptr`** to its widget wherever one is expected. Built trees and widgets made one by
+  one mix freely; the builders only call the widgets' public API.
+
+Why `Props` are plain aggregates: C++26 reflection can enumerate them. Interfaces loaded from files, serialization and an
+inspector will then come from them without code written per widget (see [Metadata and C++26](#metadata-and-c26)). Still
+to come, with the property system of M4: binding widgets to values that change (reactive state), and loading interfaces
+from markup.
+
 Still to come in the widget core: per-widget invalidation, shrinking below the desired size, scrolling, cursors, the native
 extras of the chrome (Windows 11 shadow, rounded corners and snap layouts), and a property system for styles (M4).
 
@@ -399,7 +430,7 @@ The `GLW_USE_SYSTEM_SDL3` option uses an installed SDL3 instead of the pinned re
 - C++20, `std::string` holds UTF-8 everywhere.
 - Namespace `glw`, one nested namespace per lower layer (`glw::platform`, `glw::rhi`, `glw::paint`, `glw::text`); the
   widget layer, the library's face, is `glw` itself. Types are `PascalCase`; functions and variables are `camelCase`; data
-  members end with `_`.
+  members end with `_`. The builders of `glw::ui` are `PascalCase` too: each stands for the widget it makes.
 - Files are `PascalCase.hpp` / `.cpp`; public headers live in `Include/GLWidgets/<Layer>/` and are included as
   `<GLWidgets/<Layer>/X.hpp>`.
 - Every file starts with SPDX headers (copyright and `MIT`).

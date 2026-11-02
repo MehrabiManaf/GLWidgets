@@ -6,6 +6,9 @@
 
 namespace glw {
 
+Panel::Panel(Props props)
+    : background_(props.background), border_(props.border), borderWidth_(props.borderWidth), cornerRadius_(props.cornerRadius) {}
+
 Panel::Panel(std::optional<Color> background, float cornerRadius) : background_(background), cornerRadius_(cornerRadius) {}
 
 void Panel::setBackground(std::optional<Color> color) {

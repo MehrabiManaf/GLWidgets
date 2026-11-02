@@ -42,4 +42,5 @@ inline bool check(bool ok, const char* expression, const char* file, int line) {
     static const ::glw::tests::Registrar registrar_##name(#name, &test_##name); \
     static void test_##name()
 
-#define CHECK(condition) ::glw::tests::check(static_cast<bool>(condition), #condition, __FILE__, __LINE__)
+// variadic: a condition may hold commas the preprocessor does not see as nested (Size{10, 11})
+#define CHECK(...) ::glw::tests::check(static_cast<bool>(__VA_ARGS__), #__VA_ARGS__, __FILE__, __LINE__)

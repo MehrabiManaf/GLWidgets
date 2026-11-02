@@ -9,9 +9,12 @@
 
 namespace glw {
 
-Label::Label(std::string text) : text_(std::move(text)) {
+Label::Label(Props props)
+    : text_(std::move(props.text)), fontSize_(props.fontSize), color_(props.color), alignment_(props.alignment), wrap_(props.wrap) {
     setHitTestVisible(false);
 }
+
+Label::Label(std::string text) : Label(Props{.text = std::move(text)}) {}
 
 void Label::setText(std::string text) {
     if (text != text_) {

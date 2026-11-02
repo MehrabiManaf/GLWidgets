@@ -29,8 +29,9 @@ On Linux, SDL3 needs the development packages of X11, Wayland and IBus: see `.gi
 
 Then, in `build/<preset>/bin`:
 
-- `widgets_demo` is an application made of widgets: a window with its own chrome, labels, buttons (Tab moves the focus),
-  stretching rows, and a button that mirrors the whole interface for right to left.
+- `widgets_demo` is an application made of widgets, written with the declarative builders (`glw::ui`): a window with its
+  own chrome, labels, buttons (Tab moves the focus), stretching rows, and a button that mirrors the whole interface for
+  right to left.
 - `hello_window` opens two windows drawn by one GPU device.
 - `paint_demo` opens a borderless window with its own title bar, tabs and window buttons, and shows what the painter
   draws: a chart, shapes, a node canvas (the mouse wheel zooms it), text in Persian and English (drag to select).

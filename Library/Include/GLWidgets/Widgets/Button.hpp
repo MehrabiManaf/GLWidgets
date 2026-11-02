@@ -14,6 +14,13 @@ namespace glw {
 
 class GLW_EXPORT Button : public Widget {
 public:
+    // What a button is made with (ui::Button): designated initializers, in this order.
+    struct Props {
+        std::string text;
+        std::function<void()> onClick;
+    };
+
+    explicit Button(Props props);
     explicit Button(std::string text = {}, std::function<void()> onClick = {});
 
     void setText(std::string text);

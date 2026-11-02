@@ -9,13 +9,14 @@
 
 namespace glw {
 
-Button::Button(std::string text, std::function<void()> onClick) : onClick_(std::move(onClick)) {
+Button::Button(Props props) : onClick_(std::move(props.onClick)) {
     setFocusable(true);
     setPadding(Insets::symmetric(14, 6));
     setAlignment(Alignment::Start, Alignment::Center);
-    label_ = &add(std::make_unique<Label>(std::move(text)));
-    label_->setTextAlignment(text::TextAlignment::Center);
+    label_ = &add(std::make_unique<Label>(Label::Props{.text = std::move(props.text), .alignment = text::TextAlignment::Center}));
 }
+
+Button::Button(std::string text, std::function<void()> onClick) : Button(Props{std::move(text), std::move(onClick)}) {}
 
 void Button::setText(std::string text) {
     label_->setText(std::move(text));

@@ -16,6 +16,16 @@ namespace glw {
 
 class GLW_EXPORT Label : public Widget {
 public:
+    // What a label is made with (ui::Label): designated initializers, in this order.
+    struct Props {
+        std::string text;
+        float fontSize = 0;                             // dips; 0: the theme's
+        std::optional<Color> color;                     // none: the theme's text color
+        text::TextAlignment alignment = text::TextAlignment::Start;
+        bool wrap = false;
+    };
+
+    explicit Label(Props props);
     explicit Label(std::string text = {});
 
     void setText(std::string text);
