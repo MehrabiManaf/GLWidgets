@@ -27,6 +27,14 @@ add_library(GLWidgets ${GLW_LIB_TYPE}
     Source/Text/Font.cpp
     Source/Text/GlyphAtlas.cpp
     Source/Text/TextLayout.cpp
+    Source/Widgets/Application.cpp
+    Source/Widgets/Button.cpp
+    Source/Widgets/Label.cpp
+    Source/Widgets/Layout.cpp
+    Source/Widgets/Panel.cpp
+    Source/Widgets/UiRoot.cpp
+    Source/Widgets/Widget.cpp
+    Source/Widgets/WindowFrame.cpp
     ${GLW_DEFAULT_FONT_SOURCE})
 add_library(GLWidgets::GLWidgets ALIAS GLWidgets)
 set_target_properties(GLWidgets PROPERTIES

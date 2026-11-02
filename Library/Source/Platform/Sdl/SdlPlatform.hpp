@@ -21,6 +21,7 @@ public:
     bool pollEvent(Event& event) override;
     void waitForEvents(std::optional<std::chrono::milliseconds> timeout) override;
     void wakeUp() override;
+    void setExposeHandler(std::function<void(WindowId)> handler) override;
 
     // SdlWindow: the windows there are, which must all be gone before the platform
     void windowCreated() { ++windows_; }
@@ -28,10 +29,14 @@ public:
 
 private:
     bool translate(const SDL_Event& in, Event& out) const;      // false for an event GLWidgets does not report
+    // SDL's event watch: it sees events as they are made, from inside the system's loops too
+    static bool SDLCALL watch(void* data, SDL_Event* event);
 
     std::string name_;
     Uint32 wakeUpEvent_ = 0;
     int windows_ = 0;
+    std::function<void(WindowId)> exposeHandler_;
+    bool watching_ = false;
 };
 
 } // namespace glw::platform::sdl

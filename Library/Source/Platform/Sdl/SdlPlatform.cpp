@@ -16,6 +16,7 @@
 #include <algorithm>
 #include <atomic>
 #include <cstdint>
+#include <utility>
 
 namespace glw::platform {
 
@@ -55,6 +56,8 @@ SdlPlatform::SdlPlatform() {
 
 SdlPlatform::~SdlPlatform() {
     GLW_ASSERT(windows_ == 0);
+    if (watching_)
+        SDL_RemoveEventWatch(&SdlPlatform::watch, this);
     SDL_Quit();
     platformExists = false;
 }
@@ -84,6 +87,25 @@ void SdlPlatform::wakeUp() {
     SDL_Event event{};
     event.type = wakeUpEvent_;
     SDL_PushEvent(&event);
+}
+
+void SdlPlatform::setExposeHandler(std::function<void(WindowId)> handler) {
+    exposeHandler_ = std::move(handler);
+    if (exposeHandler_ && !watching_)
+        watching_ = SDL_AddEventWatch(&SdlPlatform::watch, this);
+}
+
+bool SDLCALL SdlPlatform::watch(void* data, SDL_Event* event) {
+    auto* self = static_cast<SdlPlatform*>(data);
+    // SDL sends an exposure from inside the modal loops of resizing and moving: drawn right there
+    if (event->type == SDL_EVENT_WINDOW_EXPOSED && self->exposeHandler_) {
+        try {
+            self->exposeHandler_(event->window.windowID);
+        } catch (...) {
+            // called from inside SDL (and the system): nothing may be thrown through it
+        }
+    }
+    return true;    // the event stays in the queue
 }
 
 bool SdlPlatform::translate(const SDL_Event& in, Event& out) const {

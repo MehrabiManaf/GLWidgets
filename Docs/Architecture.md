@@ -33,7 +33,7 @@ Out of scope: native widgets of the system (everything is drawn by GLWidgets), m
 ```
 Application
    │
-Widgets        Widget tree, layout, events, focus, styles, docking, window chrome     (planned)
+Widgets        Widget tree, layout, events, focus, window chrome, Application         Library/Include/GLWidgets/Widgets
    │
 Text           Fonts, shaping, bidi, line breaking, glyph atlas, carets               Library/Include/GLWidgets/Text
    │
@@ -109,7 +109,7 @@ convention (left on macOS, right elsewhere).
 
 | Gap | Where | Plan |
 |---|---|---|
-| Live resize: the event loop is blocked while the user drags a window edge | Windows, macOS | Redraw from SDL's event watch on `SDL_EVENT_WINDOW_EXPOSED` (M3) |
+| Live resize: the event loop is blocked while the user drags a window edge | Windows, macOS | Done: `Platform::setExposeHandler` (SDL's event watch on `SDL_EVENT_WINDOW_EXPOSED`) draws from inside the system's loop |
 | No z-order of windows | All | Track the activation order of our own windows |
 | Global menu bar | macOS | Native `NSMenu` code |
 | Accessibility | All | Platform accessibility APIs, possibly through AccessKit (MIT/Apache-2.0) |
@@ -235,21 +235,46 @@ while zooming. Whether MSDF glyphs are needed for the canvas is measured in M5.
 Still to come: system fonts and fallback through the system, visual cursor movement (arrow keys across direction
 changes), the composition of input methods in text fields, and tab stops.
 
-## Widgets *(planned, M3–M4)*
+## Widgets
 
-- **A tree of widgets.** A parent owns its children (`std::unique_ptr`); everything else holds non-owning pointers or
-  handles. New widget types derive from `Widget` or one of its subclasses and override what they need: `paint`, `measure`,
-  `arrange`, the event handlers.
-- **Layout in two passes:** `measure` (the size wanted for the space offered), then `arrange` (the rectangle given). Layout
-  objects are separate from widgets, so any container can take any layout.
-- **Events:** hit test, then a capture phase from the root down and a bubble phase back up. Focus and mouse capture are
-  separate from hit testing.
-- **Retained, invalidated:** a widget marks its layout or its paint dirty, and only dirty parts are laid out or painted
-  again. A window whose content did not change is not drawn.
-- **Widgets can move between windows** (docking). No widget may keep anything that depends on its window, such as its scale
-  or its surface, without being told when that changes. Changing the parent re-runs layout and font resolution.
-- **Window chrome is widgets:** the title bar, its tab strip and the window buttons are ordinary widgets, and the
-  window's hit test asks the widget tree what is under a point.
+The widget layer is the face of the library, so it lives in `glw` itself (`glw::Widget`, `glw::Button`,
+`glw::Application`), with its headers in `Library/Include/GLWidgets/Widgets`.
+
+- **A tree of widgets.** A parent owns its children (`std::unique_ptr`); everything else holds non-owning pointers. New
+  widget types derive from `Widget` or one of its subclasses and override what they need: `measureContent`,
+  `arrangeContent`, `paint` / `paintOver`, the event handlers. A widget removed from a shown tree is first forgotten by its
+  root (focus, mouse capture, hover), so no pointer into it stays.
+- **Layout in two passes:** `measure` (the size wanted for the space offered: padding included, margin not, clamped to
+  the minimum and maximum sizes), then `arrange` (the rectangle given, in the parent's coordinates). A `Layout` object
+  places a widget's children (`StackLayout`: along an axis, sharing what is left by stretch). Without one, every child gets
+  the whole content.
+- **Directions:** margin and padding have start and end sides, and alignments have Start and End. A widget's layout
+  direction is its parent's unless set, up to the root. Setting it once at the root mirrors the whole interface: stacks,
+  alignments, labels, and the window buttons. A label's text keeps its own direction (bidi). Its Start and End alignment
+  follow the layout direction.
+- **`UiRoot`** shows a tree. It lays it out, records it into a draw list, and takes the events of its window as the plain
+  structs of `Platform/Event.hpp`. It knows no platform window and no GPU, which is the embedding requirement. A `UiHost`
+  (the window: its state, its buttons' actions, text input) is all it asks of what holds it.
+- **Events:** the widget under the mouse is the deepest one that is visible and can be hit; labels and decorations cannot
+  (`setHitTestVisible`). An event goes through a preview phase from the root down, then back up from the target, until a
+  handler marks it handled. A widget handling a mouse press gets every mouse event until the buttons are released. Hover is
+  tracked on the whole path, so a button knows the mouse is over its label. Keys go to the focus. A press gives the focus
+  to the nearest focusable widget, and Tab / Shift+Tab move it in tree order.
+- **Retained, invalidated:** a widget marks the layout or the paint as needed (`invalidateLayout`, `invalidatePaint`), and
+  a window is laid out and drawn only then. For now, a window that needs it is laid out and painted whole. Doing it per
+  widget is an optimization for later.
+- **Widgets can move between windows** (docking). `onRootChanged` tells a widget when it is shown by another root, or by
+  none, so it can drop what depended on it (a label's text layout).
+- **Window chrome is widgets:** `WindowFrame` holds a `TitleBar` (its own area drags the window; its center holds the
+  title, and later the tab strip) and the window buttons. The frame's edges resize the window. The window's hit test asks
+  the frame for its edges first, then the widget under the point for its `windowArea`.
+- **`Application`** owns the platform, the device, the fonts and the glyph atlas, and runs the loop. It routes events to the
+  windows by id, draws only windows that need it, and keeps a window dirty until a frame really reaches it. `Window::close`
+  waits until the event being handled is done, so a button can close its own window. During live resize (Windows, macOS),
+  the platform's expose handler draws the window from inside the system's loop.
+
+Still to come in the widget core: per-widget invalidation, shrinking below the desired size, scrolling, cursors, the native
+extras of the chrome (Windows 11 shadow, rounded corners and snap layouts), and a property system for styles (M4).
 
 ## Docking *(planned, M5)*
 
@@ -372,8 +397,9 @@ The `GLW_USE_SYSTEM_SDL3` option uses an installed SDL3 instead of the pinned re
 ## Conventions
 
 - C++20, `std::string` holds UTF-8 everywhere.
-- Namespace `glw`, one nested namespace per layer (`glw::platform`, `glw::rhi`, `glw::paint`). Types are `PascalCase`;
-  functions and variables are `camelCase`; data members end with `_`.
+- Namespace `glw`, one nested namespace per lower layer (`glw::platform`, `glw::rhi`, `glw::paint`, `glw::text`); the
+  widget layer, the library's face, is `glw` itself. Types are `PascalCase`; functions and variables are `camelCase`; data
+  members end with `_`.
 - Files are `PascalCase.hpp` / `.cpp`; public headers live in `Include/GLWidgets/<Layer>/` and are included as
   `<GLWidgets/<Layer>/X.hpp>`.
 - Every file starts with SPDX headers (copyright and `MIT`).
@@ -387,7 +413,7 @@ The `GLW_USE_SYSTEM_SDL3` option uses an installed SDL3 instead of the pinned re
 | M0 | CMake, SDL3, the Platform and Rhi interfaces, windows in dips, events, several windows on one GPU device, CI on the three systems | Done |
 | M1 | RHI resources and passes into textures, the shader pipeline, `Painter` / `DrawList` / `Renderer` (boxes, shadows, polylines, polygons, images, clipping, transforms), borderless windows with hit testing | Done: run on Direct3D 12 and Vulkan (Windows); Metal built, not yet run |
 | M2 | Text: HarfBuzz and FreeType, glyph atlas, bidi, line breaking, text layout with cursor and selection | Done, apart from system fonts and visual cursor movement (see [Text](#text)) |
-| M3 | Widget core: tree, events, focus, layout, a UI root independent of the platform, window chrome as widgets (with the native extras), live resize | |
+| M3 | Widget core: tree, events, focus, layout, a UI root independent of the platform, window chrome as widgets (with the native extras), live resize | Done, apart from the native extras of the chrome and what is listed in [Widgets](#widgets) |
 | M4 | Basic widgets (label, button, line edit, scroll area, splitter), styles, `LocalizedText` and catalogs, right-to-left layouts | |
 | M5 | Docking: major and panel tabs, windows merging and splitting by their tabs, both modes, layout persistence | |
 | M6 | Validation: a node canvas and a code editor (FlowGraph), a chart widget with custom commands, an engine embedding example | |

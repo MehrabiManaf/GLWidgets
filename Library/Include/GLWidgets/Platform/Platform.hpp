@@ -11,6 +11,7 @@
 #include <GLWidgets/Platform/Window.hpp>
 
 #include <chrono>
+#include <functional>
 #include <memory>
 #include <optional>
 #include <string_view>
@@ -36,6 +37,11 @@ public:
 
     // Ends waitForEvents. The only function of a platform that may be called from any thread.
     virtual void wakeUp() = 0;
+
+    // Called when a window must be drawn now, even from inside the system's own loops: while the user resizes or moves a
+    // window (Windows, macOS), pollEvent and waitForEvents do not return until the mouse is let go, and the window would
+    // show nothing new meanwhile. Also called for windows exposed otherwise (from pollEvent then). None: not called.
+    virtual void setExposeHandler(std::function<void(WindowId)> handler) = 0;
 
 protected:
     Platform() = default;

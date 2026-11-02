@@ -8,8 +8,9 @@ One of its goals is to be complete enough to build the script editor of
 So it has to handle Persian and other right-to-left text, localization, and docking. After that it is meant for user
 interfaces inside 3D applications and games, and for charts. Every dependency is permissively licensed.
 
-The project has just started: windows (with chrome of their own), events, the GPU layer, the 2D painter and text (Persian
-and English, mixed, shaped, wrapped, selectable) work. Widgets do not exist yet. The design, and what comes next, is in
+The project has just started. Windows (with chrome of their own, redrawn while they are resized), events, the GPU layer, the
+2D painter, text (Persian and English, mixed, shaped, wrapped, selectable) and the widget core (layout, events, focus,
+right-to-left mirroring) work. A few widgets exist (label, button, panel); the rest, styles and docking come next. The design, and what comes next, is in
 [Docs/Architecture.md](Docs/Architecture.md); the libraries it is built with, and their notices, in
 [Docs/ThirdPartyNotices.md](Docs/ThirdPartyNotices.md).
 
@@ -28,6 +29,8 @@ On Linux, SDL3 needs the development packages of X11, Wayland and IBus: see `.gi
 
 Then, in `build/<preset>/bin`:
 
+- `widgets_demo` is an application made of widgets: a window with its own chrome, labels, buttons (Tab moves the focus),
+  stretching rows, and a button that mirrors the whole interface for right to left.
 - `hello_window` opens two windows drawn by one GPU device.
 - `paint_demo` opens a borderless window with its own title bar, tabs and window buttons, and shows what the painter
   draws: a chart, shapes, a node canvas (the mouse wheel zooms it), text in Persian and English (drag to select).
