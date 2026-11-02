@@ -13,6 +13,8 @@
 #include <GLWidgets/Widgets/Theme.hpp>
 #include <GLWidgets/Widgets/Widget.hpp>
 
+#include <cstdint>
+#include <functional>
 #include <memory>
 #include <string>
 #include <vector>
@@ -81,6 +83,10 @@ public:
     // The widget under `point`, the deepest one that can be under the mouse.
     Widget* widgetAt(Point point) const;
 
+    // Runs `call` once the event being dispatched is done (now when none is): what removes or moves widgets, the one
+    // handling the event among them, does it from there.
+    void defer(std::function<void()> call);
+
     Widget* focusWidget() const { return focus_; }
     void setFocus(Widget* widget);
     // The next (or previous) widget that can have the focus, in the order of the tree.
@@ -95,6 +101,8 @@ public:
     void languageChanged();
     void invalidateLayout();
     void invalidatePaint() { needsPaint_ = true; }
+    // Changes with every invalidateLayout: a widget's measure for the same space in the same generation is kept.
+    std::uint64_t layoutGeneration() const { return layoutGeneration_; }
     void layout();
     // Records the whole tree into `list` (which it clears first).
     void paint(paint::DrawList& list);
@@ -121,6 +129,7 @@ private:
     bool rightToLeft_ = false;
     bool needsLayout_ = true;
     bool needsPaint_ = true;
+    std::uint64_t layoutGeneration_ = 1;
 
     Widget* focus_ = nullptr;
     Widget* capture_ = nullptr;         // has the mouse while buttons are down
@@ -128,6 +137,8 @@ private:
     std::vector<Widget*> hovered_;      // the widget under the mouse and its ancestors, from the root down
     Point mouse_;
     platform::KeyModifiers modifiers_ = platform::KeyModifiers::None;
+    int dispatching_ = 0;
+    std::vector<std::function<void()>> deferred_;
 };
 
 } // namespace glw

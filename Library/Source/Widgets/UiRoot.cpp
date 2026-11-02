@@ -109,6 +109,7 @@ void UiRoot::languageChanged() {
 void UiRoot::invalidateLayout() {
     needsLayout_ = true;
     needsPaint_ = true;
+    ++layoutGeneration_;        // every measure kept is out of date
 }
 
 void UiRoot::layout() {
@@ -189,7 +190,15 @@ std::vector<Widget*> UiRoot::pathTo(Widget* target) const {
 
 // ---- events ----
 
+void UiRoot::defer(std::function<void()> call) {
+    if (dispatching_ > 0)
+        deferred_.push_back(std::move(call));
+    else
+        call();
+}
+
 void UiRoot::dispatch(const platform::Event& event) {
+    ++dispatching_;
     std::visit(Overloaded{
                    [&](const platform::WindowResized& e) { setSize(e.size); },
                    [&](const platform::WindowScaleChanged& e) { setScale(e.scale); },
@@ -231,6 +240,14 @@ void UiRoot::dispatch(const platform::Event& event) {
                    [](const auto&) {},
                },
                event);
+    // what the handlers left for after the event, which may add more
+    if (--dispatching_ == 0) {
+        while (!deferred_.empty()) {
+            auto calls = std::exchange(deferred_, {});
+            for (auto& call : calls)
+                call();
+        }
+    }
 }
 
 Widget* UiRoot::route(Widget* target, MouseEvent& event, Point point) {

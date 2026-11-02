@@ -265,6 +265,12 @@ The widget layer is the face of the library, so it lives in `glw` itself (`glw::
 - **Retained, invalidated:** a widget marks the layout or the paint as needed (`invalidateLayout`, `invalidatePaint`), and
   a window is laid out and drawn only then. For now, a window that needs it is laid out and painted whole. Doing it per
   widget is an optimization for later.
+- **Measured for the room it gets:** a parent may measure a child without bounds along its own axis (a stack, a splitter),
+  then give it less. So arranging a child measures it again for its real room, and a wrapped text takes the lines it
+  needs there. A measure for the same room is kept until the layout is invalidated (`UiRoot::layoutGeneration`), so
+  measuring twice costs little.
+- **After the event:** a handler that removes or moves widgets, perhaps the one handling the event, does it through
+  `UiRoot::defer`. The change runs once the event is done, and at once when no event is being dispatched.
 - **Widgets can move between windows** (docking). `onRootChanged` tells a widget when it is shown by another root, or by
   none, so it can drop what depended on it (a label's text layout).
 - **Window chrome is widgets:** `WindowFrame` holds a `TitleBar` (its own area drags the window; its center holds the
@@ -356,7 +362,9 @@ Still to come in the widget core: per-widget invalidation, a blinking caret and 
 cursors (the resize cursor over a splitter's handle), and the native extras of the chrome (Windows 11 shadow, rounded
 corners and snap layouts).
 
-## Docking *(planned, M5)*
+## Docking
+
+*In a window: done (`Widgets/Docking.hpp`, `Widgets/MajorTabs.hpp`). Across windows: planned (M5b).*
 
 Two kinds of tabs, as in Slate:
 
@@ -380,10 +388,30 @@ Two kinds of tabs, as in Slate:
 
 A panel never moves into a dock area of the other scope, so what owns it never changes while it is dragged.
 
-The layout is a model of its own, separate from the widgets it shows and serializable (it is saved with the user's
-workspace): a list of windows, each with its window dock area of global panels and its major tabs, each major tab with
-its tree of splits and panel tab stacks, and the panel windows. A tab moving between windows is a reparent in the widget
-tree.
+**The widgets are the layout.** A `DockArea` holds one node: a `DockTabs` (a stack of panels: their tabs, and the content
+of the one shown) or a `DockSplit` (a `Splitter` of nodes). The tree is saved as JSON and restored, with panels known by
+their ids (`saveLayout`, `restoreLayout`). Panels a layout does not name go into the first stack, and ids it names that
+the area does not have are passed over.
+
+This changes what was planned, a model kept apart from the widgets. The widget tree already holds everything a layout
+needs, and a separate model would only have to be kept in step with it. A tab moving between windows is a reparent in the
+widget tree.
+
+In a dock area:
+
+- **Dragging a tab** onto another stack's tabs (or the middle of the stack) makes it one of them. Dragged to an edge of a
+  stack, it makes a new stack on that side, sharing the stack's room. While it is dragged, where it would go shows.
+- **A stack left without tabs goes**, and a split left with one pane gives way to it.
+- **A tab's ×** closes its panel (`setOnPanelClosed` gets it).
+- **`addPanel(panel, nextTo, side, share)`** builds a layout in code: beside a stack on its Start, End, Top or Bottom
+  side, or in it.
+
+`MajorTabs` shows the content of one of its tabs. Its `MajorTabStrip`, set as the title bar's center, shows the tabs as a
+browser does: a click shows a tab, its × closes it, dragging moves it along the strip, and + asks for a new one. Where the
+strip has no tab, it drags the window.
+
+Planned for M5b: dragging a major tab out of its strip into a window of its own, and onto another window's strip; panel
+windows; global panels; saving the major tabs with their layouts.
 
 Tearing off and docking back needs what not every system gives:
 
@@ -500,7 +528,7 @@ The `GLW_USE_SYSTEM_SDL3` option uses an installed SDL3 instead of the pinned re
 | M2 | Text: HarfBuzz and FreeType, glyph atlas, bidi, line breaking, text layout with cursor and selection | Done, apart from system fonts and visual cursor movement (see [Text](#text)) |
 | M3 | Widget core: tree, events, focus, layout, a UI root independent of the platform, window chrome as widgets (with the native extras), live resize | Done, apart from the native extras of the chrome and what is listed in [Widgets](#widgets) |
 | M4 | Basic widgets (label, button, line edit, scroll area, splitter), styles, `LocalizedText` and catalogs, right-to-left layouts | Done, apart from plural rules and the formatting of numbers and dates (see [Localization](#localization-and-right-to-left)) |
-| M5 | Docking: major and panel tabs, windows merging and splitting by their tabs, both modes, layout persistence | |
+| M5 | Docking: major and panel tabs, windows merging and splitting by their tabs, both modes, layout persistence | In progress: docking in a window, major tabs and saved layouts done (M5a); across windows next (M5b), then Wayland's mode (M5c) |
 | M6 | Validation: a node canvas and a code editor (FlowGraph), a chart widget with custom commands, an engine embedding example | |
 
 ## Open questions

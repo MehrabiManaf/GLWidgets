@@ -80,6 +80,21 @@ Theme Theme::fromPalette(const Palette& p) {
     t.splitter.handle = p.border;
     t.splitter.active = p.accent;
 
+    t.dock.background = p.window;
+    t.dock.tabBar = over(p.window, Color{p.titleBar.r, p.titleBar.g, p.titleBar.b, 0.5f});
+    t.dock.tab = {.normal = {0, 0, 0, 0}, .hovered = p.hover, .pressed = p.pressed};
+    t.dock.activeTab = p.window;
+    t.dock.activeLine = p.accent;
+    t.dock.text = p.text;
+    t.dock.mutedText = p.mutedText;
+    t.dock.dropZone = {p.accent.r, p.accent.g, p.accent.b, 0.22f};
+
+    t.majorTab.background = {.normal = {0, 0, 0, 0}, .hovered = p.hover, .pressed = p.pressed};
+    t.majorTab.active = p.window;
+    t.majorTab.text = p.text;
+    t.majorTab.mutedText = p.mutedText;
+    t.majorTab.insertion = p.accent;
+
     t.card.background = p.surface;
     t.card.border = p.border;
     t.card.cornerRadius = t.cornerRadius;

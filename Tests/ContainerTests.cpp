@@ -5,6 +5,7 @@
 #include "Check.hpp"
 #include "TestUi.hpp"
 
+#include <GLWidgets/Text/TextLayout.hpp>
 #include <GLWidgets/Widgets/Declarative.hpp>
 #include <GLWidgets/Widgets/UiRoot.hpp>
 
@@ -166,6 +167,26 @@ TEST(splitterSharesAndDragging) {
     root.dispatch(press({again.x + 1000, again.y}, false));
     root.layout();
     CHECK(near(right->bounds().width, 120));
+}
+
+TEST(wrappedTextInASplitterPane) {
+    // a splitter measures its panes along without bounds; the text of a narrow pane must still get the lines it wraps to
+    UiRoot root(tests::testContext());
+    root.setSize({400, 400});
+    Label* text = nullptr;
+    Widget* below = nullptr;
+    root.setContent(ui::Splitter({},
+                                 ui::VStack({}, ui::Label({.text = "A long text that wraps to several lines in a narrow pane of a splitter.",
+                                                           .wrap = true})
+                                                    .bind(text),
+                                            ui::make<Block>(Size{0, 20}).bind(below)),
+                                 ui::make<Block>(Size{})));
+    root.layout();
+    const UiContext& ui = tests::testContext();
+    const float lineHeight = text::TextLayout("x", text::TextStyle{{&ui.fonts.defaultFont()}, ui.theme.fontSize}).size().height;
+    CHECK(text->bounds().width < 200);
+    CHECK(text->bounds().height > 2 * lineHeight);         // several lines, in a pane half as wide as the window
+    CHECK(below->bounds().y >= text->bounds().bottom() - 0.01f);
 }
 
 TEST(splitterInRightToLeft) {

@@ -1,0 +1,416 @@
+// SPDX-FileCopyrightText: 2026 Abdolmanaf Mehrabi Sisakht
+// SPDX-License-Identifier: MIT
+#include <GLWidgets/Widgets/MajorTabs.hpp>
+
+#include <GLWidgets/Paint/Painter.hpp>
+#include <GLWidgets/Widgets/Label.hpp>
+#include <GLWidgets/Widgets/Layout.hpp>
+#include <GLWidgets/Widgets/UiRoot.hpp>
+
+#include <algorithm>
+#include <cmath>
+#include <utility>
+
+namespace glw {
+
+namespace {
+
+constexpr float dragThreshold = 6;
+
+void later(const Widget& widget, std::function<void()> call) {
+    if (UiRoot* r = widget.root())
+        r->defer(std::move(call));
+    else
+        call();
+}
+
+// A tab of the strip: rounded at the top, as a browser's; the one shown has the color of what it shows.
+class MajorTab final : public Widget {
+public:
+    MajorTab(MajorTabStrip& strip, std::size_t index, const LocalizedText& title, bool closable, bool active)
+        : strip_(strip), index_(index), closable_(closable), active_(active) {
+        setPadding({14, 0, closable ? 34.0f : 14.0f, 0});
+        setClipsChildren(true);         // a title longer than the tab is cut
+        label_ = &add(std::make_unique<Label>(title));
+        label_->setAlignment(Alignment::Start, Alignment::Center);
+    }
+
+    void setActive(bool active) {
+        active_ = active;
+        invalidatePaint();
+    }
+
+protected:
+    void onRootChanged() override { applyStyle(); }
+    void onStyleChanged() override { applyStyle(); }
+
+    void paint(PaintContext& context) override {
+        const MajorTabStyle& s = style();
+        paint::Painter& p = context.painter;
+        const Rect r{0, 0, size().width, size().height};
+        const VisualState state{.hovered = hovered(), .pressed = pressed_ && hovered()};
+        // rounded at the top only: the bottom corners go below the tab and are cut
+        p.pushClip(r);
+        p.fillRoundedRect({0, 0, r.width, r.height + s.cornerRadius}, s.cornerRadius, active_ ? s.active : s.background.resolve(state));
+        p.popClip();
+        label_->setColor(active_ ? s.text : s.mutedText);
+        if (closable_ && (hovered() || active_)) {
+            const Rect c = closeRect();
+            if (closeHovered_)
+                p.fillRoundedRect(c, 4, context.ui.theme.palette.hover);
+            const Point m = c.center();
+            p.drawLine({m.x - 4, m.y - 4}, {m.x + 4, m.y + 4}, 1.2f, s.text);
+            p.drawLine({m.x - 4, m.y + 4}, {m.x + 4, m.y - 4}, 1.2f, s.text);
+        }
+    }
+
+    void onMouse(MouseEvent& event) override {
+        switch (event.type) {
+        case MouseEventType::Press:
+            if (event.button != platform::MouseButton::Left)
+                return;
+            event.handled = true;
+            if (closable_ && closeRect().contains(event.position)) {
+                pressedClose_ = true;
+                return;
+            }
+            if (MajorTabs* tabs = strip_.tabs())
+                tabs->setActive(index_);
+            pressed_ = true;
+            pressPoint_ = mapToRoot(event.position);
+            break;
+        case MouseEventType::Move: {
+            if (const bool over = closable_ && closeRect().contains(event.position); over != closeHovered_) {
+                closeHovered_ = over;
+                invalidatePaint();
+            }
+            if (!pressed_)
+                return;
+            const Point at = mapToRoot(event.position);
+            const Point moved = at - pressPoint_;
+            if (!dragging_ && std::hypot(moved.x, moved.y) > dragThreshold) {
+                dragging_ = true;
+                strip_.beginDrag(index_);
+            }
+            if (dragging_)
+                strip_.dragTo(at);
+            event.handled = true;
+            break;
+        }
+        case MouseEventType::Release:
+            if (event.button != platform::MouseButton::Left)
+                return;
+            event.handled = true;
+            if (pressedClose_) {
+                pressedClose_ = false;
+                if (closeRect().contains(event.position))
+                    strip_.close(index_);
+                return;
+            }
+            pressed_ = false;
+            if (std::exchange(dragging_, false))
+                strip_.endDrag(mapToRoot(event.position));
+            break;
+        case MouseEventType::Wheel:
+            break;
+        }
+    }
+
+    void onHoverChanged(bool hovered) override {
+        if (!hovered)
+            closeHovered_ = false;
+        invalidatePaint();
+    }
+
+private:
+    const MajorTabStyle& style() const {
+        if (const UiContext* ui = context())
+            return ui->theme.majorTab;
+        static const MajorTabStyle unstyled = Theme::dark().majorTab;
+        return unstyled;
+    }
+
+    void applyStyle() {
+        const MajorTabStyle& s = style();
+        setMinimumSize({s.minimumWidth, 0});
+        setMaximumSize({s.maximumWidth, unbounded});
+    }
+
+    Rect closeRect() const {
+        const float y = size().height / 2 - 8;
+        return rightToLeft() ? Rect{10, y, 16, 16} : Rect{size().width - 26, y, 16, 16};
+    }
+
+    MajorTabStrip& strip_;
+    std::size_t index_;
+    bool closable_;
+    bool active_;
+    Label* label_ = nullptr;
+    bool pressed_ = false;
+    bool pressedClose_ = false;
+    bool closeHovered_ = false;
+    bool dragging_ = false;
+    Point pressPoint_;
+};
+
+// The + after the tabs.
+class NewTabButton final : public Widget {
+public:
+    explicit NewTabButton(MajorTabStrip& strip) : strip_(strip) { setAlignment(Alignment::Start, Alignment::Center); }
+
+protected:
+    Size measureContent(Size) override { return {28, 28}; }
+
+    void paint(PaintContext& context) override {
+        const Rect r{0, 0, size().width, size().height};
+        if (hovered())
+            context.painter.fillRoundedRect(r, 6, pressed_ ? context.ui.theme.palette.pressed : context.ui.theme.palette.hover);
+        const Point c = r.center();
+        const Color color = context.ui.theme.palette.text;
+        context.painter.drawLine({c.x - 6, c.y}, {c.x + 6, c.y}, 1.4f, color);
+        context.painter.drawLine({c.x, c.y - 6}, {c.x, c.y + 6}, 1.4f, color);
+    }
+
+    void onMouse(MouseEvent& event) override {
+        if (event.button != platform::MouseButton::Left || event.type == MouseEventType::Move || event.type == MouseEventType::Wheel)
+            return;
+        event.handled = true;
+        if (event.type == MouseEventType::Press) {
+            pressed_ = true;
+        } else if (std::exchange(pressed_, false) && Rect{0, 0, size().width, size().height}.contains(event.position)) {
+            strip_.newTab();
+        }
+        invalidatePaint();
+    }
+
+    void onHoverChanged(bool) override { invalidatePaint(); }
+
+private:
+    MajorTabStrip& strip_;
+    bool pressed_ = false;
+};
+
+} // namespace
+
+// ---- the tabs ----
+
+MajorTabs::MajorTabs() = default;
+
+MajorTabs::~MajorTabs() {
+    if (strip_)
+        strip_->tabs_ = nullptr;
+}
+
+const MajorTabStyle& MajorTabs::style() const {
+    if (const UiContext* ui = context())
+        return ui->theme.majorTab;
+    static const MajorTabStyle unstyled = Theme::dark().majorTab;
+    return unstyled;
+}
+
+std::size_t MajorTabs::addTab(LocalizedText title, std::unique_ptr<Widget> content, bool closable) {
+    Widget& shown = addChild(content ? std::move(content) : std::make_unique<Widget>());
+    tabs_.push_back(Tab{std::move(title), &shown, closable});
+    changed();
+    setActive(tabs_.size() - 1);
+    return tabs_.size() - 1;
+}
+
+std::unique_ptr<Widget> MajorTabs::removeTab(std::size_t index) {
+    const Tab tab = tabs_[index];
+    tabs_.erase(tabs_.begin() + static_cast<std::ptrdiff_t>(index));
+    std::unique_ptr<Widget> content = removeChild(*tab.content);
+    content->setVisible(true);
+    if (index < active_ || active_ >= tabs_.size())
+        active_ = active_ > 0 ? active_ - 1 : 0;
+    changed();
+    for (std::size_t i = 0; i < tabs_.size(); ++i)
+        tabs_[i].content->setVisible(i == active_);
+    if (onActiveChanged_ && !tabs_.empty())
+        onActiveChanged_(active_);
+    return content;
+}
+
+void MajorTabs::moveTab(std::size_t from, std::size_t to) {
+    to = std::min(to, tabs_.size() - 1);
+    if (from == to || from >= tabs_.size())
+        return;
+    const Tab tab = tabs_[from];
+    tabs_.erase(tabs_.begin() + static_cast<std::ptrdiff_t>(from));
+    tabs_.insert(tabs_.begin() + static_cast<std::ptrdiff_t>(to), tab);
+    // the tab shown stays the same tab
+    if (active_ == from)
+        active_ = to;
+    else if (from < active_ && to >= active_)
+        --active_;
+    else if (from > active_ && to <= active_)
+        ++active_;
+    changed();
+}
+
+void MajorTabs::setActive(std::size_t index) {
+    if (tabs_.empty())
+        return;
+    index = std::min(index, tabs_.size() - 1);
+    const bool changedTab = index != active_;
+    active_ = index;
+    for (std::size_t i = 0; i < tabs_.size(); ++i)
+        tabs_[i].content->setVisible(i == active_);
+    if (strip_)
+        strip_->refreshActive();
+    if (changedTab && onActiveChanged_)
+        onActiveChanged_(active_);
+}
+
+void MajorTabs::setTitle(std::size_t index, LocalizedText title) {
+    tabs_[index].title = std::move(title);
+    changed();
+}
+
+void MajorTabs::setOnNewTab(std::function<void()> handler) {
+    onNewTab_ = std::move(handler);
+    changed();
+}
+
+std::unique_ptr<MajorTabStrip> MajorTabs::makeStrip() {
+    return std::make_unique<MajorTabStrip>(*this);
+}
+
+void MajorTabs::changed() {
+    if (strip_)
+        strip_->rebuild();
+}
+
+void MajorTabs::requestClose(std::size_t index) {
+    if (index >= tabs_.size())
+        return;
+    if (onCloseRequested_)
+        onCloseRequested_(index);
+    else
+        removeTab(index);
+}
+
+void MajorTabs::requestNew() {
+    if (const auto handler = onNewTab_)
+        handler();
+}
+
+// ---- the strip ----
+
+MajorTabStrip::MajorTabStrip(MajorTabs& tabs) : tabs_(&tabs) {
+    if (tabs.strip_)
+        tabs.strip_->tabs_ = nullptr;   // one strip at a time
+    tabs.strip_ = this;
+    setWindowArea(platform::HitArea::Caption);      // where it has no tab, it drags the window
+    auto row = std::make_unique<Widget>();
+    row->setLayout(std::make_unique<StackLayout>(Orientation::Horizontal, 2.0f));
+    row->setHitTestVisible(false);
+    row->setAlignment(Alignment::Start, Alignment::Stretch);
+    row_ = &addChild(std::move(row));
+    rebuild();
+}
+
+MajorTabStrip::~MajorTabStrip() {
+    if (tabs_ && tabs_->strip_ == this)
+        tabs_->strip_ = nullptr;
+}
+
+void MajorTabStrip::onRootChanged() {
+    onStyleChanged();
+}
+
+void MajorTabStrip::onStyleChanged() {
+    const UiContext* ui = context();
+    const float gap = ui ? ui->theme.majorTab.topGap : 6.0f;
+    setPadding({8, gap, 8, 0});
+}
+
+void MajorTabStrip::rebuild() {
+    while (!row_->children().empty())
+        row_->removeChild(*row_->children().back());
+    if (!tabs_)
+        return;
+    for (std::size_t i = 0; i < tabs_->count(); ++i)
+        row_->add(std::make_unique<MajorTab>(*this, i, tabs_->title(i), tabs_->closable(i), i == tabs_->active()));
+    if (tabs_->onNewTab_)
+        row_->add(std::make_unique<NewTabButton>(*this));
+}
+
+void MajorTabStrip::refreshActive() {
+    if (!tabs_)
+        return;
+    for (std::size_t i = 0; i < tabs_->count() && i < row_->children().size(); ++i)
+        static_cast<MajorTab&>(*row_->children()[i]).setActive(i == tabs_->active());
+}
+
+void MajorTabStrip::close(std::size_t index) {
+    later(*this, [tabs = tabs_, index] {
+        if (tabs)
+            tabs->requestClose(index);
+    });
+}
+
+void MajorTabStrip::newTab() {
+    later(*this, [tabs = tabs_] {
+        if (tabs)
+            tabs->requestNew();
+    });
+}
+
+std::pair<std::size_t, float> MajorTabStrip::slotAt(Point point) const {
+    const Point local = mapFromRoot(point);
+    const bool rtl = rightToLeft();
+    const std::size_t count = tabs_ ? std::min(tabs_->count(), row_->children().size()) : 0;
+    // the tabs whose middle is before the point, in the reading order
+    std::size_t slot = 0;
+    for (std::size_t i = 0; i < count; ++i) {
+        const Rect b = row_->children()[i]->bounds();
+        const float middle = row_->bounds().x + b.center().x;
+        if (rtl ? middle > local.x : middle < local.x)
+            slot = i + 1;
+    }
+    if (count == 0)
+        return {std::size_t{0}, 0.0f};
+    // its x: the start edge of the tab it would go before, or the end edge of the last
+    const bool afterLast = slot == count;
+    const Rect b = row_->children()[afterLast ? count - 1 : slot]->bounds();
+    const float startEdge = rtl ? b.right() : b.left(), endEdge = rtl ? b.left() : b.right();
+    return {slot, row_->bounds().x + (afterLast ? endEdge : startEdge)};
+}
+
+void MajorTabStrip::beginDrag(std::size_t index) {
+    dragging_ = index;
+    invalidatePaint();
+}
+
+void MajorTabStrip::dragTo(Point point) {
+    if (!dragging_)
+        return;
+    insertionX_ = slotAt(point).second;
+    invalidatePaint();
+}
+
+void MajorTabStrip::endDrag(Point point) {
+    if (!dragging_)
+        return;
+    const std::size_t from = *dragging_;
+    const std::size_t slot = slotAt(point).first;
+    dragging_.reset();
+    insertionX_.reset();
+    invalidatePaint();
+    const std::size_t to = slot > from ? slot - 1 : slot;
+    if (to != from)
+        later(*this, [tabs = tabs_, from, to] {
+            if (tabs)
+                tabs->moveTab(from, to);
+        });
+}
+
+void MajorTabStrip::paintOver(PaintContext& context) {
+    if (!insertionX_)
+        return;
+    const float top = padding().top;
+    context.painter.fillRect({*insertionX_ - 1, top + 4, 2, std::max(0.0f, size().height - top - 8)}, context.ui.theme.majorTab.insertion);
+}
+
+} // namespace glw

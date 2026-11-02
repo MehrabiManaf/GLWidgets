@@ -159,6 +159,11 @@ bool Widget::rightToLeft() const {
 Size Widget::measure(Size available) {
     if (!visible_)
         return desiredSize_ = {};
+    const UiRoot* r = root();
+    if (r && measuredGeneration_ == r->layoutGeneration() && measuredFor_ == available)
+        return desiredSize_;
+    measuredFor_ = available;
+    measuredGeneration_ = r ? r->layoutGeneration() : 0;
     const Size inner{std::max(0.0f, available.width - padding_.horizontal()), std::max(0.0f, available.height - padding_.vertical())};
     const Size content = measureContent(inner);
     const Size size{content.width + padding_.horizontal(), content.height + padding_.vertical()};

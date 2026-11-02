@@ -42,7 +42,9 @@ std::vector<Widget*> visibleChildren(Widget& widget) {
 
 void arrangeInCell(Widget& child, const Rect& cell, bool rightToLeft) {
     const Rect area = child.margin().deflate(cell, rightToLeft);
-    const Size wanted = child.desiredSize();
+    // measured again for the room it really gets: a child measured with the length it wanted (a stack along it, a
+    // splitter) may get less, and a wrapped text in it takes more lines then (the same room: the measure is kept)
+    const Size wanted = child.measure(area.size());
     const auto [x, width] = place(child.horizontalAlignment(), area.x, area.width, wanted.width, rightToLeft);
     const auto [y, height] = place(child.verticalAlignment(), area.y, area.height, wanted.height, false);
     child.arrange({x, y, width, height});

@@ -175,7 +175,7 @@ public:
     bool rightToLeft() const;                           // the direction in effect
 
     // The size it wants within `available` (unbounded is infinity): padding included, margin not; between its minimum and
-    // maximum sizes. Kept as desiredSize().
+    // maximum sizes. Kept as desiredSize(), and not measured again for the same space until the layout is invalidated.
     Size measure(Size available);
     Size desiredSize() const { return desiredSize_; }
     // Gives it `rect` (in the parent's coordinates) and arranges its content.
@@ -263,6 +263,8 @@ private:
 
     Rect bounds_;
     Size desiredSize_;
+    Size measuredFor_;                                  // the space desiredSize_ was measured for
+    std::uint64_t measuredGeneration_ = 0;              // in its root's layout generation (0: not kept)
     Insets margin_;
     Insets padding_;
     Size minimumSize_;

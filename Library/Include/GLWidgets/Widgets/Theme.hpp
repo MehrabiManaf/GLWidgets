@@ -111,6 +111,32 @@ struct SplitterStyle {
     float thickness = 6;            // what can be dragged
 };
 
+// Docked panels: the tabs of a stack, and where a dragged tab would go.
+struct DockStyle {
+    Color background;               // behind the panels' content
+    Color tabBar;                   // behind a stack's tabs
+    StateColor tab;                 // a tab not shown
+    Color activeTab;                // the tab shown
+    Color activeLine;               // along the top of the tab shown
+    Color text;
+    Color mutedText;                // the titles of the tabs not shown
+    Color dropZone;
+    float tabHeight = 30;
+};
+
+// The major tabs in a window's title bar, as a browser's.
+struct MajorTabStyle {
+    StateColor background;          // a tab not shown
+    Color active;                   // the tab shown: the color of what it shows, under it
+    Color text;
+    Color mutedText;
+    Color insertion;                // where a dragged tab would go
+    float minimumWidth = 90;
+    float maximumWidth = 220;
+    float cornerRadius = 8;
+    float topGap = 6;               // above the tabs: the caption, to drag the window by
+};
+
 struct CardStyle {
     Color background;
     Color border;
@@ -151,6 +177,8 @@ struct Theme {
     CheckBoxStyle checkBox;
     ScrollBarStyle scrollBar;
     SplitterStyle splitter;
+    DockStyle dock;
+    MajorTabStyle majorTab;
     CardStyle card;
     TitleBarStyle titleBar;
     WindowButtonStyle windowButton;
