@@ -10,8 +10,8 @@ interfaces inside 3D applications and games, and for charts. Every dependency is
 
 The project has just started. Windows (with chrome of their own, redrawn while they are resized), events, the GPU layer, the
 2D painter, text (Persian and English, mixed, shaped, wrapped, selectable), the widget core (layout, events, focus,
-right-to-left mirroring), themes and translations work. A few widgets exist (label, button, text field, panel, card);
-more of them, and docking, come next. The design, and what comes next, is in
+right-to-left mirroring), themes and translations work, with the basic widgets: label, button, check box, text field,
+panel, card, scroll area, splitter. Docking comes next. The design, and what comes next, is in
 [Docs/Architecture.md](Docs/Architecture.md); the libraries it is built with, and their notices, in
 [Docs/ThirdPartyNotices.md](Docs/ThirdPartyNotices.md).
 
@@ -31,8 +31,9 @@ On Linux, SDL3 needs the development packages of X11, Wayland and IBus: see `.gi
 Then, in `build/<preset>/bin`:
 
 - `widgets_demo` is an application made of widgets, written with the declarative builders (`glw::ui`): a window with its
-  own chrome, a text field, buttons (Tab moves the focus), cards that stretch, and buttons that switch to Persian (the
-  window is mirrored) and to the light theme. `--language fa` and `--light` start it so.
+  own chrome, split in two by a handle, a form (text field, check boxes, buttons; Tab moves the focus) and a long list,
+  each scrolling; buttons switch to Persian (the window is mirrored) and to the light theme. `--language fa` and
+  `--light` start it so.
 - `hello_window` opens two windows drawn by one GPU device.
 - `paint_demo` opens a borderless window with its own title bar, tabs and window buttons, and shows what the painter
   draws: a chart, shapes, a node canvas (the mouse wheel zooms it), text in Persian and English (drag to select).

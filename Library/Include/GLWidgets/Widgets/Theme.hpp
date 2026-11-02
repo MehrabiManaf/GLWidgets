@@ -87,6 +87,30 @@ struct LineEditStyle {
     float width = 220;              // what it asks for: fields are usually stretched
 };
 
+struct CheckBoxStyle {
+    StateColor background;          // of the box, unchecked
+    StateColor border;
+    StateColor checkedBackground;
+    Color check;                    // the mark
+    float size = 18;
+    float cornerRadius = 4;
+    float spacing = 8;              // between the box and the text
+    Color focusRing;
+};
+
+struct ScrollBarStyle {
+    Color track;
+    StateColor thumb;
+    float width = 10;
+    float minimumThumb = 24;        // the thumb's length, however long the content
+};
+
+struct SplitterStyle {
+    Color handle;                   // the line between the panes
+    Color active;                   // under the mouse, or dragged
+    float thickness = 6;            // what can be dragged
+};
+
 struct CardStyle {
     Color background;
     Color border;
@@ -124,6 +148,9 @@ struct Theme {
     float cornerRadius = 6;
     ButtonStyle button;
     LineEditStyle lineEdit;
+    CheckBoxStyle checkBox;
+    ScrollBarStyle scrollBar;
+    SplitterStyle splitter;
     CardStyle card;
     TitleBarStyle titleBar;
     WindowButtonStyle windowButton;

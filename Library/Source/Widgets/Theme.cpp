@@ -66,6 +66,20 @@ Theme Theme::fromPalette(const Palette& p) {
     t.lineEdit.caret = p.accent;
     t.lineEdit.cornerRadius = t.cornerRadius;
 
+    t.checkBox.background = {.normal = p.surface, .hovered = over(p.surface, p.hover), .pressed = over(p.surface, p.pressed)};
+    t.checkBox.border = {.normal = p.border, .hovered = p.accent, .disabled = over(p.border, p.hover)};
+    t.checkBox.checkedBackground = {.normal = p.accent, .disabled = p.border};
+    t.checkBox.check = {1, 1, 1, 1};
+    t.checkBox.focusRing = p.accent;
+
+    t.scrollBar.track = {p.text.r, p.text.g, p.text.b, 0.04f};
+    t.scrollBar.thumb = {.normal = {p.text.r, p.text.g, p.text.b, 0.25f},
+                         .hovered = Color{p.text.r, p.text.g, p.text.b, 0.40f},
+                         .pressed = Color{p.text.r, p.text.g, p.text.b, 0.55f}};
+
+    t.splitter.handle = p.border;
+    t.splitter.active = p.accent;
+
     t.card.background = p.surface;
     t.card.border = p.border;
     t.card.cornerRadius = t.cornerRadius;

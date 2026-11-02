@@ -247,7 +247,9 @@ The widget layer is the face of the library, so it lives in `glw` itself (`glw::
 - **Layout in two passes:** `measure` (the size wanted for the space offered: padding included, margin not, clamped to
   the minimum and maximum sizes), then `arrange` (the rectangle given, in the parent's coordinates). A `Layout` object
   places a widget's children (`StackLayout`: along an axis, sharing what is left by stretch). Without one, every child gets
-  the whole content.
+  the whole content. When a stack is too short for what its children want, they shrink as in CSS flexbox: those that
+  stretch give up length first, then the others, never below their minimum sizes. That is what lets a scroll area in a
+  stack take the room that is left, and scroll.
 - **Directions:** margin and padding have start and end sides, and alignments have Start and End. A widget's layout
   direction is its parent's unless set, up to the root. Setting it once at the root mirrors the whole interface: stacks,
   alignments, labels, and the window buttons. A label's text keeps its own direction (bidi). Its Start and End alignment
@@ -324,7 +326,8 @@ toolbar) can come on top of them later.
 
 ### Basic widgets
 
-`Label`, `Button`, `Panel`, `Card`, and `LineEdit`: a field of one line of text in any mix of directions. In `LineEdit`:
+`Label`, `Button`, `CheckBox`, `Panel`, `Card`, and `LineEdit`: a field of one line of text in any mix of directions. In
+`LineEdit`:
 
 - Arrow keys move the caret left and right on the screen, also across a change of direction; Home and End go to the
   logical ends.
@@ -335,9 +338,23 @@ toolbar) can come on top of them later.
   shows underlined at the caret until it is typed.
 - A text longer than the field scrolls to keep the caret in view.
 
-Still to come in the widget core: per-widget invalidation, shrinking below the desired size, scrolling containers
-(`ScrollArea`), `Splitter`, `CheckBox`, a blinking caret (it needs timers), cursors, and the native extras of the chrome
-(Windows 11 shadow, rounded corners and snap layouts).
+Containers:
+
+- **`ScrollArea`** shows a content larger than itself. It has scroll bars per policy (Auto, Always, Never). It scrolls
+  with the wheel (Shift: across), Page Up and Page Down, a dragged thumb, a pressed track, and to the widget the keyboard
+  focus goes to (`Widget::scrollIntoView`).
+  - It clips its content to its viewport: what is scrolled out is neither painted nor under the mouse
+    (`Widget::childrenClip`).
+  - A wheel turn it cannot use goes on to the scroll area around it.
+  - In right to left, the vertical bar is on the left, and the content starts on the right.
+- **`Splitter`** has panes with handles between them. Each pane takes a share of the room by its stretch, and never goes
+  below its minimum size. Dragging a handle sets the stretches to the panes' lengths, so a resized splitter keeps its
+  proportions. Side by side panes start on the start side.
+- **`CheckBox`** is a box and its text, toggled by a click or Space. The box is on the start side.
+
+Still to come in the widget core: per-widget invalidation, a blinking caret and animations (they need timers), mouse
+cursors (the resize cursor over a splitter's handle), and the native extras of the chrome (Windows 11 shadow, rounded
+corners and snap layouts).
 
 ## Docking *(planned, M5)*
 
@@ -482,7 +499,7 @@ The `GLW_USE_SYSTEM_SDL3` option uses an installed SDL3 instead of the pinned re
 | M1 | RHI resources and passes into textures, the shader pipeline, `Painter` / `DrawList` / `Renderer` (boxes, shadows, polylines, polygons, images, clipping, transforms), borderless windows with hit testing | Done: run on Direct3D 12 and Vulkan (Windows); Metal built, not yet run |
 | M2 | Text: HarfBuzz and FreeType, glyph atlas, bidi, line breaking, text layout with cursor and selection | Done, apart from system fonts and visual cursor movement (see [Text](#text)) |
 | M3 | Widget core: tree, events, focus, layout, a UI root independent of the platform, window chrome as widgets (with the native extras), live resize | Done, apart from the native extras of the chrome and what is listed in [Widgets](#widgets) |
-| M4 | Basic widgets (label, button, line edit, scroll area, splitter), styles, `LocalizedText` and catalogs, right-to-left layouts | In progress: styles, themes, translations, `LineEdit` and right-to-left are done; `ScrollArea`, `Splitter`, `CheckBox` next |
+| M4 | Basic widgets (label, button, line edit, scroll area, splitter), styles, `LocalizedText` and catalogs, right-to-left layouts | Done, apart from plural rules and the formatting of numbers and dates (see [Localization](#localization-and-right-to-left)) |
 | M5 | Docking: major and panel tabs, windows merging and splitting by their tabs, both modes, layout persistence | |
 | M6 | Validation: a node canvas and a code editor (FlowGraph), a chart widget with custom commands, an engine embedding example | |
 

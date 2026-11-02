@@ -254,4 +254,12 @@ void Widget::focus() {
         r->setFocus(this);
 }
 
+void Widget::scrollIntoView() {
+    // from the nearest scroll area out: each one moves what is in it, so the place is taken again at each level
+    for (Widget* ancestor = parent_; ancestor; ancestor = ancestor->parent_) {
+        const Point origin = mapToRoot({}) - ancestor->mapToRoot({});
+        ancestor->revealArea({origin.x, origin.y, bounds_.width, bounds_.height});
+    }
+}
+
 } // namespace glw

@@ -31,10 +31,13 @@
 // The Props are plain aggregates on purpose: C++26 reflection will read them to load interfaces from files and to
 // serialize them, without a line written for each widget.
 #include <GLWidgets/Widgets/Button.hpp>
+#include <GLWidgets/Widgets/CheckBox.hpp>
 #include <GLWidgets/Widgets/Label.hpp>
 #include <GLWidgets/Widgets/Layout.hpp>
 #include <GLWidgets/Widgets/LineEdit.hpp>
 #include <GLWidgets/Widgets/Panel.hpp>
+#include <GLWidgets/Widgets/ScrollArea.hpp>
+#include <GLWidgets/Widgets/Splitter.hpp>
 #include <GLWidgets/Widgets/Widget.hpp>
 
 #include <concepts>
@@ -170,6 +173,20 @@ Element<glw::Card> Card(C&&... items) {
     return withChildren(std::make_unique<glw::Card>(), children(std::forward<C>(items)...));
 }
 
+// A view on `content`, scrolled.
+template <Child C>
+Element<glw::ScrollArea> ScrollArea(glw::ScrollArea::Props props, C&& content) {
+    auto area = std::make_unique<glw::ScrollArea>(std::move(props));
+    area->setContent(std::unique_ptr<Widget>(std::forward<C>(content)));
+    return Element<glw::ScrollArea>(std::move(area));
+}
+
+// Panes with handles between them that the mouse drags; each pane's stretch is its share.
+template <Child... C>
+Element<glw::Splitter> Splitter(glw::Splitter::Props props, C&&... panes) {
+    return withChildren(std::make_unique<glw::Splitter>(std::move(props)), children(std::forward<C>(panes)...));
+}
+
 // Nothing, taking `stretch` shares of what a stack has left: pushes what follows it to the end.
 inline Element<Widget> Spacer(float stretch = 1) {
     return make<Widget>().stretch(stretch);
@@ -187,6 +204,10 @@ inline Element<glw::Button> Button(glw::Button::Props props) {
 
 inline Element<glw::LineEdit> LineEdit(glw::LineEdit::Props props) {
     return make<glw::LineEdit>(std::move(props));
+}
+
+inline Element<glw::CheckBox> CheckBox(glw::CheckBox::Props props) {
+    return make<glw::CheckBox>(std::move(props));
 }
 
 } // namespace glw::ui

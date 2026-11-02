@@ -208,6 +208,8 @@ public:
     bool hasFocus() const;
     void focus();
     bool hovered() const { return hovered_; }           // the mouse is over it or one of its children
+    // Scrolls the scroll areas it is in so that it shows (as far as they can).
+    void scrollIntoView();
 
 protected:
     // The size of its content for `available` (without padding): by default what its layout says, or the largest of its
@@ -237,6 +239,11 @@ protected:
     // For a widget filling a borderless window: what the point (its own coordinates) is for the window before the widget
     // under it is asked (WindowFrame: its resize borders).
     virtual std::optional<platform::HitArea> frameHitArea(Point point) const { return std::nullopt; }
+    // Where its children are cut when it clips them (its own coordinates): all of it by default, a scroll area's viewport.
+    // Outside of it, its children are neither painted nor under the mouse.
+    virtual Rect childrenClip() const { return {0, 0, bounds_.width, bounds_.height}; }
+    // `area` (its own coordinates), something in it that must show: a scroll area scrolls to it.
+    virtual void revealArea(const Rect& area) {}
 
     // The rectangle of its content in its own coordinates: its bounds at 0, 0 without padding.
     Rect contentRect() const;

@@ -138,7 +138,7 @@ void UiRoot::paintTree(Widget& widget, PaintContext& context) {
     painter.pushTransform({1, {widget.bounds_.x, widget.bounds_.y}});
     widget.paint(context);
     if (widget.clipsChildren_)
-        painter.pushClip({0, 0, widget.bounds_.width, widget.bounds_.height});
+        painter.pushClip(widget.childrenClip());
     for (const auto& child : widget.children_)
         paintTree(*child, context);
     if (widget.clipsChildren_)
@@ -153,10 +153,12 @@ Widget* UiRoot::hit(Widget& widget, Point point) {
     if (!widget.visible_ || !widget.bounds_.contains(point))
         return nullptr;
     const Point local{point.x - widget.bounds_.x, point.y - widget.bounds_.y};
-    // the last child is painted last, over the others: it is asked first
-    for (auto it = widget.children_.rbegin(); it != widget.children_.rend(); ++it) {
-        if (Widget* found = hit(**it, local))
-            return found;
+    // the last child is painted last, over the others: it is asked first; none where they are cut away
+    if (!widget.clipsChildren_ || widget.childrenClip().contains(local)) {
+        for (auto it = widget.children_.rbegin(); it != widget.children_.rend(); ++it) {
+            if (Widget* found = hit(**it, local))
+                return found;
+        }
     }
     return widget.hitTestVisible_ ? &widget : nullptr;
 }
@@ -367,6 +369,8 @@ void UiRoot::focusNext(bool backwards) {
     else
         index = ((it - candidates.begin()) + (backwards ? n - 1 : 1)) % n;
     setFocus(candidates[static_cast<std::size_t>(index)]);
+    // reached by the keyboard: it may be scrolled out of view
+    focus_->scrollIntoView();
 }
 
 void UiRoot::forget(Widget& subtree) {

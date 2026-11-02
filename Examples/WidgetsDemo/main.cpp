@@ -41,6 +41,10 @@ constexpr const char* persianCatalog = R"({
     "Close": "بستن",
     "a share": "یک سهم",
     "two shares": "دو سهم",
+    "Show the cards": "کارت‌ها دیده شوند",
+    "Enable the buttons": "دکمه‌ها فعال باشند",
+    "Item {n}": "مورد {n}",
+    "Drag the line between the two sides.": "خط میان دو طرف را بکشید.",
     "Close it with its button, Alt+F4, or the one above.": "با دکمه‌اش، Alt+F4 یا دکمه‌ی بالا ببندیدش."
   }
 })";
@@ -52,9 +56,26 @@ struct Page {
     glw::Window* window = nullptr;
     glw::Label* status = nullptr;
     glw::Button* themeButton = nullptr;
+    glw::Widget* buttons = nullptr;
+    glw::Widget* cards = nullptr;
     bool light = false;
 
+    // The form on one side, a long list on the other, a handle between them; each side scrolls when it is too long.
     std::unique_ptr<glw::Widget> build() {
+        return ui::Splitter({},
+                            ui::ScrollArea({}, form()).stretch(3).minimumSize({280, 0}),
+                            ui::ScrollArea({}, list()).stretch(2).minimumSize({160, 0}));
+    }
+
+    std::unique_ptr<glw::Widget> list() {
+        ui::Children rows;
+        rows.push_back(ui::Label({.text = tr("Drag the line between the two sides."), .muted = true, .wrap = true}));
+        for (int i = 1; i <= 40; ++i)
+            rows.push_back(ui::Card(ui::Label({.text = tr("Item {n}").arg("n", std::to_string(i))})).padding(glw::Insets::symmetric(12, 8)));
+        return ui::VStack({.spacing = 6}, std::move(rows)).padding(glw::Insets::all(16));
+    }
+
+    std::unique_ptr<glw::Widget> form() {
         return ui::VStack({.spacing = 16},
                    ui::Label({.text = tr("GLWidgets — Widgets"), .fontSize = 26}),
                    ui::Label({.text = tr("This window is made of widgets, its title bar too. Its edges resize it, and Tab moves the "
@@ -66,13 +87,15 @@ struct Page {
                               ui::LineEdit({.placeholder = tr("Type your name"), .onChanged = [this](const std::string& name) { greet(name); }})
                                   .stretch(1)),
                    ui::Label({.text = tr("Nothing typed yet.")}).bind(status),
+                   ui::CheckBox({.text = tr("Show the cards"), .checked = true, .onToggled = [this](bool on) { cards->setVisible(on); }}),
+                   ui::CheckBox({.text = tr("Enable the buttons"), .checked = true, .onToggled = [this](bool on) { buttons->setEnabled(on); }}),
                    ui::HStack({.spacing = 10},
                               // in the other language: the button says which one it goes to
                               ui::Button({.text = tr("فارسی"), .onClick = [this] { switchLanguage(); }}),
                               ui::Button({.text = tr("Light theme"), .onClick = [this] { switchTheme(); }}).bind(themeButton),
-                              ui::Button({.text = tr("Close"), .onClick = [this] { window->close(); }})),
-                   ui::HStack({.spacing = 12}, card(1, tr("a share")), card(2, tr("two shares")), card(1, tr("a share"))),
-                   ui::Spacer(),
+                              ui::Button({.text = tr("Close"), .onClick = [this] { window->close(); }}))
+                       .bind(buttons),
+                   ui::HStack({.spacing = 12}, card(1, tr("a share")), card(2, tr("two shares")), card(1, tr("a share"))).bind(cards),
                    ui::Label({.text = tr("Close it with its button, Alt+F4, or the one above."), .fontSize = 12, .muted = true}))
             .padding(glw::Insets::all(28));
     }

@@ -77,17 +77,48 @@ void StackLayout::arrange(Widget& widget, const Rect& content) {
         const Insets m = child->margin();
         return vertical ? child->desiredSize().height + m.vertical() : child->desiredSize().width + m.horizontal();
     };
+    const auto minimum = [&](const Widget* child) {
+        const Insets m = child->margin();
+        return vertical ? child->minimumSize().height + m.vertical() : child->minimumSize().width + m.horizontal();
+    };
+    const float room = vertical ? content.height : content.width;
     float total = spacing_ * static_cast<float>(children.size() - 1), shares = 0;
+    std::vector<float> lengths;
     for (const Widget* child : children) {
-        total += wanted(child);
+        lengths.push_back(wanted(child));
+        total += lengths.back();
         shares += std::max(0.0f, child->stretch());
     }
-    // what is left goes to the children that stretch; without one, it stays at the end
-    const float left = std::max(0.0f, (vertical ? content.height : content.width) - total);
+    if (total <= room) {
+        // what is left goes to the children that stretch; without one, it stays at the end
+        const float left = room - total;
+        for (std::size_t i = 0; i < children.size(); ++i)
+            lengths[i] += shares > 0 ? left * std::max(0.0f, children[i]->stretch()) / shares : 0.0f;
+    } else {
+        // too little room: the children that stretch give up length first, then the others, each in proportion to what it
+        // has above its minimum size (a scroll area shrinks to the room, and scrolls)
+        float excess = total - room;
+        for (const bool stretching : {true, false}) {
+            float capacity = 0;
+            for (std::size_t i = 0; i < children.size(); ++i) {
+                if ((children[i]->stretch() > 0) == stretching)
+                    capacity += std::max(0.0f, lengths[i] - minimum(children[i]));
+            }
+            if (capacity <= 0)
+                continue;
+            const float taken = std::min(excess, capacity);
+            for (std::size_t i = 0; i < children.size(); ++i) {
+                if ((children[i]->stretch() > 0) == stretching)
+                    lengths[i] -= taken * std::max(0.0f, lengths[i] - minimum(children[i])) / capacity;
+            }
+            excess -= taken;
+        }
+    }
 
     float position = 0;
-    for (Widget* child : children) {
-        const float length = wanted(child) + (shares > 0 ? left * std::max(0.0f, child->stretch()) / shares : 0.0f);
+    for (std::size_t i = 0; i < children.size(); ++i) {
+        Widget* child = children[i];
+        const float length = lengths[i];
         Rect cell;
         if (vertical)
             cell = {content.x, content.y + position, content.width, length};
