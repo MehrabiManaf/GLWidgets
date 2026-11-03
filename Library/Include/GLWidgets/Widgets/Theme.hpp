@@ -110,6 +110,18 @@ struct ScrollBarStyle {
     float minimumThumb = 24;        // the thumb's length, however long the content
 };
 
+// The rows of item views (ListView): a pill under the mouse; the one selected marked by a soft background and a short bar at
+// its start, as Fluent's lists; the current one ringed while the view has the focus.
+struct ItemViewStyle {
+    StateColor row;                 // behind a row: under the mouse, pressed
+    Color selected;                 // behind the one selected
+    Color indicator;                // the bar at its start
+    Color focusRing;
+    float rowHeight = 28;
+    float cornerRadius = 4;
+    float inset = 3;                // rows drawn this much in from the view's sides
+};
+
 struct SplitterStyle {
     Color handle;                   // the line between the panes
     Color active;                   // under the mouse, or dragged
@@ -188,6 +200,7 @@ struct Theme {
     LineEditStyle lineEdit;
     CheckBoxStyle checkBox;
     ScrollBarStyle scrollBar;
+    ItemViewStyle itemView;
     SplitterStyle splitter;
     DockStyle dock;
     MajorTabStyle majorTab;

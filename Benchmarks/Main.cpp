@@ -9,6 +9,7 @@
 #include <GLWidgets/Text/GlyphAtlas.hpp>
 #include <GLWidgets/Widgets/Label.hpp>
 #include <GLWidgets/Widgets/Layout.hpp>
+#include <GLWidgets/Widgets/ListView.hpp>
 #include <GLWidgets/Widgets/ScrollArea.hpp>
 #include <GLWidgets/Widgets/UiRoot.hpp>
 
@@ -75,6 +76,54 @@ void labelsInAScrollArea(glw::UiContext& ui, int count) {
     std::printf("%9d | %8.1f | %8.1f | %8.2f | %8.2f | %8.2f | %8zu\n", count, build, layout, paint, scroll1, text, vertices);
 }
 
+// Items made when asked: a model of any size costs nothing.
+class Numbers final : public glw::ListModel {
+public:
+    explicit Numbers(std::size_t count) : count_(count) {}
+    std::size_t count() const override { return count_; }
+    void changed(std::size_t index) { notifyChanged(index, 1); }
+
+private:
+    std::size_t count_;
+};
+
+void itemsInAListView(glw::UiContext& ui, std::size_t count, bool uniform) {
+    glw::UiRoot root(ui);
+    root.setSize({800, 600});
+    auto numbers = std::make_shared<Numbers>(count);
+    glw::ListView* list = nullptr;
+    const double build = once([&] {
+        auto made = std::make_unique<glw::ListView>();
+        list = made.get();
+        list->setModel(numbers);
+        list->setDelegate(std::make_unique<glw::TextDelegate>([](std::size_t i) { return glw::LocalizedText("Item " + std::to_string(i)); }));
+        if (!uniform)
+            list->setRowHeight(0.0f);
+        root.setContent(std::move(made));
+    });
+    glw::paint::DrawList drawn;
+    const double layout = once([&] { root.layout(); });
+    const double paint = best(5, [&] { root.paint(drawn); });
+    double at = 0;
+    const double scroll = best(5, [&] {
+        at += 120;
+        list->setOffset(at);
+        root.paint(drawn);
+    });
+    // far: half way down
+    const double jump = best(5, [&] {
+        at = list->maximumOffset() / 2 + (at > list->maximumOffset() / 2 ? -1000 : 1000);
+        list->setOffset(at);
+        root.paint(drawn);
+    });
+    const double text = best(5, [&] {
+        numbers->changed(list->shownItems().first);
+        root.paint(drawn);
+    });
+    std::printf("%9zu | %-8s | %8.2f | %8.2f | %8.2f | %8.2f | %8.2f | %8.2f | %8zu\n", count, uniform ? "uniform" : "measured", build,
+                layout, paint, scroll, jump, text, list->children().size());
+}
+
 } // namespace
 
 int main(int argc, char** argv) {
@@ -95,5 +144,13 @@ int main(int argc, char** argv) {
     std::printf("   labels |    build |   layout |    paint |   scroll |     text | vertices\n");
     for (int count : counts)
         labelsInAScrollArea(ui, count);
+
+    std::printf("\nItems in a list view (a widget for each that shows), milliseconds\n");
+    std::printf("    items | rows     |    build |   layout |    paint |   scroll |     jump |     text |  widgets\n");
+    for (std::size_t count : {std::size_t{1'000'000}, std::size_t{100'000'000}}) {
+        itemsInAListView(ui, count, true);
+        if (count <= 1'000'000)
+            itemsInAListView(ui, count, false);
+    }
     return 0;
 }

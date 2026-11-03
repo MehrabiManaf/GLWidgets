@@ -86,6 +86,11 @@ Theme Theme::fromPalette(const Palette& p) {
                          .hovered = Color{p.text.r, p.text.g, p.text.b, 0.40f},
                          .pressed = Color{p.text.r, p.text.g, p.text.b, 0.55f}};
 
+    t.itemView.row = {.normal = {0, 0, 0, 0}, .hovered = p.hover, .pressed = p.pressed};
+    t.itemView.selected = {p.text.r, p.text.g, p.text.b, 0.09f};
+    t.itemView.indicator = p.accent;
+    t.itemView.focusRing = {p.text.r, p.text.g, p.text.b, 0.55f};
+
     t.splitter.handle = p.border;
     t.splitter.active = p.accent;
 

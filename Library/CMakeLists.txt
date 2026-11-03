@@ -31,13 +31,16 @@ add_library(GLWidgets ${GLW_LIB_TYPE}
     Source/Widgets/Button.cpp
     Source/Widgets/CheckBox.cpp
     Source/Widgets/Docking.cpp
+    Source/Widgets/ItemModel.cpp
     Source/Widgets/Json.cpp
     Source/Widgets/Label.cpp
     Source/Widgets/Layout.cpp
     Source/Widgets/LineEdit.cpp
+    Source/Widgets/ListView.cpp
     Source/Widgets/Localization.cpp
     Source/Widgets/MajorTabs.cpp
     Source/Widgets/Panel.cpp
+    Source/Widgets/RowHeights.cpp
     Source/Widgets/ScrollArea.cpp
     Source/Widgets/Splitter.cpp
     Source/Widgets/Theme.cpp

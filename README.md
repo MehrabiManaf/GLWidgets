@@ -41,9 +41,9 @@ Then, in `build/<preset>/bin`:
   shown, in any window. `--workspace FILE` saves the windows and everything in them when it ends, and starts with them
   again.
 - `widgets_demo` is an application made of widgets, written with the declarative builders (`glw::ui`): a window with its
-  own chrome, split in two by a handle, a form (text field, check boxes, buttons; Tab moves the focus) and a long list,
-  each scrolling; buttons switch to Persian (the window is mirrored) and to the light theme. `--language fa` and
-  `--light` start it so.
+  own chrome, split in two by a handle, a form (text field, check boxes, buttons; Tab moves the focus) and a list of a
+  million items (only those that show are widgets); buttons switch to Persian (the window is mirrored) and to the light
+  theme. `--language fa` and `--light` start it so.
 - `hello_window` opens two windows drawn by one GPU device.
 - `glw_benchmarks` times the widget layer with many widgets (laid out, painted, scrolled, a text changed), without a
   window: run it from a Release build to compare a change against what was.

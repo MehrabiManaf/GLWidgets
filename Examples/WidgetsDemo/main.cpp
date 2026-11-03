@@ -3,13 +3,15 @@
 // Widgets in an application: a window with chrome of its own (title bar, buttons, borders that resize it, redrawn while it
 // is resized), a text field, buttons that take the focus (Tab moves it), cards that stretch. Its texts are translated: the
 // language button shows them in Persian, which also mirrors the window; the theme button changes the colors of everything.
-// The interface is written with the builders of Widgets/Declarative.hpp.
+// The interface is written with the builders of Widgets/Declarative.hpp. Its other side is a list of a million items: only
+// those that show are widgets.
 //
 //   widgets_demo [--frames N] [--language fa] [--light]
 //
 // --frames N draws N frames and exits: a smoke test.
 #include <GLWidgets/Widgets/Application.hpp>
 #include <GLWidgets/Widgets/Declarative.hpp>
+#include <GLWidgets/Widgets/ListView.hpp>
 
 #include <algorithm>
 #include <cstdio>
@@ -45,9 +47,17 @@ constexpr const char* persianCatalog = R"({
     "Enable the buttons": "دکمه‌ها فعال باشند",
     "Item {n}": "مورد {n}",
     "Drag the line between the two sides.": "خط میان دو طرف را بکشید.",
+    "A million items, and only those that show are widgets. Drag the line between the two sides.":
+      "یک میلیون مورد، و فقط آن‌هایی که دیده می‌شوند ویجت‌اند. خط میان دو طرف را بکشید.",
     "Close it with its button, Alt+F4, or the one above.": "با دکمه‌اش، Alt+F4 یا دکمه‌ی بالا ببندیدش."
   }
 })";
+
+// A million items, made when they show: the model holds their number only.
+class Million final : public glw::ListModel {
+public:
+    std::size_t count() const override { return 1'000'000; }
+};
 
 // The window's interface, and what its handlers change: bound pointers live as long as the handlers that use them, so they
 // are members, and the handlers capture `this`.
@@ -60,19 +70,25 @@ struct Page {
     glw::Widget* cards = nullptr;
     bool light = false;
 
-    // The form on one side, a long list on the other, a handle between them; each side scrolls when it is too long.
+    // The form on one side, a list of a million items on the other, a handle between them; each side scrolls.
     std::unique_ptr<glw::Widget> build() {
-        return ui::Splitter({},
-                            ui::ScrollArea({}, form()).stretch(3).minimumSize({280, 0}),
-                            ui::ScrollArea({}, list()).stretch(2).minimumSize({160, 0}));
+        std::unique_ptr<glw::Widget> items = list();
+        items->setStretch(2);
+        items->setMinimumSize({160, 0});
+        return ui::Splitter({}, ui::ScrollArea({}, form()).stretch(3).minimumSize({280, 0}), std::move(items));
     }
 
     std::unique_ptr<glw::Widget> list() {
-        ui::Children rows;
-        rows.push_back(ui::Label({.text = tr("Drag the line between the two sides."), .muted = true, .wrap = true}));
-        for (int i = 1; i <= 40; ++i)
-            rows.push_back(ui::Card(ui::Label({.text = tr("Item {n}").arg("n", std::to_string(i))})).padding(glw::Insets::symmetric(12, 8)));
-        return ui::VStack({.spacing = 6}, std::move(rows)).padding(glw::Insets::all(16));
+        auto view = std::make_unique<glw::ListView>();
+        view->setModel(std::make_shared<Million>());
+        view->setDelegate(std::make_unique<glw::TextDelegate>([](std::size_t i) { return tr("Item {n}").arg("n", std::to_string(i + 1)); }));
+        view->setStretch(1);
+        return ui::VStack({.spacing = 8},
+                          ui::Label({.text = tr("A million items, and only those that show are widgets. Drag the line between the two sides."),
+                                     .muted = true,
+                                     .wrap = true}),
+                          std::move(view))
+            .padding(glw::Insets::all(16));
     }
 
     std::unique_ptr<glw::Widget> form() {

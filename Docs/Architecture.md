@@ -372,8 +372,20 @@ widget out of what shows (the window, a clipping ancestor such as a scroll area'
 around each widget is counted as its own, for what paints out of its bounds (focus rings, shadows). `glw_benchmarks`
 measures it (Release, by hand): with 100 000 labels in a scroll area, painting went from 90 to 2.7 ms and a step of the
 wheel from 104 to 2.9 ms. What stays proportional to the number of widgets (a stack walks its children when one changes,
-and every widget is made and measured once) is for virtualized views of models, for data of any size (planned: list,
-tree and table views).
+and every widget is made and measured once) is for virtualized views of models, for data of any size.
+
+**Item views show models of any size** (`Widgets/ItemModel.hpp`, `Widgets/ListView.hpp`; tree and table views planned on
+the same ground). A model says how many items it has and tells its views what changed, by ranges (inserted, removed,
+changed, reset); what an item is stays the model's own, and a delegate that knows the model makes a row's widget
+(`makeRow`) and shows an item in it (`bindRow`): nothing goes through a value of any type, as Qt's `QVariant` would. Only
+the rows that show are widgets, used again for other items as the view scrolls (the view scrolls itself: no content of
+its whole height). Rows are all of one height (where a row is, is a product: no memory per item) or each as high as its
+widget measures, estimated until it shows, in a Fenwick tree of doubles (where a row starts and which row is at a place,
+in O(log n)); what shows stays in place as estimates are corrected, and a view scrolled to its end stays at it. With a
+million items (or a hundred million), laying out, painting, scrolling a step and jumping to the middle each take less
+than a millisecond (`glw_benchmarks`). A ListView has a current item, selected in Single mode (a soft background and a
+short bar at its start, as Fluent's lists), chosen by the mouse and the keys, activated by a double click or Enter; a
+`StringListModel` shows its texts by itself.
 
 Still to come in the widget core: a blinking caret and animations (they need timers), mouse cursors (the resize cursor
 over a splitter's handle), and the native extras of the chrome (Windows 11 shadow, rounded corners and snap layouts).
