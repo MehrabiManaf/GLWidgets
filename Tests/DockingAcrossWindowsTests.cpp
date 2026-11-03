@@ -893,3 +893,15 @@ TEST(whereWindowsAreNotPlacedAStacksTitleFloatsItsGroupOutOfTheWindow) {
     DockTabs* floated = g.area->tabsOf("palette");
     CHECK(floated && floated == g.area->tabsOf("inspector") && floated->area()->floating());
 }
+
+TEST(aFloatingWindowKeepsItsTabBar) {
+    Screen screen;
+    Tools t(screen, {0, 0});
+    screen.drag(*t.window, panelTab(screen, *t.area, "palette"), {1200, 300});
+    screen.layout();
+    DockTabs& floating = *t.area->tabsOf("palette");
+    CHECK(floating.area()->floating());
+    // its bar is its window's title: not hidden, and no button for it (the float button only)
+    floating.setTabBarHidden(true);
+    CHECK(!floating.tabBarHidden() && floating.children()[1]->children().size() == 1);
+}

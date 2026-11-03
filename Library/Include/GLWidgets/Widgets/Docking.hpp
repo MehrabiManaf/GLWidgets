@@ -32,6 +32,9 @@
 //   tabs (setCenter): global panels dock there, in any window, and stay whichever major tab is shown. When a window closes,
 //   its global panels go to another one.
 //
+// A stack of one panel may hide its tab bar (its button, or setTabBarHidden): the panel takes all of the stack, and a little
+// triangle in its start corner shows the bar again. Where the user knows the panels, it gives them their room.
+//
 // A stack's tabs are each as wide as their title (cut with … past the style's maximum); when they do not fit they scroll,
 // by the wheel and by a thin bar along the bottom of the tab bar, the tab shown kept in view. At the end of the tab bar are
 // the buttons of the panel shown (DockPanel::buttons) and the stack's float button: it floats the panel shown, or, in a
@@ -109,6 +112,15 @@ public:
     // Where its guide for `side` is (its coordinates), shown while a tab is dragged over it: the middle of the cross for
     // Center, the one on that side of it for the others (Start and End mirrored with the direction).
     Rect guide(DockSide side) const;
+
+    // With one panel only: its tab bar hidden, the panel taking all of the stack; the triangle in its start corner shows the
+    // bar again (pressed). Shown again by itself when another panel joins it. Not in a floating window, whose tab bar is
+    // its title.
+    void setTabBarHidden(bool hidden);
+    bool tabBarHidden() const { return barHidden_; }
+    float barHeight() const;                // its tab bar's: none while it is hidden
+    // Where the triangle that shows the bar again is (its coordinates), while the bar is hidden.
+    Rect revealCorner() const;
     // Takes the panel at `index` out: the caller has it now.
     DockPanel take(std::size_t index);
 
@@ -116,6 +128,9 @@ protected:
     Size measureContent(Size available) override;
     void arrangeContent(const Rect& content) override;
     void paint(PaintContext& context) override;
+    void paintOver(PaintContext& context) override;
+    void onPreviewMouse(MouseEvent& event) override;
+    void onHoverChanged(bool hovered) override;
     void onRootChanged() override;
 
 private:
@@ -129,7 +144,7 @@ private:
         DockScope scope = DockScope::MajorTab;
     };
     void rebuildBar();
-    void rebuildTools();                    // the buttons of the panel shown, and the float button
+    void rebuildTools();                    // the buttons of the panel shown, the hide and float buttons
     // In a floating window: its bar is the window's title where it has no tab (`title`), and leaves `reserve` at its
     // `left` or right for the window buttons.
     void setTitleArea(bool title, float reserve, bool left);
@@ -141,6 +156,8 @@ private:
     float reserve_ = 0;
     bool reserveLeft_ = false;
     bool title_ = false;
+    bool barHidden_ = false;
+    bool cornerHovered_ = false;
 };
 
 // Nodes side by side (horizontal) or one above the other, with handles between them.

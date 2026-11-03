@@ -355,6 +355,14 @@ void floatIcon(PaintContext& context, const Rect& r, Color color) {
     p.drawLine({r.right(), r.y}, {r.right(), r.y + 5}, 1.2f, color);
 }
 
+// The hide button's icon: a box with the corner the bar goes back to.
+void hideIcon(PaintContext& context, const Rect& r, Color color) {
+    paint::Painter& p = context.painter;
+    p.strokeRoundedRect({r.x + 0.5f, r.y + 0.5f, r.width - 1, r.height - 1}, 1.5f, 1.2f, color);
+    const Point corner[] = {{r.x + 2, r.y + 2}, {r.x + r.width * 0.55f, r.y + 2}, {r.x + 2, r.y + r.height * 0.55f}};
+    p.fillConvexPolygon(corner, color);
+}
+
 void dockIcon(PaintContext& context, const Rect& r, Color color) {
     paint::Painter& p = context.painter;
     p.strokeRoundedRect({r.x + 0.5f, r.y + 0.5f, r.width - 1, r.height - 1}, 1.5f, 1.2f, color);
@@ -393,6 +401,8 @@ void writeNode(std::string& out, const Widget& node, const Widget* center) {
         }
         out += "],\"active\":";
         appendNumber(out, static_cast<float>(tabs->active()));
+        if (tabs->tabBarHidden())
+            out += ",\"hidden\":true";
         out += '}';
     }
 }
@@ -429,7 +439,8 @@ float numberOf(const json::Value* value, float otherwise) {
 
 // The node `saved` describes, with the panels it names taken from `panels` (and the center, where it says); none when it
 // would be empty.
-std::unique_ptr<Widget> buildNode(const json::Value& saved, std::map<std::string, DockPanel>& panels, std::unique_ptr<Widget>& center) {
+std::unique_ptr<Widget> buildNode(const json::Value& saved, std::map<std::string, DockPanel>& panels, std::unique_ptr<Widget>& center,
+                                  bool barsHide) {
     const float share = std::max(0.01f, numberOf(saved.member("share"), 1));
     if (saved.member("center")) {
         if (center)
@@ -439,7 +450,7 @@ std::unique_ptr<Widget> buildNode(const json::Value& saved, std::map<std::string
     if (const json::Value* split = saved.member("split")) {
         auto node = std::make_unique<DockSplit>(*split->string() == "horizontal" ? Orientation::Horizontal : Orientation::Vertical);
         for (const json::Value& pane : *saved.member("panes")->array()) {
-            if (auto child = buildNode(pane, panels, center))
+            if (auto child = buildNode(pane, panels, center, barsHide))
                 node->addChild(std::move(child));
         }
         if (node->children().empty())
@@ -463,6 +474,9 @@ std::unique_ptr<Widget> buildNode(const json::Value& saved, std::map<std::string
     if (tabs->count() == 0)
         return nullptr;
     tabs->setActive(std::min(static_cast<std::size_t>(std::max(0.0f, numberOf(saved.member("active"), 0))), tabs->count() - 1));
+    const json::Value* hidden = saved.member("hidden");
+    if (const bool* yes = hidden ? std::get_if<bool>(&hidden->data) : nullptr; yes && *yes && barsHide)
+        tabs->setTabBarHidden(true);
     tabs->setStretch(share);
     return tabs;
 }
@@ -499,7 +513,7 @@ Rect guideIn(const Rect& content, bool rtl, DockSide side) {
 // Where a dropped tab goes in a stack (below its tabs) or a center (all of it), in its coordinates.
 Rect dropRoom(const Widget& node) {
     const auto* tabs = dynamic_cast<const DockTabs*>(&node);
-    const float bar = tabs ? tabs->style().tabHeight : 0.0f;
+    const float bar = tabs ? tabs->barHeight() : 0.0f;
     return {0, bar, node.size().width, std::max(0.0f, node.size().height - bar)};
 }
 
@@ -570,6 +584,8 @@ void DockTabs::add(DockPanel panel, std::size_t index) {
     Widget& shown = addChild(std::move(content));
     entries_.insert(entries_.begin() + static_cast<std::ptrdiff_t>(index),
                     Entry{std::move(panel.id), std::move(panel.title), &shown, panel.closable, std::move(panel.buttons), panel.scope});
+    if (entries_.size() > 1)
+        setTabBarHidden(false);     // its tabs: to choose between them
     rebuildBar();
     setActive(index);
 }
@@ -610,6 +626,9 @@ void DockTabs::rebuildTools() {
         return;
     for (const DockButton& button : entries_[active_].buttons)
         tools_->add(std::make_unique<DockToolButton>(button.icon, button.onClick));
+    // one panel, docked (a floating window's bar is its title): its tab bar may be hidden
+    if (const DockArea* a = area(); entries_.size() == 1 && a && !a->floating())
+        tools_->add(std::make_unique<DockToolButton>(hideIcon, [this] { setTabBarHidden(true); }));
     // the float button, where there are windows to float in
     const UiContext* ui = context();
     if (!ui || !ui->docking)
@@ -636,7 +655,7 @@ void DockTabs::rebuildBar() {
 }
 
 Size DockTabs::measureContent(Size available) {
-    const float bar = style().tabHeight;
+    const float bar = barHeight();
     bar_->measure({available.width, bar});
     tools_->measure({unbounded, bar});
     Size content;
@@ -648,7 +667,7 @@ Size DockTabs::measureContent(Size available) {
 }
 
 void DockTabs::arrangeContent(const Rect& content) {
-    const float bar = style().tabHeight;
+    const float bar = barHeight();
     const bool rtl = rightToLeft();
     // the bar: what the window buttons leave (a floating window's), the tools at its end, the tabs before them
     const float reserve = std::min(reserve_, content.width);
@@ -691,7 +710,64 @@ void DockTabs::paint(PaintContext& context) {
     const Rect r{0, 0, size().width, size().height};
     context.painter.fillRoundedRect(r, s.cornerRadius, s.background);
     context.painter.strokeRoundedRect(r, s.cornerRadius, 1, s.border);
-    context.painter.fillRect({s.cornerRadius / 2, s.tabHeight - 1, std::max(0.0f, r.width - s.cornerRadius), 1}, s.separator);
+    if (!barHidden_)
+        context.painter.fillRect({s.cornerRadius / 2, s.tabHeight - 1, std::max(0.0f, r.width - s.cornerRadius), 1}, s.separator);
+}
+
+float DockTabs::barHeight() const {
+    return barHidden_ ? 0.0f : style().tabHeight;
+}
+
+void DockTabs::setTabBarHidden(bool hidden) {
+    const DockArea* a = area();
+    hidden = hidden && entries_.size() == 1 && !(a && a->floating());
+    if (hidden == barHidden_)
+        return;
+    barHidden_ = hidden;
+    cornerHovered_ = false;
+    bar_->setVisible(!hidden);
+    tools_->setVisible(!hidden);
+    invalidateLayout();
+}
+
+Rect DockTabs::revealCorner() const {
+    constexpr float size = 14;
+    return rightToLeft() ? Rect{this->size().width - size, 0, size, size} : Rect{0, 0, size, size};
+}
+
+void DockTabs::paintOver(PaintContext& context) {
+    if (!barHidden_)
+        return;
+    // the corner the bar went to: a little triangle, the accent's under the mouse
+    const Rect c = revealCorner();
+    const float inset = 3, length = cornerHovered_ ? 11.0f : 8.0f;
+    const bool rtl = rightToLeft();
+    const float x = rtl ? c.right() - inset : c.x + inset, dx = rtl ? -length : length;
+    const Point triangle[] = {{x, c.y + inset}, {x + dx, c.y + inset}, {x, c.y + inset + length}};
+    const DockStyle& s = style();
+    context.painter.fillConvexPolygon(triangle, cornerHovered_ ? s.activeLine : s.mutedText);
+}
+
+void DockTabs::onPreviewMouse(MouseEvent& event) {
+    if (!barHidden_)
+        return;
+    const bool over = revealCorner().contains(event.position);
+    if (over != cornerHovered_) {
+        cornerHovered_ = over;
+        invalidatePaint();
+    }
+    // pressed: the bar back (before the panel under it gets the press)
+    if (over && event.type == MouseEventType::Press && event.button == platform::MouseButton::Left) {
+        event.handled = true;
+        setTabBarHidden(false);
+    }
+}
+
+void DockTabs::onHoverChanged(bool hovered) {
+    if (!hovered && cornerHovered_) {
+        cornerHovered_ = false;
+        invalidatePaint();
+    }
 }
 
 void DockSplit::onRootChanged() {
@@ -1197,7 +1273,7 @@ DockTabs* DockArea::titleAt(Point point) const {
         return nullptr;
     // the stack itself (by its buttons, after its tabs) on its bar, or its tab row where it has no tab
     auto* tabs = dynamic_cast<DockTabs*>(w);
-    if (tabs && tabs->mapFromRoot(mapToRoot(point)).y >= tabs->style().tabHeight)
+    if (tabs && tabs->mapFromRoot(mapToRoot(point)).y >= tabs->barHeight())
         return nullptr;
     if (!tabs) {
         tabs = dynamic_cast<DockTabs*>(w->parent());
@@ -1338,7 +1414,7 @@ void DockArea::dragTo(Point point) {
         // a tab along its stack's tab bar stays there; out of it, it floats now
         const DockTabs& source = *drag_->source;
         const Point o = source.mapToRoot({});
-        const float bar = source.style().tabHeight;
+        const float bar = source.barHeight();
         if (!Rect{o.x, o.y - tearReach, source.size().width, bar + 2 * tearReach}.contains(point)) {
             if (shown)
                 shown->clearDrop();
@@ -1362,7 +1438,7 @@ void DockArea::dragTo(Point point) {
     if (!node)
         return;
     const Point local = node->mapFromRoot(at);
-    const float bar = tabs ? tabs->style().tabHeight : 0.0f;
+    const float bar = tabs ? tabs->barHeight() : 0.0f;
     std::optional<DockSide> side;
     if (tabs && local.y >= 0 && local.y < bar && local.x >= 0 && local.x < tabs->size().width)
         side = DockSide::Center;
@@ -1554,7 +1630,7 @@ bool DockArea::restoreLayout(std::string_view layout, std::string* error) {
     std::unique_ptr<Widget> center = center_ ? center_->parent()->removeChild(*center_) : nullptr;
     if (Widget* n = node())
         removeChild(*n);
-    std::unique_ptr<Widget> built = buildNode(*saved, panels, center);
+    std::unique_ptr<Widget> built = buildNode(*saved, panels, center, !floating_);     // a floating window's bars are its title
     if (center) {
         // a layout without the center: the center first, the layout beside it
         center->setStretch(3);

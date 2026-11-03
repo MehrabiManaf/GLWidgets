@@ -434,6 +434,9 @@ In a dock area:
 - **Buttons at the end of a stack's tab bar**: those of the panel shown (`DockPanel::buttons`: an icon drawn by the
   application, and what a click does), then the float button, which floats the panel shown by its stack's place, or,
   in a floating window, docks it back in its area. The float button is there only with a docking host.
+- **A stack of one panel can hide its tab bar** (its hide button, `DockTabs::setTabBarHidden`), as Unreal Engine's "hide
+  tab well": the panel takes all of the stack, and a little triangle in its start corner shows the bar again. It comes back
+  by itself when another panel joins the stack; a floating window keeps its bar, which is its title. Saved layouts keep it.
 - **`addPanel(panel, nextTo, side, share)`** builds a layout in code: beside a stack on its Start, End, Top or Bottom
   side, or in it.
 

@@ -362,3 +362,41 @@ TEST(aCenterKeepsItsPlace) {
     root.layout();
     CHECK(near(center->size().width, area.size().width) && near(center->size().height, area.size().height));
 }
+
+TEST(aStackOfOnePanelHidesItsTabBar) {
+    Docked d;
+    auto click = [&](Point at) {
+        d.root.dispatch(platform::MouseButtonChanged{1, platform::MouseButton::Left, true, 1, at});
+        d.root.dispatch(platform::MouseButtonChanged{1, platform::MouseButton::Left, false, 1, at});
+        d.root.layout();
+    };
+    // the palette's stack (one panel): its hide button, the last of its tools (no float button without a docking host)
+    const Widget& tools = *d.palette->children()[1];
+    CHECK(tools.children().size() == 1);
+    click(tools.children().back()->mapToRoot({12, 12}));
+    CHECK(d.palette->tabBarHidden() && d.palette->barHeight() == 0);
+    // the panel takes all of the stack
+    const Widget& content = *d.palette->panelContent(0);
+    CHECK(near(content.mapToRoot({}).y, d.palette->mapToRoot({}).y) && near(content.size().height, d.palette->size().height));
+    // saved hidden, restored hidden
+    const std::string saved = d.area->saveLayout();
+    CHECK(saved.find("\"hidden\":true") != std::string::npos);
+    CHECK(d.area->restoreLayout(saved));
+    d.root.layout();
+    CHECK(d.area->tabsOf("palette")->tabBarHidden());
+    // its corner pressed: the bar again
+    DockTabs& palette = *d.area->tabsOf("palette");
+    click(palette.mapToRoot(palette.revealCorner().center()));
+    CHECK(!palette.tabBarHidden() && palette.barHeight() > 0);
+
+    // a stack of two does not hide its bar (the stacks are others since the layout was restored)
+    DockTabs& output = *d.area->tabsOf("output");
+    output.setTabBarHidden(true);
+    CHECK(!output.tabBarHidden());
+    // another panel joining a hidden stack: its bar again
+    palette.setTabBarHidden(true);
+    d.root.layout();
+    CHECK(palette.tabBarHidden());
+    d.drag(d.tab(output, *output.indexOf("search")), palette.mapToRoot(palette.guide(DockSide::Center).center()));
+    CHECK(palette.count() == 2 && !palette.tabBarHidden());
+}
