@@ -45,16 +45,19 @@ struct StateColor {
     }
 };
 
-// The colors everything is made of.
+// The colors everything is made of, in layers as Fluent 2 (Windows 11) has them: the title bar the darkest, the window's
+// background over it, panels (layers, the islands of docked panels) over that, controls on them.
 struct Palette {
     Color window;           // the background of windows
-    Color surface;          // what stands on it: buttons, fields, cards
+    Color layer;            // a panel on it: a dock stack, a card
+    Color surface;          // what stands on that: buttons, fields
     Color titleBar;
     Color text;
     Color mutedText;
     Color disabledText;
     Color accent;
-    Color border;
+    Color onAccent;         // text and marks on the accent
+    Color border;           // a hairline: low contrast, so things are told apart by their layers more than by lines
     Color hover;            // laid over a surface the mouse is on
     Color pressed;
     Color selection;        // behind selected text
@@ -69,8 +72,8 @@ struct ButtonStyle {
     StateColor border;
     StateColor text;
     float borderWidth = 1;
-    float cornerRadius = 6;
-    Insets padding{14, 6, 14, 6};
+    float cornerRadius = 4;
+    Insets padding{12, 5, 12, 5};
     Color focusRing;
 };
 
@@ -81,9 +84,11 @@ struct LineEditStyle {
     Color placeholder;
     Color selection;
     Color caret;
+    Color focusLine;                // along its bottom while it has the focus
     float borderWidth = 1;
-    float cornerRadius = 6;
-    Insets padding{10, 6, 10, 6};
+    float cornerRadius = 4;
+    float focusLineWidth = 2;
+    Insets padding{10, 5, 10, 5};
     float width = 220;              // what it asks for: fields are usually stretched
 };
 
@@ -92,7 +97,7 @@ struct CheckBoxStyle {
     StateColor border;
     StateColor checkedBackground;
     Color check;                    // the mark
-    float size = 18;
+    float size = 16;
     float cornerRadius = 4;
     float spacing = 8;              // between the box and the text
     Color focusRing;
@@ -101,7 +106,7 @@ struct CheckBoxStyle {
 struct ScrollBarStyle {
     Color track;
     StateColor thumb;
-    float width = 10;
+    float width = 8;
     float minimumThumb = 24;        // the thumb's length, however long the content
 };
 
@@ -111,19 +116,22 @@ struct SplitterStyle {
     float thickness = 6;            // what can be dragged
 };
 
-// Docked panels: the tabs of a stack, and where a dragged tab would go.
+// Docked panels: each stack an island (a layer with rounded corners) on the window, gaps between them; the tab shown
+// marked by a short bar under its title; where a dragged tab would go.
 struct DockStyle {
-    Color background;               // behind the panels' content
-    Color tabBar;                   // behind a stack's tabs
-    StateColor tab;                 // a tab not shown
-    Color activeTab;                // the tab shown
-    Color activeLine;               // along the top of the tab shown
+    Color background;               // of a stack: its tabs and the content of the panel shown
+    Color border;                   // around a stack
+    Color separator;                // between a stack's tabs and its content
+    StateColor tab;                 // behind a tab: a pill, under the mouse
+    Color activeLine;               // under the title of the tab shown
     Color text;
     Color mutedText;                // the titles of the tabs not shown
     Color dropZone;
     Color scrollThumb;              // the thin bar that scrolls the tabs, when they do not fit
-    float tabHeight = 30;
-    float tabMinimumWidth = 64;     // a tab is as wide as its title, between these (a longer title is cut with …)
+    SplitterStyle splitter;         // between stacks: a gap, a line only under the mouse
+    float cornerRadius = 8;
+    float tabHeight = 28;
+    float tabMinimumWidth = 56;     // a tab is as wide as its title, between these (a longer title is cut with …)
     float tabMaximumWidth = 200;
 };
 
@@ -144,13 +152,13 @@ struct CardStyle {
     Color background;
     Color border;
     float borderWidth = 1;
-    float cornerRadius = 6;
+    float cornerRadius = 8;
 };
 
 struct TitleBarStyle {
     Color background;
     Color title;
-    float height = 40;
+    float height = 38;
 };
 
 struct WindowButtonStyle {
@@ -163,6 +171,7 @@ struct WindowButtonStyle {
 struct WindowFrameStyle {
     Color background;
     float resizeBorder = 6;         // dips along the edges that resize the window
+    float contentInset = 4;         // around its content: the window's background, between it and the edges
     // The window buttons at the start of the title bar (the system's convention on macOS) or at its end (elsewhere).
 #ifdef __APPLE__
     bool buttonsAtStart = true;
@@ -173,8 +182,8 @@ struct WindowFrameStyle {
 
 struct Theme {
     Palette palette;
-    float fontSize = 14;
-    float cornerRadius = 6;
+    float fontSize = 13;
+    float cornerRadius = 4;
     ButtonStyle button;
     LineEditStyle lineEdit;
     CheckBoxStyle checkBox;

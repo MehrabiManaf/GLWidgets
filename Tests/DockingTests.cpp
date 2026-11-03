@@ -300,3 +300,65 @@ TEST(panelButtonsOnTheTabBar) {
     DockPanel taken = d.graph->take(1);
     CHECK(taken.buttons.size() == 1);
 }
+
+TEST(aStacksTitleMovesItsGroup) {
+    Docked d;
+    // output's stack (output, search) by its title onto the graph's tabs: both join the graph's stack
+    const Widget& last = *d.output->children()[0]->children().back();
+    const Point title = last.mapToRoot({last.size().width + 20, last.size().height / 2});
+    d.drag(title, d.tab(*d.graph, 0));
+    CHECK(d.area->tabsOf("output") == d.graph && d.area->tabsOf("search") == d.graph && d.graph->count() == 3);
+    CHECK(d.graph->panelId(d.graph->active()) == "search");     // the one output's stack showed
+}
+
+TEST(aCenterKeepsItsPlace) {
+    UiRoot root(tests::testContext());
+    root.setSize({800, 600});
+    auto made = std::make_unique<DockArea>();
+    DockArea& area = *made;
+    auto view = std::make_unique<Widget>();
+    Widget* center = view.get();
+    area.setCenter(std::move(view));
+    CHECK(center->minimumSize().width >= 160 && center->minimumSize().height >= 100);     // its room is kept
+    DockTabs& palette = area.addPanel(panel("palette"), center, DockSide::Start, 0.25f);
+    DockTabs& output = area.addPanel(panel("output"), center, DockSide::Bottom, 0.3f);
+    area.addPanel(panel("search"), &output);
+    root.setContent(std::move(made));
+    root.layout();
+    CHECK(palette.mapToRoot({}).x < center->mapToRoot({}).x);
+    CHECK(output.mapToRoot({}).y > center->mapToRoot({}).y && near(output.mapToRoot({}).x, center->mapToRoot({}).x));
+
+    auto drag = [&](Point from, Point to) {
+        root.dispatch(platform::MouseButtonChanged{1, platform::MouseButton::Left, true, 1, from});
+        root.dispatch(platform::MouseMoved{1, {from.x + 10, from.y}});
+        root.dispatch(platform::MouseMoved{1, to});
+        root.dispatch(platform::MouseButtonChanged{1, platform::MouseButton::Left, false, 1, to});
+        root.layout();
+    };
+    auto tabOf = [&](const std::string& id) {
+        DockTabs* tabs = area.tabsOf(id);
+        const Widget& t = *tabs->children()[0]->children()[*tabs->indexOf(id)];
+        return t.mapToRoot({t.size().width / 2, t.size().height / 2});
+    };
+    // a tab let go in the middle of the center: not a place for it; on the center's End guide: beside it
+    const std::string before = area.saveLayout();
+    drag(tabOf("search"), center->mapToRoot({center->size().width / 2, center->size().height / 2}));
+    CHECK(area.saveLayout() == before);
+    drag(tabOf("search"), center->mapToRoot(DockArea::guide(*center, DockSide::End).center()));
+    DockTabs* search = area.tabsOf("search");
+    CHECK(search && search->count() == 1 && search->mapToRoot({}).x > center->mapToRoot({}).x);
+    CHECK(area.center() == center && center->root() == &root);
+
+    // saved and restored: in its place
+    const std::string saved = area.saveLayout();
+    CHECK(saved.find("\"center\":true") != std::string::npos);
+    CHECK(area.restoreLayout(saved));
+    root.layout();
+    CHECK(area.saveLayout() == saved && area.center() == center);
+
+    // the panels all gone: the center fills the area
+    for (const char* id : {"palette", "output", "search"})
+        area.removePanel(id);
+    root.layout();
+    CHECK(near(center->size().width, area.size().width) && near(center->size().height, area.size().height));
+}

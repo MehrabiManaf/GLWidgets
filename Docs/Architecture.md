@@ -317,6 +317,12 @@ from markup.
 How widgets look is in `Theme` (`Widgets/Theme.hpp`): a `Palette` (the colors everything is made of) and a style for each
 kind of widget, made from the palette by `Theme::fromPalette` (`Theme::dark()`, `Theme::light()`).
 
+The look is Fluent 2's (Windows 11), compact: neutral grays in layers (the title bar the darkest, the window's background,
+panels over it, controls on them) told apart more by their layers than by lines, hairlines of low contrast, one accent
+(with dark marks on it in the dark theme, as Windows 11 has), corners of 4 dips on controls and 8 on panels. Docked
+stacks are islands on the window with gaps between them; the tab shown is marked by a short rounded bar under its title;
+a field with the focus has a line of the accent along its bottom. Text is 13 dips, tabs 28 high.
+
 - **A style is a typed struct** (`ButtonStyle`, `LineEditStyle`, `CardStyle`, `TitleBarStyle`...) of colors and measures.
   Colors that change with the widget's state are `StateColor`s: a normal color, and optional ones for hovered, pressed,
   focused and disabled, which win in that order (disabled first).
@@ -391,9 +397,12 @@ Two kinds of tabs, as in Slate:
 
 A panel never moves into a dock area of the other scope, so what owns it never changes while it is dragged.
 
-How it is done: `DockPanel::scope` and `DockArea`'s scope say it, and an area takes panels of its scope only. A window's
-global area has a **center**, its `MajorTabs` (`setCenter`): a node of its tree that is not a panel, never moved nor
-closed, which panels dock around (a tab dragged over it shows its four side guides). Areas that panels move between are
+How it is done: `DockPanel::scope` and `DockArea`'s scope say it, and an area takes panels of its scope only. An area may
+have a **center** (`setCenter`, optional): a node of its tree that is not a panel, never moved, floated nor closed, whose
+room is kept (a minimum size, so the splits around it cannot take it away, and with no panel it fills the area), which
+panels dock around only (a tab dragged over it shows its four side guides; `addPanel` places them beside it). A script's
+view in FlowGraph is the center of its major tab's area; a window's major tabs are the center of its global area. Areas
+that panels move between are
 one **group**: a major tab's area and its floating windows' areas; for Global, every window's area and theirs
 (`makeSibling` makes one more, and a major tab torn off into a new window gives it one around its `MajorTabs`). Looking
 for where a dragged tab would go, the stacks of other groups are passed over: a script's panel over a global stack goes

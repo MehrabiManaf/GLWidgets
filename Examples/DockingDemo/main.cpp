@@ -1,7 +1,8 @@
 // SPDX-FileCopyrightText: 2026 Abdolmanaf Mehrabi Sisakht
 // SPDX-License-Identifier: MIT
 // Docking, as a script editor would have it: the scripts are major tabs in the title bar (+ adds one, dragging a tab moves
-// it along, its × closes it); each has its panels (graph, palette, inspector, output, search) docked around its graph.
+// it along, its × closes it); each has its graph in its middle (its center: not a panel, its room kept) and its panels
+// (palette, inspector, output, search) docked around it.
 // Around the scripts are the application's panels, the same whichever script is shown: its files, and its log.
 // Drag a panel's tab onto another stack's tabs, or onto the middle of the guides the stack shows, to join them; onto one of
 // the guides around it to split the stack; drag the line between two stacks to share their room.
@@ -45,7 +46,6 @@ constexpr const char* persianCatalog = R"({
   "texts": {
     "Docking": "داک",
     "Script {n}": "اسکریپت {n}",
-    "Graph": "گراف",
     "Palette": "پالت",
     "Inspector": "بازرس",
     "Output": "خروجی",
@@ -96,24 +96,26 @@ struct Studio {
                                            .muted = true,
                                            .wrap = true}))
                          .padding(glw::Insets::all(24));
-        glw::DockTabs& middle = area->addPanel({"graph", tr("Graph"), std::move(graph), false});
+        // the graph: the script's center, as FlowGraph's script view; the panels dock around it
+        area->setCenter(ui::Card(std::move(graph)));
+        glw::Widget* middle = area->center();
 
         ui::Children names;
         for (const char* name : nodes)
             names.push_back(ui::Card(ui::Label({.text = name})).padding(glw::Insets::symmetric(10, 6)));
         area->addPanel({"palette", tr("Palette"), ui::ScrollArea({}, ui::VStack({.spacing = 4}, std::move(names)).padding(glw::Insets::all(10)))},
-                       &middle, glw::DockSide::Start, 0.22f);
+                       middle, glw::DockSide::Start, 0.22f);
 
         area->addPanel({"inspector", tr("Inspector"),
                         padded(ui::VStack({.spacing = 10}, ui::Label({.text = tr("Name")}), ui::LineEdit({.text = "Main"}),
                                           ui::CheckBox({.text = tr("Pure")}), ui::Label({.text = tr("Comment")}), ui::LineEdit({})))},
-                       &middle, glw::DockSide::End, 0.28f);
+                       middle, glw::DockSide::End, 0.28f);
 
         ui::Children lines;
         for (int i = 1; i <= 12; ++i)
             lines.push_back(ui::Label({.text = tr("Script {n} compiled.").arg("n", number), .muted = true}));
         glw::DockTabs& bottom = area->addPanel({"output", tr("Output"), ui::ScrollArea({}, ui::VStack({.spacing = 4}, std::move(lines)).padding(glw::Insets::all(10)))},
-                                               &middle, glw::DockSide::Bottom, 0.3f);
+                                               middle, glw::DockSide::Bottom, 0.3f);
         // a button of its own on the tab bar while it is shown: it clears the field
         glw::LineEdit* field = nullptr;
         glw::DockPanel search{"search", tr("Search"), padded(ui::VStack({}, ui::LineEdit({.placeholder = tr("Search the nodes")}).bind(field)))};

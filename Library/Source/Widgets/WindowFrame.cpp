@@ -186,6 +186,19 @@ void WindowFrame::setContent(std::unique_ptr<Widget> content) {
         content = std::make_unique<Widget>();
     content->setStretch(1);     // all that the title bar leaves
     content_ = &addChild(std::move(content));
+    onStyleChanged();
+}
+
+void WindowFrame::onRootChanged() {
+    onStyleChanged();
+}
+
+void WindowFrame::onStyleChanged() {
+    // a little of the window's background around its content: panels on it are islands
+    const UiContext* ui = context();
+    const float inset = ui ? ui->theme.frame.contentInset : 0.0f;
+    if (content_)
+        content_->setMargin(Insets::all(inset));
 }
 
 void WindowFrame::paint(PaintContext& context) {

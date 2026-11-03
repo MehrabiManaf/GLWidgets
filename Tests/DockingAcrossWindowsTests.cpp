@@ -828,3 +828,68 @@ TEST(whereWindowsAreNotPlacedAMajorTabOpensAWindowOfItsOwn) {
     screen.drag(*a.window, majorTab(screen, *a.tabs, 0), {300, 400});
     CHECK(a.window->position.x == at.x && a.window->position.y == at.y && a.window->opacity == 1 && a.tabs->count() == 1);
 }
+
+namespace {
+
+// A window: the graph, and at its start a stack of two (palette shown, inspector), wide enough for a title after them.
+struct Grouped {
+    DockArea* area = nullptr;
+    DockTabs* graph = nullptr;
+    DockTabs* tools = nullptr;
+    Screen::Win* window = nullptr;
+
+    Grouped(Screen& screen) {
+        auto a = std::make_unique<DockArea>();
+        area = a.get();
+        graph = &area->addPanel(panel("graph"));
+        tools = &area->addPanel(panel("palette"), graph, DockSide::Start, 0.5f);
+        area->addPanel(panel("inspector"), tools);
+        tools->setActive(0);
+        window = &screen.open(std::move(a), {0, 0}, {1000, 700});
+    }
+};
+
+// The title of a stack: its tab bar after its last tab, on the screen.
+Point titleOf(const Screen& screen, const DockTabs& tabs) {
+    const Widget& last = *tabs.children()[0]->children().back();
+    return last.mapToRoot({last.size().width + 20, last.size().height / 2}) + screen.windowPosition(*tabs.root());
+}
+
+} // namespace
+
+TEST(aStacksTitleFloatsAndDocksItsGroup) {
+    Screen screen;
+    Grouped g(screen);
+
+    // its title dragged down out of it: the whole group floats at once, in one stack, the tab it showed shown
+    const Point title = titleOf(screen, *g.tools);
+    screen.press(*g.window, title);
+    screen.moveTo(*g.window, {title.x + 10, title.y});
+    screen.moveTo(*g.window, {title.x + 10, title.y + 200});
+    CHECK(screen.all.size() == 2);
+    DockTabs* floated = g.area->tabsOf("palette");
+    CHECK(floated && floated == g.area->tabsOf("inspector") && floated->area()->floating());
+    CHECK(floated->panelId(floated->active()) == "palette");
+    CHECK(screen.all.front()->opacity < 1);         // following the mouse
+
+    // let go on the graph's End guide: the group docks there as it was; its floating window goes
+    const Point end = g.graph->mapToRoot(g.graph->guide(DockSide::End).center());
+    screen.moveTo(*g.window, end);
+    screen.release(*g.window, end);
+    screen.closeWindows();
+    screen.layout();
+    CHECK(screen.all.size() == 1);
+    DockTabs* docked = g.area->tabsOf("palette");
+    CHECK(docked && docked == g.area->tabsOf("inspector") && docked->area() == g.area && docked != g.graph);
+    CHECK(docked->panelId(docked->active()) == "palette" && docked->mapToRoot({}).x > g.graph->mapToRoot({}).x);
+}
+
+TEST(whereWindowsAreNotPlacedAStacksTitleFloatsItsGroupOutOfTheWindow) {
+    Screen screen;
+    screen.places = false;
+    Grouped g(screen);
+    screen.drag(*g.window, titleOf(screen, *g.tools), {1500, 300});
+    CHECK(screen.all.size() == 2);
+    DockTabs* floated = g.area->tabsOf("palette");
+    CHECK(floated && floated == g.area->tabsOf("inspector") && floated->area()->floating());
+}

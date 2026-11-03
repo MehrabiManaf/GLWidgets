@@ -16,7 +16,8 @@
 // same group, and that window follows the mouse; let go on a guide, it docks there, elsewhere it stays where it is. A
 // floating window has no title bar of its own: the tab bars along its top are, with the window buttons at their end.
 // Dragged by them, the window moves the same way and docks all its panels where it is let go on a guide; dragged by its
-// only tab, too. Panels move between the areas of a group as within one; a floating window goes when its last panel
+// only tab, too. A stack's tab bar where it has no tab is the title of its group of panels: dragged, the whole group floats
+// and docks as one tab does (keeping the tab it shows). Panels move between the areas of a group as within one; a floating window goes when its last panel
 // leaves, and its panels go back to the area they came from when it is closed. The floating windows show while their area
 // does (they hide with its major tab), and close with it.
 //
@@ -146,6 +147,11 @@ private:
 class GLW_EXPORT DockSplit : public Splitter {
 public:
     explicit DockSplit(Orientation orientation) : Splitter(Props{orientation, std::nullopt}) {}
+
+protected:
+    // the theme's dock splitter: a gap between islands
+    void onRootChanged() override;
+    void onStyleChanged() override;
 };
 
 class GLW_EXPORT DockArea : public Widget {
@@ -155,8 +161,10 @@ public:
 
     // The panels it takes: of this scope only.
     DockScope scope() const { return scope_; }
-    // What its panels dock around (before it has any): a window's major tabs, for a Global area. It is not a panel: never
-    // moved nor closed, with no panel it fills the area, and a tab dragged over it docks on one of its sides.
+    // What its panels dock around, if it has one (set before it has panels): a script's view in the area of its major tab,
+    // a window's major tabs in its Global area. It is not a panel: never moved, floated nor closed; its room is kept (it
+    // keeps at least 160 x 100 dips, more if its own minimum says), with no panel it fills the area, and a tab dragged over
+    // it docks on one of its sides only.
     void setCenter(std::unique_ptr<Widget> center);
     Widget* center() const { return center_; }
     // An area of the same group around `center`, for another window: panels move between them as between an area and its
@@ -165,8 +173,9 @@ public:
 
     // Adds `panel` (of its scope). The first one fills the area (beside its center, on the End side, taking `share`, when
     // it has one). Then: in the stack of `nextTo` (Center), or in a new stack beside it taking `share` of its room; with no
-    // `nextTo`, in the first stack (Center) or beside everything there is.
-    DockTabs& addPanel(DockPanel panel, DockTabs* nextTo = nullptr, DockSide side = DockSide::Center, float share = 0.5f);
+    // `nextTo`, in the first stack (Center) or beside everything there is. `nextTo` is a stack of the area, or its center
+    // (beside it: on the End side for Center).
+    DockTabs& addPanel(DockPanel panel, Widget* nextTo = nullptr, DockSide side = DockSide::Center, float share = 0.5f);
     // Takes the panel `id` out: its content goes back to the caller (none when there is no such panel).
     std::unique_ptr<Widget> removePanel(std::string_view id);
     // These, and removePanel, know the panels of the floating windows of the area too.
@@ -223,7 +232,8 @@ protected:
 private:
     struct Drag {
         DockTabs* source = nullptr;         // the stack of the (first) panel dragged
-        std::vector<std::string> ids;       // a tab's panel, or every panel of a floating window dragged by its title
+        std::vector<std::string> ids;       // a tab's panel, a stack's (by its title), or a floating window's (by its title)
+        std::string shown;                  // of them, the one shown: shown still where they go
         Widget* target = nullptr;           // a stack, or a center (on one of its sides)
         DockSide side = DockSide::Center;
         DockArea* shownArea = nullptr;      // the one showing guides (and where it would go)
@@ -252,14 +262,21 @@ private:
     static DockTabs& insertBeside(DockPanel panel, Widget& target, DockSide side, float share);
     // `tabs` without panels goes; a split left with one pane gives way to it.
     static void prune(DockTabs& tabs);
-    void move(const std::string& id, Widget& target, DockSide side);
+    // (Its window raised when it is another: not while a drag goes on, which would lose the mouse.)
+    void move(const std::string& id, Widget& target, DockSide side, bool raise = true);
     // All of them: the first as `move`, the others in its stack.
     void move(const std::vector<std::string>& ids, Widget& target, DockSide side);
     // The panel `id` into a floating window at `position` (the screen) of `size` (dips); its area.
     DockArea* floatPanel(const std::string& id, Point position, Size size, bool focus = true);
+    // All of them, in one stack of one floating window, `shown` shown; its area.
+    DockArea* floatPanels(const std::vector<std::string>& ids, const std::string& shown, Point position, Size size, bool focus);
+    // A drag of `ids`, from `source`, starting: the area has the mouse until it is let go.
+    void startDrag(DockTabs& source, std::vector<std::string> ids, std::string shown);
     // The panel dragged into a window of its own, which the drag goes on with (after the event).
     void tearOff(Point point);
-    // A floating area: whether `point` (its coordinates) is on its title, a top tab bar where it has no tab.
+    // The stack of this area whose title (its tab bar where it has no tab) is at `point` (its coordinates), if one is.
+    DockTabs* titleAt(Point point) const;
+    // A floating area: whether `point` is on its title, a top tab bar where it has no tab.
     bool onTitle(Point point) const;
     // A floating area dragged by its title: all its panels, its window following the mouse.
     void beginTitleDrag();
@@ -275,7 +292,8 @@ private:
     Widget* center_ = nullptr;
     bool floating_ = false;
     std::optional<Drag> drag_;
-    std::optional<Point> titlePress_;       // the root's: its title pressed, not dragged yet
+    std::optional<Point> titlePress_;       // the root's: a title pressed, not dragged yet
+    DockTabs* pressedStack_ = nullptr;      // its stack, when it is a stack's (none: a floating window's)
     std::optional<Rect> indicator_;         // where a tab dragged (from this area or another) would go
     struct Guides {
         Widget* node = nullptr;             // the stack (or the center) under the mouse

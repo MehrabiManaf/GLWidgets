@@ -68,6 +68,8 @@ public:
 
 protected:
     void paint(PaintContext& context) override;
+    void onRootChanged() override;
+    void onStyleChanged() override;
     // Its edges resize the window, when the window is neither maximized nor minimized.
     std::optional<platform::HitArea> frameHitArea(Point point) const override;
 

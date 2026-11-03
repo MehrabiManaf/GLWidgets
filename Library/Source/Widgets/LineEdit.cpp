@@ -430,6 +430,14 @@ void LineEdit::paint(PaintContext& context) {
     p.fillRoundedRect(r, s.cornerRadius, s.background.resolve(state));
     if (s.borderWidth > 0)
         p.strokeRoundedRect(r, s.cornerRadius, s.borderWidth, s.border.resolve(state));
+    if (state.focused && s.focusLineWidth > 0) {
+        // along the bottom, within the rounded corners
+        p.pushClip(r);
+        p.fillRoundedRect({r.x, r.bottom() - s.focusLineWidth - s.cornerRadius, r.width, s.focusLineWidth + s.cornerRadius},
+                          s.cornerRadius, s.focusLine);
+        p.fillRect({r.x, r.bottom() - s.focusLineWidth - s.cornerRadius, r.width, s.cornerRadius}, s.background.resolve(state));
+        p.popClip();
+    }
 
     const text::TextLayout* layout = textLayout();
     if (!layout)
