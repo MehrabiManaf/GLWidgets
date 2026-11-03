@@ -43,6 +43,7 @@ struct Screen final : DockingHost {
     Point mouse;
     int captures = 0;
     int opened = 0;
+    bool places = true;                 // false: as on Wayland, the system places the windows
     std::optional<Point> preview;       // showWindowPreview's
     Size previewSize;
 
@@ -126,6 +127,7 @@ struct Screen final : DockingHost {
 
     // ---- DockingHost ----
 
+    bool placesWindows() const override { return places; }
     Point mouseOnScreen() const override { return mouse; }
     Point toScreen(const UiRoot& root, Point point) const override {
         const Win* w = find(root);
@@ -755,4 +757,74 @@ TEST(aWorkspaceThatCannotBeMadeOpensNothing) {
     auto* frame = dynamic_cast<WindowFrame*>(screen.all.front()->root->content());
     auto* tabs = frame ? dynamic_cast<MajorTabs*>(frame->content()) : nullptr;
     CHECK(tabs && tabs->count() == 1 && tabs->tabId(0) == "three");
+}
+
+TEST(whereWindowsAreNotPlacedAPanelIsDraggedInItsWindowOnly) {
+    Screen screen;
+    screen.places = false;
+    Tools t(screen, {0, 0});
+
+    // out of its tab bar, into the graph's stack: no window while it is dragged; on a guide there, it docks
+    const Point tab = panelTab(screen, *t.area, "palette");
+    screen.press(*t.window, tab);
+    screen.moveTo(*t.window, {tab.x + 10, tab.y});
+    screen.moveTo(*t.window, t.graph->mapToRoot({60, 200}));
+    CHECK(screen.all.size() == 1);
+    const Point end = t.graph->mapToRoot(t.graph->guide(DockSide::End).center());
+    screen.moveTo(*t.window, end);
+    screen.release(*t.window, end);
+    screen.closeWindows();
+    screen.layout();
+    CHECK(screen.all.size() == 1 && t.area->tabsOf("palette")->mapToRoot({}).x > t.graph->mapToRoot({}).x);
+
+    // let go out of its window: a window of its own, where the system puts it; its title the system's to move it by
+    screen.drag(*t.window, panelTab(screen, *t.area, "palette"), {1200, 300});
+    CHECK(screen.all.size() == 2 && t.area->tabsOf("palette")->area()->floating() && !screen.preview);
+    screen.layout();
+    Screen::Win& floating = *screen.all.front();
+    DockTabs& stack = *t.area->tabsOf("palette");
+    const Widget& only = *stack.children()[0]->children()[0];
+    const Point title = only.mapToRoot({only.size().width + 10, only.size().height / 2});
+    CHECK(floating.root->windowHitTest(title) == platform::HitArea::Caption);
+
+    // its only tab dragged out of it: the window does not follow the mouse, and stays as it is
+    const Point before = floating.position;
+    const Point floatingTab = panelTab(screen, *t.area, "palette");
+    screen.drag(floating, floatingTab, {floatingTab.x + 300, floatingTab.y + 300});
+    CHECK(floating.position.x == before.x && floating.position.y == before.y && floating.opacity == 1);
+    CHECK(screen.all.size() == 2 && t.area->tabsOf("palette")->area()->floating());
+
+    // its float button docks it back
+    screen.layout();
+    const Widget& button = *stack.children()[1]->children().back();
+    const Point back = button.mapToRoot({12, 12}) + floating.position;
+    screen.press(floating, back);
+    screen.release(floating, back);
+    screen.closeWindows();
+    CHECK(screen.all.size() == 1 && t.area->tabsOf("palette")->area() == t.area);
+}
+
+TEST(whereWindowsAreNotPlacedAMajorTabOpensAWindowOfItsOwn) {
+    Screen screen;
+    screen.places = false;
+    Documents a(screen, {0, 0}, {"one", "two"});
+    Documents b(screen, {1000, 0}, {"three"});
+
+    // over the other window's strip (not known where it is): let go, a window of its own; no outline while dragged
+    const Point from = majorTab(screen, *a.tabs, 1);
+    const Point onto = majorTab(screen, *b.tabs, 0);
+    screen.press(*a.window, from);
+    screen.moveTo(*a.window, {from.x + 10, from.y});
+    screen.moveTo(*a.window, onto);
+    CHECK(!screen.preview);
+    screen.release(*a.window, onto);
+    screen.closeWindows();
+    CHECK((titles(*b.tabs) == std::vector<std::string>{"three"}) && screen.all.size() == 3);
+    CHECK((titles(*a.tabs) == std::vector<std::string>{"one"}));
+
+    // along its strip it still moves; the only tab of a window does not drag the window
+    screen.layout();
+    const Point at = a.window->position;
+    screen.drag(*a.window, majorTab(screen, *a.tabs, 0), {300, 400});
+    CHECK(a.window->position.x == at.x && a.window->position.y == at.y && a.window->opacity == 1 && a.tabs->count() == 1);
 }

@@ -20,6 +20,10 @@
 // leaves, and its panels go back to the area they came from when it is closed. The floating windows show while their area
 // does (they hide with its major tab), and close with it.
 //
+// Where the system places windows itself (Wayland: DockingHost::placesWindows), a tab is dragged in its window only, with
+// the same guides; let go out of its window, its panel floats in a window the system places. A floating window moves by
+// its title as any window does, and its float button docks it back.
+//
 // Every panel says who owns it (DockPanel::scope), and goes only into areas of that scope:
 // - MajorTab: a panel of one major tab (a script's palette, its inspector), in the area that major tab shows. It hides with
 //   its major tab.
@@ -226,11 +230,15 @@ private:
         const UiRoot* window = nullptr;     // the window following the mouse: a floating one, or the one torn off
         Point grab;                         // the mouse on the screen less that window's position
         bool tearing = false;               // the panel goes into a window of its own, after the event
+        bool outOfWindow = false;           // the mouse is out of the window (where windows are not placed)
     };
 
     Widget* node() const;                   // its first child: the root of the tree
     DockTabs* firstTabs() const;
     DockingHost* host() const;
+    // A host that places windows: windows follow the mouse, and a tab is looked for in all of them.
+    bool placesWindows() const;
+    std::size_t panelCount() const;         // its own (not its group's)
     // What of the group is under `point` of `root`: a stack, or an area's center; and that area.
     std::pair<Widget*, DockArea*> nodeAt(const UiRoot& root, Point point) const;
     bool inGroup(const DockArea* area) const;

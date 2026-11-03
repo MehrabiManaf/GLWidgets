@@ -12,7 +12,8 @@ The project has just started. Windows (with chrome of their own, redrawn while t
 2D painter, text (Persian and English, mixed, shaped, wrapped, selectable), the widget core (layout, events, focus,
 right-to-left mirroring), themes and translations work, with the basic widgets: label, button, check box, text field,
 panel, card, scroll area, splitter; and docking, with major tabs in the title bar: tabs and panels move between
-windows, tear off into windows of their own, and float (on Windows, macOS and X11; Wayland's mode comes next). The design,
+windows, tear off into windows of their own, and float (on Wayland, where windows are placed by the compositor, within
+their window and into windows of their own). The design,
 and what comes next, is in
 [Docs/Architecture.md](Docs/Architecture.md); the libraries it is built with, and their notices, in
 [Docs/ThirdPartyNotices.md](Docs/ThirdPartyNotices.md).

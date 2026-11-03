@@ -364,9 +364,9 @@ corners and snap layouts).
 
 ## Docking
 
-*In a window and across windows, with global panels and saved workspaces: done (`Widgets/Docking.hpp`,
-`Widgets/MajorTabs.hpp`, `Widgets/DockingHost.hpp`, `Widgets/Workspace.hpp`), in the full mode. Wayland's mode: planned
-(M5c).*
+*Done: in a window and across windows, with global panels and saved workspaces (`Widgets/Docking.hpp`,
+`Widgets/MajorTabs.hpp`, `Widgets/DockingHost.hpp`, `Widgets/Workspace.hpp`), in the full mode and Wayland's restricted
+one. Wayland's drag-and-drop between windows: later.*
 
 Two kinds of tabs, as in Slate:
 
@@ -485,9 +485,13 @@ So docking has two modes:
   of the application. A panel's window opens at once instead, shown without the focus (`NewWindow::focus`): the window
   dragged from keeps it, and with it the mouse, so the drag goes on (the dock area takes the mouse from the tab, which
   goes with its panel: `UiRoot::captureMouse`).
-- **Restricted** (Wayland): tabs are dragged with an ordinary drag-and-drop session, and the drop targets are inside our
-  windows. A tab dropped outside every window becomes a new window where the compositor places it.
-  `xdg-toplevel-drag` will be used through SDL's `wl_display` / `wl_surface` where the compositor has it.
+- **Restricted** (Wayland, where `Platform::placesWindows` is false): a tab is dragged in its window only, with the same
+  guides and drops. Let go out of its window, a panel floats in a window the compositor places; a major tab opens in a
+  window of its own. No window follows the mouse and nothing is seen through: a floating window is moved by its title as
+  any window, by the compositor (its tab bars are its caption), and its float button docks its panel back. Moving a tab
+  into another window by the mouse needs Wayland's own drag-and-drop between our windows (and `xdg-toplevel-drag`, where
+  the compositor has it, for a window that follows the mouse), through SDL's `wl_display` / `wl_surface`: not done yet.
+  `GLW_DOCKING=restricted` gives this mode anywhere, to try it.
 
 An application can also run on XWayland to get the full mode (`SDL_VIDEO_DRIVER=x11`).
 
@@ -588,7 +592,7 @@ The `GLW_USE_SYSTEM_SDL3` option uses an installed SDL3 instead of the pinned re
 | M2 | Text: HarfBuzz and FreeType, glyph atlas, bidi, line breaking, text layout with cursor and selection | Done, apart from system fonts and visual cursor movement (see [Text](#text)) |
 | M3 | Widget core: tree, events, focus, layout, a UI root independent of the platform, window chrome as widgets (with the native extras), live resize | Done, apart from the native extras of the chrome and what is listed in [Widgets](#widgets) |
 | M4 | Basic widgets (label, button, line edit, scroll area, splitter), styles, `LocalizedText` and catalogs, right-to-left layouts | Done, apart from plural rules and the formatting of numbers and dates (see [Localization](#localization-and-right-to-left)) |
-| M5 | Docking: major and panel tabs, windows merging and splitting by their tabs, both modes, layout persistence | In progress: docking in a window, major tabs and saved layouts (M5a), across windows in the full mode (M5b), global panels and saved workspaces done; Wayland's mode next (M5c) |
+| M5 | Docking: major and panel tabs, windows merging and splitting by their tabs, both modes, layout persistence | Done: docking in a window, major tabs and saved layouts (M5a), across windows in the full mode (M5b), global panels, saved workspaces and Wayland's restricted mode (M5c). Wayland's drag-and-drop between windows, and keeping restored windows on the screens there are, later; the restricted mode not yet run on Wayland |
 | M6 | Validation: a node canvas and a code editor (FlowGraph), a chart widget with custom commands, an engine embedding example | |
 
 ## Open questions

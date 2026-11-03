@@ -12,6 +12,8 @@
 #include <algorithm>
 #include <chrono>
 #include <cstdio>
+#include <cstdlib>
+#include <string_view>
 #include <variant>
 #include <vector>
 
@@ -209,6 +211,18 @@ struct Application::Impl final : DockingHost {
 
     // ---- docking across the windows ----
 
+    // GLW_DOCKING=restricted: docking as where the system places windows (Wayland), to try it anywhere
+    bool placesWindows() const override {
+#ifdef _MSC_VER
+#pragma warning(push)
+#pragma warning(disable : 4996)     // getenv: read, not kept
+#endif
+        const char* docking = std::getenv("GLW_DOCKING");
+#ifdef _MSC_VER
+#pragma warning(pop)
+#endif
+        return platform->placesWindows() && !(docking && std::string_view(docking) == "restricted");
+    }
     Point mouseOnScreen() const override { return platform->mousePosition(); }
 
     Point toScreen(const UiRoot& root, Point point) const override {

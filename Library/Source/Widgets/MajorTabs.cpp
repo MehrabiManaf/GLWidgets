@@ -414,7 +414,7 @@ void MajorTabStrip::beginDrag(std::size_t index) {
     const UiRoot* r = root();
     DockingHost* host = dockingOf(*this);
     // the only tab of a window drags the window (not a maximized one, which stays where it is)
-    movingWindow_ = host && r && tabs_ && tabs_->count() == 1 &&
+    movingWindow_ = host && host->placesWindows() && r && tabs_ && tabs_->count() == 1 &&
                     !(r->host() && r->host()->windowState() == platform::WindowState::Maximized);
     if (host) {
         host->captureMouse(true);
@@ -459,6 +459,10 @@ void MajorTabStrip::dragTo(Point point) {
     if (local.x >= 0 && local.x <= size().width && local.y >= -stripReach && local.y <= size().height + stripReach) {
         setTarget(this, point);
         host->showWindowPreview(std::nullopt);
+        return;
+    }
+    if (!host->placesWindows()) {
+        setTarget(nullptr, point);      // the other windows are not known where they are: out of the strip, a window of its own
         return;
     }
     const DockingHost::Hit hit = host->windowAt(host->toScreen(*r, point));

@@ -6,6 +6,9 @@
 // window), tabs and panels stay in their window.
 //
 // Screen coordinates are the system's, for the whole desktop (platform::Window::position).
+//
+// Where the system places windows itself (Wayland: placesWindows false), docking is restricted: a tab is dragged in its
+// window only, and let go out of it, it opens in a window the system places; no window follows the mouse.
 #include <GLWidgets/Core/Geometry.hpp>
 #include <GLWidgets/Export.hpp>
 #include <GLWidgets/Widgets/Localization.hpp>
@@ -24,6 +27,9 @@ public:
     virtual ~DockingHost();
 
     // ---- where things are ----
+
+    // Windows go where they are put, and the mouse is known wherever it is (see above).
+    virtual bool placesWindows() const = 0;
 
     virtual Point mouseOnScreen() const = 0;
     virtual Point toScreen(const UiRoot& root, Point point) const = 0;

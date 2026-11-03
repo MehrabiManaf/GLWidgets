@@ -662,6 +662,12 @@ void DockTabs::arrangeContent(const Rect& content) {
 }
 
 void DockTabs::setTitleArea(bool title, float reserve, bool left) {
+    // where the system places windows, it moves them too: there, the title is its caption
+    const UiContext* ui = context();
+    const bool system = title && ui && ui->docking && !ui->docking->placesWindows();
+    const platform::HitArea caption = system ? platform::HitArea::Caption : platform::HitArea::Client;
+    bar_->setWindowArea(caption);
+    setWindowArea(caption);
     if (reserve == reserve_ && left == reserveLeft_ && title == title_)
         return;
     title_ = title;     // its area drags the window from there itself: docking as it goes
@@ -745,6 +751,18 @@ std::unique_ptr<DockArea> DockArea::makeSibling(std::unique_ptr<Widget> center) 
 DockingHost* DockArea::host() const {
     const UiContext* ui = context();
     return ui ? ui->docking : nullptr;
+}
+
+bool DockArea::placesWindows() const {
+    DockingHost* h = host();
+    return h && h->placesWindows();
+}
+
+std::size_t DockArea::panelCount() const {
+    std::size_t count = 0;
+    if (Widget* n = node())
+        forEachTabs(*n, [&](DockTabs& tabs) { count += tabs.count(); });
+    return count;
 }
 
 DockArea* DockArea::home() const {
@@ -1106,7 +1124,7 @@ void DockArea::beginDrag(DockTabs& source, std::size_t index) {
         std::size_t own = 0;
         if (Widget* n = node())
             forEachTabs(*n, [&](DockTabs& tabs) { own += tabs.count(); });
-        if (floating_ && own == 1) {
+        if (floating_ && own == 1 && h->placesWindows()) {
             drag_->window = r;
             drag_->grab = h->mouseOnScreen() - h->windowPosition(*r);
             h->setWindowOpacity(*r, draggedOpacity);
@@ -1165,8 +1183,8 @@ void DockArea::onMouse(MouseEvent& event) {
     // a floating window's title: pressed twice, the window is maximized or restored; dragged, the window moves and docks
     switch (event.type) {
     case MouseEventType::Press:
-        if (!left || !onTitle(event.position))
-            return;
+        if (!left || !placesWindows() || !onTitle(event.position))
+            return;     // where the system places windows, it moves them by their title itself
         event.handled = true;
         if (event.clicks == 2) {
             if (UiHost* h = root() ? root()->host() : nullptr)
@@ -1258,7 +1276,7 @@ void DockArea::dragTo(Point point) {
         const DockingHost::Hit hit = h->windowAt(mouse, drag_->window);
         over = hit.root;
         at = hit.point;
-    } else if (h) {
+    } else if (h && h->placesWindows()) {
         // a tab along its stack's tab bar stays there; out of it, it floats now
         const DockTabs& source = *drag_->source;
         const Point o = source.mapToRoot({});
@@ -1270,6 +1288,8 @@ void DockArea::dragTo(Point point) {
         }
         return;
     }
+    // in its window only: out of it, it would float in a window the system places
+    drag_->outOfWindow = !Rect{0, 0, r->size().width, r->size().height}.contains(point);
     auto [node, area] = over ? nodeAt(*over, at) : std::pair<Widget*, DockArea*>{};
     if (shown && shown != area)
         shown->clearDrop();
@@ -1340,6 +1360,11 @@ void DockArea::endDrag(Point point, bool drop) {
         apply = [this, ids = done.ids, target = done.target, side = done.side] { move(ids, *target, side); };
     } else if (h && done.window && done.window != r) {
         apply = [h, window = done.window] { h->raiseWindow(*window); };    // torn off: it has the focus now
+    } else if (h && !h->placesWindows() && done.outOfWindow && !(floating_ && panelCount() == 1)) {
+        // let go out of its window: a window of its own, where the system puts it (the only panel of a floating window
+        // has one already)
+        const auto [position, size] = floatPlace(*done.source, point);
+        apply = [this, id = done.ids.front(), position, size] { floatPanel(id, position, size); };
     } else {
         return;
     }

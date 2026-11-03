@@ -44,6 +44,10 @@ public:
     // show nothing new meanwhile. Also called for windows exposed otherwise (from pollEvent then). None: not called.
     virtual void setExposeHandler(std::function<void(WindowId)> handler) = 0;
 
+    // Whether windows go where the application puts them, and the mouse is known wherever it is: not on Wayland, where
+    // the compositor places windows and an application sees the mouse over its own windows only. Without it, Window's
+    // positions mean nothing and mousePosition is not to be relied on.
+    virtual bool placesWindows() const = 0;
     // Where the mouse is, in screen coordinates (Window::position), wherever it is.
     virtual Point mousePosition() const = 0;
     // While on, the window the mouse was pressed in gets the mouse's events outside of it too (dragging out of it).

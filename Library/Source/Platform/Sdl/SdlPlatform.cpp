@@ -18,6 +18,7 @@
 #include <algorithm>
 #include <atomic>
 #include <cstdint>
+#include <string_view>
 #include <utility>
 
 namespace glw::platform {
@@ -97,6 +98,11 @@ void SdlPlatform::setExposeHandler(std::function<void(WindowId)> handler) {
     exposeHandler_ = std::move(handler);
     if (exposeHandler_ && !watching_)
         watching_ = SDL_AddEventWatch(&SdlPlatform::watch, this);
+}
+
+bool SdlPlatform::placesWindows() const {
+    const char* driver = SDL_GetCurrentVideoDriver();
+    return !driver || std::string_view(driver) != "wayland";
 }
 
 Point SdlPlatform::mousePosition() const {
