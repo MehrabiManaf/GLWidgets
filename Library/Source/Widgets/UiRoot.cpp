@@ -337,6 +337,11 @@ void UiRoot::mouseButton(const platform::MouseButtonChanged& e) {
         updateHover(widgetAt(e.position));
 }
 
+void UiRoot::captureMouse(Widget& widget) {
+    if (buttonsDown_ > 0 && widget.root() == this)
+        capture_ = &widget;
+}
+
 void UiRoot::updateHover(Widget* target) {
     std::vector<Widget*> path = target ? pathTo(target) : std::vector<Widget*>{};
     // what the mouse left, from the deepest; then what it entered, from the root down

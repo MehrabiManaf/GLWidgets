@@ -55,8 +55,9 @@ public:
     virtual PixelSize pixelSize() const = 0;
     virtual float scale() const = 0;                        // pixels per dip
 
-    // A new window is hidden: show it once what it shows is ready.
-    virtual void show() = 0;
+    // A new window is hidden: show it once what it shows is ready. Not given the focus, when `focus` is false (a window
+    // that appears under a drag must not take it from the window being dragged from).
+    virtual void show(bool focus = true) = 0;
     virtual void hide() = 0;
     virtual bool visible() const = 0;
     // Above the other windows, and with the focus.

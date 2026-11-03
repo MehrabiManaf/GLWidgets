@@ -22,7 +22,7 @@ public:
     void setSize(Size size) override;
     PixelSize pixelSize() const override;
     float scale() const override { return scaleOf(window_); }
-    void show() override;
+    void show(bool focus = true) override;
     void hide() override;
     bool visible() const override;
     void raise() override;

@@ -68,7 +68,7 @@ private:
     friend class Application;
     // With an owner: a tool window above it. An overlay: above every window, never focused, hidden, no frame.
     Window(Application& app, const WindowOptions& options, std::unique_ptr<Widget> content, Window* owner = nullptr,
-           bool overlay = false);
+           bool overlay = false, bool focus = true);
     void languageChanged();
 
     Application& app_;

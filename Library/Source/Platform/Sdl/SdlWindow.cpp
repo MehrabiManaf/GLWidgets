@@ -8,6 +8,7 @@
 #include <GLWidgets/Core/Error.hpp>
 
 #include <SDL3/SDL_error.h>
+#include <SDL3/SDL_hints.h>
 #include <SDL3/SDL_keyboard.h>
 
 #include <cmath>
@@ -71,8 +72,10 @@ PixelSize SdlWindow::pixelSize() const {
     return pixels;
 }
 
-void SdlWindow::show() {
+void SdlWindow::show(bool focus) {
+    SDL_SetHint(SDL_HINT_WINDOW_ACTIVATE_WHEN_SHOWN, focus ? "1" : "0");
     SDL_ShowWindow(window_);
+    SDL_SetHint(SDL_HINT_WINDOW_ACTIVATE_WHEN_SHOWN, "1");
 }
 
 void SdlWindow::hide() {

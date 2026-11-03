@@ -425,10 +425,15 @@ The tests use a host of their own, with windows that are only roots at places of
   it was let go, with a strip and the same handlers (they are given the `MajorTabs` they are for, so + adds to the right
   window). The only tab of a window drags the window instead, and let go over another window's strip, merges it into
   that window. A window left without tabs closes.
-- **A panel tab** let go where no stack takes it, out of its dock area, floats: its panel goes into a tool window above
-  its area's window, with a `DockArea` of its own. The areas of a major tab and of its floating windows are one group:
-  a tab of any of them docks in any of them, and the stack it would go to shows it in its own window. The only tab of
-  a floating window drags the window, and docks where it is let go. A floating window goes when its last panel leaves.
+- **A panel tab** dragged out of its stack's tab bar (by more than a little above or below it) floats at once, as in
+  Visual Studio and Unreal Engine, even over its own dock area: its panel goes into a tool window above its area's
+  window, with a `DockArea` of its own, and the drag goes on with that window, which follows the mouse. Let go on a
+  guide, it docks there; elsewhere it stays where it is. The areas of a major tab and of its floating windows are one
+  group: any of them takes a panel of any other, and the stack it would go to shows it in its own window.
+- **A floating window** moves the same way whether it is dragged by its only tab or by its title (the tab bars along its
+  top where they have no tab): it docks where it is let go on a guide, all its panels with it. Its title is ours, not
+  the system's, so that it docks as it moves; a double click on it maximizes it. A floating window goes when its last
+  panel leaves.
   Closed by the user, its panels go back to their area. The floating windows hide while their area does (another major
   tab is shown), follow their area to another window, and close when it is destroyed.
 
@@ -448,9 +453,11 @@ So docking has two modes:
 
 - **Full** (Windows, macOS, X11): our own drag loop. Guides and drop zones are drawn inside the target window. A window
   dragged by its only tab is seen through while it moves (`DockingHost::setWindowOpacity`), so the guides under it show.
-  Where a tab would open a window of its own (torn off, or floated), a translucent outline shows it: an overlay window
+  Where a major tab would open a window of its own, a translucent outline shows it: an overlay window
   (`DockingHost::showWindowPreview`), above every window and never focused, since the place may be outside every window
-  of the application.
+  of the application. A panel's window opens at once instead, shown without the focus (`NewWindow::focus`): the window
+  dragged from keeps it, and with it the mouse, so the drag goes on (the dock area takes the mouse from the tab, which
+  goes with its panel: `UiRoot::captureMouse`).
 - **Restricted** (Wayland): tabs are dragged with an ordinary drag-and-drop session, and the drop targets are inside our
   windows. A tab dropped outside every window becomes a new window where the compositor places it.
   `xdg-toplevel-drag` will be used through SDL's `wl_display` / `wl_surface` where the compositor has it.

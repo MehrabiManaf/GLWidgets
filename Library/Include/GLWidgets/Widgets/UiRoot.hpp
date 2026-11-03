@@ -90,6 +90,10 @@ public:
     // handling the event among them, does it from there.
     void defer(std::function<void()> call);
 
+    // The mouse events go to `widget` until every button is released: a drag handed over from the widget pressed (which
+    // may go while it goes on). Nothing when no button is down.
+    void captureMouse(Widget& widget);
+
     Widget* focusWidget() const { return focus_; }
     void setFocus(Widget* widget);
     // The next (or previous) widget that can have the focus, in the order of the tree.

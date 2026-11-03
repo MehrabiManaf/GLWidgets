@@ -30,6 +30,7 @@ namespace {
 
 constexpr float dragThreshold = 6;      // dips the mouse moves with a tab before it is dragged
 constexpr float draggedOpacity = 0.6f;  // of a window dragged by its only tab
+constexpr float tearReach = 24;         // dips above and below a stack's tab bar where a tab dragged from it stays in it
 
 // A tab of a stack: its title, a × when the panel can be closed. Pressed, it shows its panel; dragged, it moves it.
 class DockTab final : public Widget {
@@ -96,10 +97,13 @@ protected:
                 return;
             const Point at = mapToRoot(event.position);
             const Point moved = at - pressPoint_;
-            if (!area->dragging() && std::hypot(moved.x, moved.y) > dragThreshold)
+            if (std::hypot(moved.x, moved.y) > dragThreshold) {
+                // the area goes on with it (it has the mouse now): this tab may go
+                pressed_ = false;
+                invalidatePaint();
                 area->beginDrag(owner_, index_);
-            if (area->dragging())
                 area->dragTo(at);
+            }
             event.handled = true;
             break;
         }
@@ -375,8 +379,8 @@ void DockTabs::arrangeContent(const Rect& content) {
     }
 }
 
-void DockTabs::setTitleArea(bool caption, float reserve, bool left) {
-    bar_->setWindowArea(caption ? platform::HitArea::Caption : platform::HitArea::Client);
+void DockTabs::setTitleArea(bool title, float reserve, bool left) {
+    title_ = title;     // its area drags the window from there itself: docking as it goes
     if (reserve == reserve_ && left == reserveLeft_)
         return;
     reserve_ = reserve;
@@ -596,11 +600,21 @@ void DockArea::move(const std::string& id, DockTabs& target, DockSide side) {
         h->raiseWindow(*target.root());
 }
 
-void DockArea::floatPanel(const std::string& id, Point position, Size size) {
+void DockArea::move(const std::vector<std::string>& ids, DockTabs& target, DockSide side) {
+    if (ids.empty())
+        return;
+    move(ids.front(), target, side);
+    for (std::size_t i = 1; i < ids.size(); ++i) {
+        if (DockTabs* into = tabsOf(ids.front()))
+            move(ids[i], *into, DockSide::Center);
+    }
+}
+
+DockArea* DockArea::floatPanel(const std::string& id, Point position, Size size, bool focus) {
     DockingHost* h = host();
     DockTabs* source = tabsOf(id);
     if (!h || !source)
-        return;
+        return nullptr;
     DockArea* from = source->area();
     DockPanel panel = source->take(*source->indexOf(id));
     prune(*source);
@@ -610,6 +624,7 @@ void DockArea::floatPanel(const std::string& id, Point position, Size size) {
     group_->areas.push_back(area.get());
     LocalizedText title = panel.title;
     area->addPanel(std::move(panel));
+    DockArea* floated = area.get();
     const UiRoot* owner = group_->home ? group_->home->root() : root();
     h->openWindow({.title = std::move(title),
                    .content = std::move(area),
@@ -617,8 +632,10 @@ void DockArea::floatPanel(const std::string& id, Point position, Size size) {
                    .position = position,
                    .size = size,
                    .owner = owner,
-                   .titleBar = false});
+                   .titleBar = false,
+                   .focus = focus});
     from->closeIfEmpty();
+    return floated;
 }
 
 void DockArea::closeIfEmpty() {
@@ -726,21 +743,95 @@ DockTabs* DockArea::tabsAt(const UiRoot& root, Point point) const {
 }
 
 void DockArea::beginDrag(DockTabs& source, std::size_t index) {
-    drag_ = Drag{&source, source.panelId(index)};
-    const UiRoot* r = root();
-    if (DockingHost* h = host(); h && r) {
+    drag_ = Drag{&source, {source.panelId(index)}};
+    UiRoot* r = root();
+    if (!r)
+        return;
+    r->captureMouse(*this);
+    if (DockingHost* h = host()) {
         h->captureMouse(true);
         // the only panel of a floating window: the window goes with it, seen through so the guides under it show
         std::size_t own = 0;
         if (Widget* n = node())
             forEachTabs(*n, [&](DockTabs& tabs) { own += tabs.count(); });
         if (floating_ && own == 1) {
-            drag_->movingWindow = true;
+            drag_->window = r;
             drag_->grab = h->mouseOnScreen() - h->windowPosition(*r);
             h->setWindowOpacity(*r, draggedOpacity);
         }
     }
-    invalidatePaint();
+}
+
+void DockArea::beginTitleDrag() {
+    UiRoot* r = root();
+    DockingHost* h = host();
+    DockTabs* first = firstTabs();
+    if (!r || !h || !first)
+        return;
+    std::vector<std::string> ids;
+    forEachTabs(*node(), [&](DockTabs& tabs) {
+        for (std::size_t i = 0; i < tabs.count(); ++i)
+            ids.push_back(tabs.panelId(i));
+    });
+    drag_ = Drag{first, std::move(ids)};
+    drag_->window = r;
+    drag_->grab = h->mouseOnScreen() - h->windowPosition(*r);
+    h->captureMouse(true);
+    h->setWindowOpacity(*r, draggedOpacity);
+}
+
+bool DockArea::onTitle(Point point) const {
+    const UiRoot* r = root();
+    const Widget* w = r ? r->widgetAt(mapToRoot(point)) : nullptr;
+    const auto* tabs = w ? dynamic_cast<const DockTabs*>(w->parent()) : nullptr;
+    return tabs && w == tabs->bar_ && tabs->title_ && tabs->area() == this;
+}
+
+void DockArea::onMouse(MouseEvent& event) {
+    const bool left = event.button == platform::MouseButton::Left;
+    if (drag_) {
+        // the area has the mouse while a tab of it, or its title, is dragged
+        if (event.type == MouseEventType::Move)
+            dragTo(mapToRoot(event.position));
+        else if (event.type == MouseEventType::Release && left)
+            endDrag(mapToRoot(event.position), true);
+        event.handled = true;
+        return;
+    }
+    if (!floating_)
+        return;
+    // a floating window's title: pressed twice, the window is maximized or restored; dragged, the window moves and docks
+    switch (event.type) {
+    case MouseEventType::Press:
+        if (!left || !onTitle(event.position))
+            return;
+        event.handled = true;
+        if (event.clicks == 2) {
+            if (UiHost* h = root() ? root()->host() : nullptr)
+                h->toggleMaximizeWindow();
+            return;
+        }
+        titlePress_ = mapToRoot(event.position);
+        break;
+    case MouseEventType::Move:
+        if (!titlePress_)
+            return;
+        event.handled = true;
+        if (const Point moved = mapToRoot(event.position) - *titlePress_; std::hypot(moved.x, moved.y) > dragThreshold) {
+            titlePress_.reset();
+            beginTitleDrag();
+            dragTo(mapToRoot(event.position));
+        }
+        break;
+    case MouseEventType::Release:
+        if (titlePress_ && left) {
+            titlePress_.reset();
+            event.handled = true;
+        }
+        break;
+    case MouseEventType::Wheel:
+        break;
+    }
 }
 
 std::pair<Point, Size> DockArea::floatPlace(const DockTabs& source, Point point) const {
@@ -761,8 +852,33 @@ void DockArea::clearDrop() {
     }
 }
 
+void DockArea::tearOff(Point point) {
+    UiRoot* r = root();
+    DockingHost* h = host();
+    if (!r || !h)
+        return;
+    drag_->tearing = true;
+    const auto [position, size] = floatPlace(*drag_->source, point);
+    r->defer([this, h, id = drag_->ids.front(), position, size] {
+        if (!drag_)
+            return;
+        drag_->tearing = false;
+        // shown without the focus: the window dragged from keeps it, and with it the mouse
+        DockArea* floated = floatPanel(id, position, size, false);
+        if (!floated || !floated->root()) {
+            drag_.reset();
+            h->captureMouse(false);
+            return;
+        }
+        drag_->source = floated->tabsOf(id);
+        drag_->window = floated->root();
+        drag_->grab = h->mouseOnScreen() - position;
+        h->setWindowOpacity(*drag_->window, draggedOpacity);
+    });
+}
+
 void DockArea::dragTo(Point point) {
-    if (!drag_)
+    if (!drag_ || drag_->tearing)
         return;
     drag_->target = nullptr;
     DockArea* shown = std::exchange(drag_->shownArea, nullptr);
@@ -773,74 +889,70 @@ void DockArea::dragTo(Point point) {
     DockingHost* h = host();
     const UiRoot* over = r;
     Point at = point;
-    if (h && drag_->movingWindow) {
+    if (h && drag_->window) {
+        // a window following the mouse: what is under it
         const Point mouse = h->mouseOnScreen();
-        h->moveWindow(*r, mouse - drag_->grab);
-        const DockingHost::Hit hit = h->windowAt(mouse, r);
+        h->moveWindow(*drag_->window, mouse - drag_->grab);
+        const DockingHost::Hit hit = h->windowAt(mouse, drag_->window);
         over = hit.root;
         at = hit.point;
     } else if (h) {
-        const DockingHost::Hit hit = h->windowAt(h->toScreen(*r, point));
-        over = hit.root;
-        at = hit.point;
+        // a tab along its stack's tab bar stays there; out of it, it floats now
+        const DockTabs& source = *drag_->source;
+        const Point o = source.mapToRoot({});
+        const float bar = source.style().tabHeight;
+        if (!Rect{o.x, o.y - tearReach, source.size().width, bar + 2 * tearReach}.contains(point)) {
+            if (shown)
+                shown->clearDrop();
+            tearOff(point);
+        }
+        return;
     }
-    const Point inArea = mapFromRoot(point);
-    drag_->outside = over != r || !Rect{0, 0, size().width, size().height}.contains(inArea);
     DockTabs* tabs = over ? tabsAt(*over, at) : nullptr;
     DockArea* area = tabs ? tabs->area() : nullptr;
     if (shown && shown != area)
         shown->clearDrop();
 
     // the stack's guides; on one of them (or on its tabs), where the tab would go
-    const bool own = tabs == drag_->source;
+    const bool own = tabs == drag_->source && !drag_->window;
     if (tabs && own && tabs->count() == 1) {
         area->clearDrop();      // its only tab: nothing it could do there
         tabs = nullptr;
     }
-    if (tabs) {
-        const Point local = tabs->mapFromRoot(at);
-        const float bar = tabs->style().tabHeight;
-        std::optional<DockSide> side;
-        if (local.y >= 0 && local.y < bar && local.x >= 0 && local.x < tabs->size().width)
-            side = DockSide::Center;
-        for (DockSide s : {DockSide::Center, DockSide::Start, DockSide::End, DockSide::Top, DockSide::Bottom}) {
-            if (tabs->guide(s).contains(local))
-                side = s;
-        }
-        if (own && side == DockSide::Center)
-            side.reset();       // where it is already
-        area->guides_ = Guides{tabs, side, !own};
-        area->indicator_.reset();
-        if (side) {
-            Rect zone{0, bar, tabs->size().width, std::max(0.0f, tabs->size().height - bar)};
-            const bool rtl = tabs->rightToLeft();
-            if (*side == DockSide::Start || *side == DockSide::End) {
-                zone.width /= 2;
-                if ((*side == DockSide::End) != rtl)        // the right half
-                    zone.x += zone.width;
-            } else if (*side == DockSide::Top || *side == DockSide::Bottom) {
-                zone.height /= 2;
-                if (*side == DockSide::Bottom)
-                    zone.y += zone.height;
-            }
-            const Point offset = tabs->mapToRoot({}) - area->mapToRoot({});
-            area->indicator_ = Rect{zone.x + offset.x, zone.y + offset.y, zone.width, zone.height};
-            drag_->target = tabs;
-            drag_->side = *side;
-        }
-        area->invalidatePaint();
-        drag_->shownArea = area;
+    if (!tabs)
+        return;
+    const Point local = tabs->mapFromRoot(at);
+    const float bar = tabs->style().tabHeight;
+    std::optional<DockSide> side;
+    if (local.y >= 0 && local.y < bar && local.x >= 0 && local.x < tabs->size().width)
+        side = DockSide::Center;
+    for (DockSide s : {DockSide::Center, DockSide::Start, DockSide::End, DockSide::Top, DockSide::Bottom}) {
+        if (tabs->guide(s).contains(local))
+            side = s;
     }
-
-    // out of the area, where no stack takes it: where it would float
-    if (h) {
-        if (!drag_->movingWindow && drag_->outside && !drag_->target) {
-            const auto [position, size] = floatPlace(*drag_->source, point);
-            h->showWindowPreview(position, size);
-        } else {
-            h->showWindowPreview(std::nullopt);
+    if (own && side == DockSide::Center)
+        side.reset();       // where it is already
+    area->guides_ = Guides{tabs, side, !own};
+    area->indicator_.reset();
+    if (side) {
+        Rect zone{0, bar, tabs->size().width, std::max(0.0f, tabs->size().height - bar)};
+        const bool rtl = tabs->rightToLeft();
+        if (*side == DockSide::Start || *side == DockSide::End) {
+            zone.width /= 2;
+            if ((*side == DockSide::End) != rtl)        // the right half
+                zone.x += zone.width;
+        } else if (*side == DockSide::Top || *side == DockSide::Bottom) {
+            zone.height /= 2;
+            if (*side == DockSide::Bottom)
+                zone.y += zone.height;
         }
+        const Point offset = tabs->mapToRoot({}) - area->mapToRoot({});
+        area->indicator_ = Rect{zone.x + offset.x, zone.y + offset.y, zone.width, zone.height};
+        drag_->target = tabs;
+        drag_->side = *side;
     }
+    area->invalidatePaint();
+    drag_->shownArea = area;
 }
 
 void DockArea::endDrag(Point point, bool drop) {
@@ -848,7 +960,6 @@ void DockArea::endDrag(Point point, bool drop) {
         return;
     dragTo(point);
     const Drag done = *drag_;
-    const auto [position, floatSize] = floatPlace(*done.source, point);
     drag_.reset();
     if (done.shownArea)
         done.shownArea->clearDrop();
@@ -856,18 +967,16 @@ void DockArea::endDrag(Point point, bool drop) {
     DockingHost* h = host();
     if (h) {
         h->captureMouse(false);
-        h->showWindowPreview(std::nullopt);
-        if (done.movingWindow && r)
-            h->setWindowOpacity(*r, 1);
+        if (done.window)
+            h->setWindowOpacity(*done.window, 1);
     }
     if (!drop)
         return;
     std::function<void()> apply;
     if (done.target) {
-        apply = [this, id = done.id, target = done.target, side = done.side] { move(id, *target, side); };
-    } else if (h && r && done.outside && !done.movingWindow) {
-        // let go out of the area, where no stack takes it: it floats where the outline was
-        apply = [this, id = done.id, position, size = floatSize] { floatPanel(id, position, size); };
+        apply = [this, ids = done.ids, target = done.target, side = done.side] { move(ids, *target, side); };
+    } else if (h && done.window && done.window != r) {
+        apply = [h, window = done.window] { h->raiseWindow(*window); };    // torn off: it has the focus now
     } else {
         return;
     }

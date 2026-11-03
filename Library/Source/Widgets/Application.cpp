@@ -82,8 +82,8 @@ struct Application::Impl final : DockingHost {
         order.insert(order.begin(), window);
     }
 
-    Window& open(const WindowOptions& options, std::unique_ptr<Widget> content, Window* owner) {
-        windows.push_back(std::unique_ptr<Window>(new Window(app, options, std::move(content), owner)));
+    Window& open(const WindowOptions& options, std::unique_ptr<Widget> content, Window* owner, bool focus = true) {
+        windows.push_back(std::unique_ptr<Window>(new Window(app, options, std::move(content), owner, false, focus)));
         toFront(windows.back().get());
         return *windows.back();
     }
@@ -218,7 +218,8 @@ struct Application::Impl final : DockingHost {
 
     UiRoot& openWindow(NewWindow window) override {
         Window* owner = window.owner ? find(*window.owner) : nullptr;
-        Window& opened = open({.title = window.title, .size = window.size, .position = window.position}, std::move(window.content), owner);
+        Window& opened =
+            open({.title = window.title, .size = window.size, .position = window.position}, std::move(window.content), owner, window.focus);
         if (window.titleCenter && opened.frame_)
             opened.frame_->titleBar().setCenter(std::move(window.titleCenter));
         if (!window.titleBar && opened.frame_)
@@ -302,7 +303,8 @@ DockingHost::~DockingHost() = default;
 
 // ---- window ----
 
-Window::Window(Application& app, const WindowOptions& options, std::unique_ptr<Widget> content, Window* owner, bool overlay)
+Window::Window(Application& app, const WindowOptions& options, std::unique_ptr<Widget> content, Window* owner, bool overlay,
+               bool focus)
     : app_(app), root_(*app.impl_->context, this), owner_(owner) {
     Application::Impl& impl = *app.impl_;
     title_ = options.title;
@@ -330,7 +332,7 @@ Window::Window(Application& app, const WindowOptions& options, std::unique_ptr<W
     root_.setSize(window_->size());
     root_.setScale(window_->scale());
     if (!overlay)
-        window_->show();
+        window_->show(focus);
 }
 
 Window::~Window() {

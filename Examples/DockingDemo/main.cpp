@@ -6,8 +6,8 @@
 // the guides around it to split the stack; drag the line between two stacks to share their room.
 //
 // Across windows: a script's tab dragged out of the title bar opens in a window of its own, and dropped on another
-// window's title bar goes there. A panel's tab let go out of its script floats in a window of its own; its tab dragged
-// back onto a stack docks it again.
+// window's title bar goes there. A panel's tab dragged out of its stack's tab bar floats at once, in a window of its own
+// that follows the mouse; that window, dragged by its tab or by its title, docks where it is let go on a guide.
 //
 //   docking_demo [--frames N] [--language fa]
 //
@@ -43,8 +43,8 @@ constexpr const char* persianCatalog = R"({
     "The graph of script {n}": "گراف اسکریپت {n}",
     "Drag a tab onto another stack's tabs, or onto the middle guide it shows, to join them; onto a guide around it to split the stack. Drag the line between two stacks to share their room. The + in the title bar adds a script.":
       "یک تب را روی تب‌های پشته‌ای دیگر، یا روی راهنمای وسطی که آن پشته نشان می‌دهد، بکشید تا به آن بپیوندد؛ روی یکی از راهنماهای اطراف آن بکشید تا پشته را تقسیم کند. خط میان دو پشته را بکشید تا جایشان را جابه‌جا کنید. + در نوار عنوان یک اسکریپت می‌افزاید.",
-    "Drag a tab out of its window to float it, a script's tab out of the title bar to open it in a window of its own.":
-      "یک تب را از پنجره‌اش بیرون بکشید تا شناور شود، و تب یک اسکریپت را از نوار عنوان بیرون بکشید تا در پنجره‌ای جدا باز شود.",
+    "Drag a tab out of its tab bar to float it, and a floating window by its tab or its title onto a guide to dock it. Drag a script's tab out of the title bar to open it in a window of its own.":
+      "یک تب را از نوار تب‌هایش بیرون بکشید تا شناور شود، و یک پنجره‌ی شناور را با تب یا عنوانش روی یک راهنما بکشید تا داک شود. تب یک اسکریپت را از نوار عنوان بیرون بکشید تا در پنجره‌ای جدا باز شود.",
     "Name": "نام",
     "Pure": "خالص",
     "Comment": "توضیح",
@@ -78,8 +78,9 @@ struct Studio {
                                                       "their room. The + in the title bar adds a script."),
                                            .muted = true,
                                            .wrap = true}),
-                                ui::Label({.text = tr("Drag a tab out of its window to float it, a script's tab out of the title bar to open it "
-                                                      "in a window of its own."),
+                                ui::Label({.text = tr("Drag a tab out of its tab bar to float it, and a floating window by its tab or its title "
+                                                      "onto a guide to dock it. Drag a script's tab out of the title bar to open it in a window "
+                                                      "of its own."),
                                            .muted = true,
                                            .wrap = true}))
                          .padding(glw::Insets::all(24));

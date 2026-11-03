@@ -350,14 +350,14 @@ TEST(panelFloatsAndDocksBack) {
     CHECK(t.area->panelIds().size() == 2);      // the floating windows' panels too
     CHECK(t.area->tabsOf("graph")->parent() == t.area);     // the split it left gave way
 
-    // no title bar: the tab bar is, dragging the window after its tab, with the buttons at its end
+    // no title bar: the tab bar is, with the buttons at its end (dragging the window itself, docking as it goes)
     auto& frame = static_cast<WindowFrame&>(*floating.root->content());
     CHECK(!frame.titleBar().visible());
     const DockTabs& stack = *away->tabsOf("palette");
     const Widget& firstTab = *stack.children()[0]->children()[0];
     const float barMiddle = firstTab.mapToRoot({}).y + firstTab.size().height / 2;
     const float afterTab = firstTab.mapToRoot({}).x + firstTab.size().width + 10;
-    CHECK(floating.root->windowHitTest({afterTab, barMiddle}) == platform::HitArea::Caption);
+    CHECK(floating.root->windowHitTest({afterTab, barMiddle}) == platform::HitArea::Client);
     CHECK(floating.root->windowHitTest(firstTab.mapToRoot({10, 10})) == platform::HitArea::Client);
     const Point close{floating.root->size().width - 20, barMiddle};
     CHECK(dynamic_cast<const WindowButton*>(floating.root->widgetAt(close)) != nullptr);
@@ -426,29 +426,93 @@ TEST(outlinesWhereAWindowWouldOpen) {
     screen.release(*a.window, from);
     CHECK(screen.windows.size() == 1 && !screen.preview);
 
-    // a panel: none over its own area, one out of it, where its window then opens
+    // a panel: no outline, its window itself
     Tools t(screen, {0, 1000});
     const Point tab = panelTab(screen, *t.area, "palette");
     screen.press(*t.window, tab);
     screen.moveTo(*t.window, {tab.x + 10, tab.y});
-    screen.moveTo(*t.window, {400, 1300});
-    CHECK(!screen.preview);
     screen.moveTo(*t.window, {1200, 1300});
-    CHECK(screen.preview && screen.previewSize.width >= 240);
-    const Point outline = *screen.preview;
+    CHECK(!screen.preview && screen.windows.size() == 3);
     screen.release(*t.window, {1200, 1300});
     screen.closeWindows();
     CHECK(!screen.preview);
-    CHECK(screen.windows.front()->position.x == outline.x && screen.windows.front()->position.y == outline.y);
+}
 
-    // its only tab drags the floating window, seen through
+TEST(panelFloatsAsSoonAsItLeavesItsTabBar) {
+    Screen screen;
+    Tools t(screen, {0, 0});
+    const std::size_t graphPanels = t.graph->count();
+
+    // along its tab bar: still in its stack
+    const Point tab = panelTab(screen, *t.area, "palette");
+    screen.press(*t.window, tab);
+    screen.moveTo(*t.window, {tab.x + 10, tab.y});
+    screen.moveTo(*t.window, {tab.x + 12, tab.y + 10});
+    CHECK(screen.windows.size() == 1 && t.area->tabsOf("palette")->area() == t.area);
+
+    // down into its own area (another stack of it, the graph): it floats at once, in a window under the mouse, seen
+    // through, without the focus; the drag goes on with that window
+    const Point inGraph = t.graph->mapToRoot({60, 200});
+    screen.moveTo(*t.window, inGraph);
+    CHECK(screen.windows.size() == 2);
+    Screen::Win& torn = *screen.windows.front();
+    CHECK(t.area->tabsOf("palette")->area()->floating() && torn.opacity < 1);
+    const Point at = torn.position;
+    screen.moveTo(*t.window, {inGraph.x + 30, inGraph.y + 20});
+    CHECK(torn.position.x == at.x + 30 && torn.position.y == at.y + 20);
+
+    // over the graph's End guide: shown there; let go, it docks: the floating window goes
+    const Point guide = t.graph->mapToRoot(t.graph->guide(DockSide::End).center());
+    screen.moveTo(*t.window, guide);
+    screen.release(*t.window, guide);
+    screen.closeWindows();
     screen.layout();
+    CHECK(screen.windows.size() == 1 && screen.captures == 0);
+    DockTabs* palette = t.area->tabsOf("palette");
+    CHECK(palette && palette->area() == t.area && palette != t.graph);
+    CHECK(palette->mapToRoot({}).x > t.graph->mapToRoot({}).x);      // at its end
+    CHECK(t.graph->count() == graphPanels);
+
+    // let go on no guide: it stays floating where it is, raised
+    screen.drag(*t.window, panelTab(screen, *t.area, "palette"), {500, 300});
+    CHECK(screen.windows.size() == 2 && screen.windows.front()->root.get() == t.area->tabsOf("palette")->root());
+    CHECK(screen.windows.front()->opacity == 1);
+}
+
+TEST(floatingWindowDraggedByItsTitleDocksAllItsPanels) {
+    Screen screen;
+    Tools t(screen, {0, 0});
+    // a floating window with two panels: inspector floated, then palette dropped on its middle guide
+    t.area->addPanel(panel("inspector"), t.graph, DockSide::End, 0.6f);      // wide enough for two tabs and the buttons
+    screen.layout();
+    screen.drag(*t.window, panelTab(screen, *t.area, "inspector"), {1200, 300});
     Screen::Win& floating = *screen.windows.front();
-    const Point floatingTab = panelTab(screen, *t.area, "palette");
-    screen.press(floating, floatingTab);
-    screen.moveTo(floating, {floatingTab.x + 10, floatingTab.y});
-    screen.moveTo(floating, {floatingTab.x + 60, floatingTab.y + 20});
-    CHECK(floating.opacity < 1 && !screen.preview);
-    screen.release(floating, {floatingTab.x + 60, floatingTab.y + 20});
-    CHECK(floating.opacity == 1);
+    screen.layout();
+    DockTabs& inspector = *t.area->tabsOf("inspector");
+    const Point middle = inspector.mapToRoot(inspector.guide(DockSide::Center).center()) + floating.position;
+    screen.drag(*t.window, panelTab(screen, *t.area, "palette"), middle);
+    CHECK(screen.windows.size() == 2 && t.area->tabsOf("palette") == t.area->tabsOf("inspector"));
+
+    // its title (its tab bar after the tabs): a double click maximizes it
+    screen.layout();
+    DockTabs& stack = *t.area->tabsOf("palette");
+    const Widget& lastTab = *stack.children()[0]->children()[1];
+    const Point title = lastTab.mapToRoot({lastTab.size().width + 15, lastTab.size().height / 2}) + floating.position;
+    CHECK(dynamic_cast<const WindowButton*>(floating.root->widgetAt(title - floating.position)) == nullptr);
+    floating.root->dispatch(platform::MouseButtonChanged{1, platform::MouseButton::Left, true, 2, title - floating.position});
+    floating.root->dispatch(platform::MouseButtonChanged{1, platform::MouseButton::Left, false, 2, title - floating.position});
+    CHECK(floating.host.toggled == 1);
+
+    // dragged by it: the window follows, seen through; let go on the graph's middle guide, both panels dock there
+    const Point before = floating.position;
+    screen.press(floating, title);
+    screen.moveTo(floating, {title.x + 10, title.y});
+    screen.moveTo(floating, {title.x + 40, title.y + 30});
+    CHECK(floating.position.x == before.x + 30 && floating.position.y == before.y + 30 && floating.opacity < 1);
+    const Point graphMiddle = t.graph->mapToRoot(t.graph->guide(DockSide::Center).center()) + t.window->position;
+    screen.moveTo(floating, graphMiddle);
+    screen.release(floating, graphMiddle);
+    screen.closeWindows();
+    CHECK(screen.windows.size() == 1);
+    CHECK(t.area->tabsOf("palette") == t.graph && t.area->tabsOf("inspector") == t.graph && t.graph->count() == 3);
 }

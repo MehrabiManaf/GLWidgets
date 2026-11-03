@@ -45,6 +45,7 @@ public:
         Size size;                              // dips
         const UiRoot* owner = nullptr;          // a tool window above this one's (a floating panel's); none: a window
         bool titleBar = true;                   // none: the content draws it (a floating panel's tabs, with the buttons)
+        bool focus = true;                      // false: shown without the focus (under a drag going on)
     };
     virtual UiRoot& openWindow(NewWindow window) = 0;
     // After the event being handled.
