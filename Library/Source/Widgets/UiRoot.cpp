@@ -151,8 +151,17 @@ void UiRoot::paintTree(Widget& widget, PaintContext& context, const Rect& visibl
         painter.pushClip(widget.childrenClip());
         inside = inside.intersected(widget.childrenClip());
     }
+    // its children zoomed and panned (a canvas): what shows of it, in their coordinates
+    const paint::Transform transform = widget.childrenTransform();
+    const bool transformed = !transform.identity();
+    if (transformed) {
+        painter.pushTransform(transform);
+        inside = transform.unmap(inside);
+    }
     for (const auto& child : widget.children_)
         paintTree(*child, context, inside);
+    if (transformed)
+        painter.popTransform();
     if (widget.clipsChildren_)
         painter.popClip();
     widget.paintOver(context);
@@ -167,8 +176,9 @@ Widget* UiRoot::hit(Widget& widget, Point point) {
     const Point local{point.x - widget.bounds_.x, point.y - widget.bounds_.y};
     // the last child is painted last, over the others: it is asked first; none where they are cut away
     if (!widget.clipsChildren_ || widget.childrenClip().contains(local)) {
+        const Point inner = widget.childrenTransform().unmap(local);
         for (auto it = widget.children_.rbegin(); it != widget.children_.rend(); ++it) {
-            if (Widget* found = hit(**it, local))
+            if (Widget* found = hit(**it, inner))
                 return found;
         }
     }

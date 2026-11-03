@@ -45,6 +45,16 @@ std::unique_ptr<Widget> Widget::removeChild(Widget& child) {
     return removed;
 }
 
+void Widget::setChildIndex(Widget& child, std::size_t index) {
+    GLW_EXPECTS(child.parent_ == this);
+    const auto it = std::find_if(children_.begin(), children_.end(), [&](const auto& c) { return c.get() == &child; });
+    std::unique_ptr<Widget> moved = std::move(*it);
+    children_.erase(it);
+    index = std::min(index, children_.size());
+    children_.insert(children_.begin() + static_cast<std::ptrdiff_t>(index), std::move(moved));
+    invalidateLayout();
+}
+
 UiRoot* Widget::root() const {
     const Widget* top = this;
     while (top->parent_)
@@ -66,14 +76,22 @@ void Widget::notifyRootChanged() {
 
 // ---- geometry ----
 
+paint::Transform Widget::transformToRoot() const {
+    paint::Transform result;
+    for (const Widget* w = this; w; w = w->parent_) {
+        result = paint::Transform{1, {w->bounds_.x, w->bounds_.y}} * result;     // into its parent's children's coordinates
+        if (w->parent_)
+            result = w->parent_->childrenTransform() * result;                   // ... and the parent's own
+    }
+    return result;
+}
+
 Point Widget::mapToRoot(Point local) const {
-    for (const Widget* w = this; w; w = w->parent_)
-        local = local + Point{w->bounds_.x, w->bounds_.y};
-    return local;
+    return transformToRoot().map(local);
 }
 
 Point Widget::mapFromRoot(Point point) const {
-    return point - mapToRoot({});
+    return transformToRoot().unmap(point);
 }
 
 Rect Widget::contentRect() const {

@@ -23,6 +23,7 @@
 #include <GLWidgets/Core/Color.hpp>
 #include <GLWidgets/Core/Geometry.hpp>
 #include <GLWidgets/Export.hpp>
+#include <GLWidgets/Paint/Transform.hpp>
 #include <GLWidgets/Platform/Event.hpp>
 #include <GLWidgets/Platform/Keys.hpp>
 #include <GLWidgets/Platform/Window.hpp>
@@ -144,6 +145,9 @@ public:
     // Takes `child` out of this widget: the caller owns it now (to put it elsewhere, or destroy it). A widget must not be
     // destroyed while one of its own event handlers runs.
     std::unique_ptr<Widget> removeChild(Widget& child);
+    // `child` moved to `index` among its siblings (painted over those before it), staying in the tree: its focus, the
+    // mouse captured by it are kept.
+    void setChildIndex(Widget& child, std::size_t index);
     // The root showing this widget, if it is shown.
     UiRoot* root() const;
 
@@ -151,8 +155,11 @@ public:
 
     Rect bounds() const { return bounds_; }             // in the parent's coordinates, as arranged
     Size size() const { return bounds_.size(); }
+    // Through the transforms of what it is in (a canvas's zoom and pan).
     Point mapToRoot(Point local) const;
     Point mapFromRoot(Point point) const;
+    // Its coordinates to its root's.
+    paint::Transform transformToRoot() const;
 
     // ---- layout ----
 
@@ -252,6 +259,9 @@ protected:
     // Where its children are cut when it clips them (its own coordinates): all of it by default, a scroll area's viewport.
     // Outside of it, its children are neither painted nor under the mouse.
     virtual Rect childrenClip() const { return {0, 0, bounds_.width, bounds_.height}; }
+    // Its children's coordinates to its own (they are painted, under the mouse and mapped through it): none by default, a
+    // canvas's zoom and pan.
+    virtual paint::Transform childrenTransform() const { return {}; }
     // `area` (its own coordinates), something in it that must show: a scroll area scrolls to it.
     virtual void revealArea(const Rect& area) {}
 

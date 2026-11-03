@@ -10,25 +10,16 @@
 #include <GLWidgets/Core/Geometry.hpp>
 #include <GLWidgets/Export.hpp>
 #include <GLWidgets/Paint/DrawList.hpp>
+#include <GLWidgets/Paint/Transform.hpp>
 
 #include <span>
 #include <vector>
 
 namespace glw::paint {
 
-// A uniform scale then a translation: what a canvas needs to zoom and pan. No rotation, so boxes and clips stay aligned
-// with the axes. Widths (of lines, borders) and radii scale with it.
-struct Transform {
-    float scale = 1;
-    Point translation;
-
-    Point map(Point p) const { return {p.x * scale + translation.x, p.y * scale + translation.y}; }
-    Rect map(const Rect& r) const {
-        return {r.x * scale + translation.x, r.y * scale + translation.y, r.width * scale, r.height * scale};
-    }
-    // `inner` first, then this one
-    Transform operator*(const Transform& inner) const { return {scale * inner.scale, map(inner.translation)}; }
-};
+// The points of a cubic Bezier curve from `from` to `to`, pulled toward `c1` then `c2`: as many as it takes for its
+// segments to stay within `tolerance` of the curve (in its units). Appended to `out`, `from` and `to` included.
+GLW_EXPORT void flattenBezier(Point from, Point c1, Point c2, Point to, float tolerance, std::vector<Point>& out);
 
 class GLW_EXPORT Painter {
 public:
@@ -54,6 +45,8 @@ public:
     void drawLine(Point a, Point b, float width, Color color);
     // Segments through `points` joined with miters (limited to twice the width at sharp turns), ends cut square.
     void drawPolyline(std::span<const Point> points, float width, Color color);
+    // A cubic Bezier curve (flattenBezier), its segments within a quarter of a pixel of it at the scale it is drawn.
+    void drawBezier(Point from, Point c1, Point c2, Point to, float width, Color color);
     // A convex polygon, its points in order (either direction).
     void fillConvexPolygon(std::span<const Point> points, Color color);
 
@@ -94,6 +87,7 @@ private:
     std::vector<Transform> transforms_;
     std::vector<Point> points_;         // scratch, so that a polyline does not allocate each time
     std::vector<Point> normals_;
+    std::vector<Point> curve_;
 };
 
 } // namespace glw::paint

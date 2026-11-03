@@ -115,6 +115,9 @@ Theme Theme::fromPalette(const Palette& p) {
     t.majorTab.mutedText = p.mutedText;
     t.majorTab.insertion = p.accent;
 
+    t.canvas.background = p.window;
+    t.canvas.grid = Color{p.text.r, p.text.g, p.text.b, 0.035f};
+    t.canvas.majorGrid = Color{p.text.r, p.text.g, p.text.b, 0.08f};
     t.card.background = p.layer;
     t.card.border = p.border;
     t.card.cornerRadius = t.cornerRadius;

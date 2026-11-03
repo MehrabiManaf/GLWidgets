@@ -40,6 +40,9 @@ public:
     virtual platform::Window& window() const = 0;
     // The format of its images: what the pipelines drawing into it are made for.
     virtual TextureFormat format() const = 0;
+    // Blocks until its next image can be drawn into at once: the frames in flight done, presented at the display's
+    // refresh. Called before the input of a frame is read, so that the frame shows the newest input.
+    virtual void waitUntilReady() = 0;
 
 protected:
     Surface() = default;
@@ -94,6 +97,10 @@ protected:
 
 struct DeviceDesc {
     bool debug = false;             // the validation of the GPU API, when the system has it (slow)
+    // The frames the CPU may submit before the GPU has done the first of them (1 to 3). One keeps what shows closest
+    // to the input (an interface: what is dragged follows the mouse); more keep the CPU and the GPU busier at once (a
+    // game drawing much), each a refresh of delay.
+    int framesInFlight = 1;
 };
 
 class GLW_EXPORT Device {

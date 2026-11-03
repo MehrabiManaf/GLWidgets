@@ -10,6 +10,7 @@
 
 #include <SDL3/SDL_error.h>
 
+#include <algorithm>
 #include <cstring>
 #include <string>
 #include <vector>
@@ -124,6 +125,8 @@ SdlGpuDevice::SdlGpuDevice(const DeviceDesc& desc) {
         device_ = SDL_CreateGPUDevice(shaderFormats, false, nullptr);
     if (!device_)
         throw Error(sdlError("no GPU device (Vulkan, Direct3D 12 or Metal) - SDL_CreateGPUDevice"));
+    // SDL's default is two: a frame waits a refresh more before it shows
+    SDL_SetGPUAllowedFramesInFlight(device_, static_cast<Uint32>(std::clamp(desc.framesInFlight, 1, 3)));
 }
 
 SdlGpuDevice::~SdlGpuDevice() {
@@ -294,6 +297,10 @@ platform::Window& SdlGpuSurface::window() const {
 
 TextureFormat SdlGpuSurface::format() const {
     return fromSdl(SDL_GetGPUSwapchainTextureFormat(device_.handle(), window_.handle()));
+}
+
+void SdlGpuSurface::waitUntilReady() {
+    SDL_WaitForGPUSwapchain(device_.handle(), window_.handle());
 }
 
 SDL_Window* SdlGpuSurface::windowHandle() const {

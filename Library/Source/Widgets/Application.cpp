@@ -169,6 +169,15 @@ struct Application::Impl final : DockingHost {
         return all;
     }
 
+    void waitForSurfaces() {
+        for (const auto& w : opened) {
+            if (!w->closing_ && w->window_->visible() && w->windowState() != platform::WindowState::Minimized)
+                w->surface_->waitUntilReady();
+        }
+        if (preview && preview->window_->visible())
+            preview->surface_->waitUntilReady();
+    }
+
     std::vector<Window*> windowsToDraw(bool all) const {
         std::vector<Window*> result;
         for (const auto& w : opened) {
@@ -207,6 +216,8 @@ struct Application::Impl final : DockingHost {
         window->root_.setScale(window->window_->scale());
         window->root_.invalidatePaint();
         draw({window});
+        // shown before the system goes on resizing: the window and what is drawn in it keep the same size
+        device->waitIdle();
     }
 
     // ---- docking across the windows ----
@@ -481,6 +492,9 @@ int Application::run(int frames) {
                 d.platform->waitForEvents(std::chrono::milliseconds(16));
         }
         retry = false;
+        // the windows' next images free (the frame before shown, at the display's refresh) before the input is read: what
+        // is drawn next shows the newest of it, not what came a refresh before
+        d.waitForSurfaces();
 
         platform::Event event;
         while (!d.quitting && d.platform->pollEvent(event))

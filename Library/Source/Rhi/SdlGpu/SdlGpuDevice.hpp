@@ -45,6 +45,7 @@ public:
 
     platform::Window& window() const override;
     TextureFormat format() const override;
+    void waitUntilReady() override;
     SdlGpuDevice& device() const { return device_; }
     SDL_Window* windowHandle() const;
 

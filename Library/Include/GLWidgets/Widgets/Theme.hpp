@@ -172,6 +172,14 @@ struct CardStyle {
     float cornerRadius = 8;
 };
 
+struct CanvasStyle {
+    Color background;
+    Color grid;                     // its lines, every gridSpacing dips of the canvas
+    Color majorGrid;                // every majorEvery of them
+    float gridSpacing = 16;
+    int majorEvery = 8;
+};
+
 struct TitleBarStyle {
     Color background;
     Color title;
@@ -210,6 +218,7 @@ struct Theme {
     DockStyle dock;
     MajorTabStyle majorTab;
     CardStyle card;
+    CanvasStyle canvas;
     TitleBarStyle titleBar;
     WindowButtonStyle windowButton;
     WindowFrameStyle frame;

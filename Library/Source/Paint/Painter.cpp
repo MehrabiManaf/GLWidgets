@@ -162,6 +162,26 @@ void Painter::drawPolyline(std::span<const Point> points, float width, Color col
     cmd.indexCount += static_cast<std::uint32_t>(18 * (n - 1));
 }
 
+void flattenBezier(Point from, Point c1, Point c2, Point to, float tolerance, std::vector<Point>& out) {
+    // Wang's formula: segments enough for the curve's largest second difference
+    const auto length = [](Point p) { return std::sqrt(p.x * p.x + p.y * p.y); };
+    const float bend = std::max(length(from - c1 * 2 + c2), length(c1 - c2 * 2 + to));
+    const int segments = std::clamp(static_cast<int>(std::ceil(std::sqrt(0.75f * bend / std::max(tolerance, 1e-4f)))), 1, 512);
+    out.push_back(from);
+    for (int i = 1; i < segments; ++i) {
+        const float t = static_cast<float>(i) / static_cast<float>(segments), u = 1 - t;
+        const float a = u * u * u, b = 3 * u * u * t, c = 3 * u * t * t, d = t * t * t;
+        out.push_back({a * from.x + b * c1.x + c * c2.x + d * to.x, a * from.y + b * c1.y + c * c2.y + d * to.y});
+    }
+    out.push_back(to);
+}
+
+void Painter::drawBezier(Point from, Point c1, Point c2, Point to, float width, Color color) {
+    curve_.clear();
+    flattenBezier(from, c1, c2, to, 0.25f / (transform().scale * pixelsPerDip_), curve_);
+    drawPolyline(curve_, width, color);
+}
+
 void Painter::fillConvexPolygon(std::span<const Point> points, Color color) {
     if (points.size() < 3 || color.a <= 0)
         return;

@@ -44,6 +44,10 @@ Then, in `build/<preset>/bin`:
   own chrome, split in two by a handle, a form (text field, check boxes, buttons; Tab moves the focus) and, over each
   other, a list of a million items and a table of a million rows of fifty columns (only what shows is widgets); buttons switch to Persian (the window is mirrored) and to the light
   theme. `--language fa` and `--light` start it so.
+- `node_editor` is a node editor on a `Canvas`: nodes with pins and fields for their values, links drawn as curves,
+  dragged from pin to pin; nodes moved, selected by a rectangle, framed (F), deleted; comments that carry their nodes.
+  The wheel zooms, the middle or right button pans. `--nodes N` adds N more (thousands: only what shows is painted),
+  `--rtl` mirrors it.
 - `hello_window` opens two windows drawn by one GPU device.
 - `glw_benchmarks` times the widget layer with many widgets (laid out, painted, scrolled, a text changed), without a
   window: run it from a Release build to compare a change against what was.

@@ -7,6 +7,7 @@
 #include <GLWidgets/Paint/DrawList.hpp>
 #include <GLWidgets/Text/Font.hpp>
 #include <GLWidgets/Text/GlyphAtlas.hpp>
+#include <GLWidgets/Widgets/Canvas.hpp>
 #include <GLWidgets/Widgets/Label.hpp>
 #include <GLWidgets/Widgets/Layout.hpp>
 #include <GLWidgets/Widgets/ListView.hpp>
@@ -17,6 +18,7 @@
 
 #include <algorithm>
 #include <chrono>
+#include <cmath>
 #include <cstdio>
 #include <cstdlib>
 #include <string>
@@ -226,6 +228,50 @@ void cellsInATableView(glw::UiContext& ui, std::size_t rows, std::size_t columns
                 scrollAcross, jump, widgetsIn(table));
 }
 
+// Nodes of a canvas: a box with a title and two lines each, `count` of them in a grid.
+void nodesOnACanvas(glw::UiContext& ui, int count) {
+    glw::UiRoot root(ui);
+    root.setSize({1280, 720});
+    auto made = std::make_unique<glw::Canvas>();
+    glw::Canvas& canvas = *made;
+    const int columns = std::max(1, static_cast<int>(std::sqrt(static_cast<double>(count))));
+    const double build = once([&] {
+        for (int i = 0; i < count; ++i) {
+            auto node = std::make_unique<glw::Widget>();
+            node->setLayout(std::make_unique<glw::StackLayout>(glw::Orientation::Vertical, 4.0f));
+            node->setPadding(glw::Insets::all(8));
+            node->add(std::make_unique<glw::Label>("Node " + std::to_string(i)));
+            node->add(std::make_unique<glw::Label>("A value"));
+            node->add(std::make_unique<glw::Label>("Another value"));
+            canvas.addItem(std::move(node), {static_cast<float>(i % columns) * 220.0f, static_cast<float>(i / columns) * 140.0f});
+        }
+    });
+    root.setContent(std::move(made));
+    glw::paint::DrawList drawn;
+    const double layout = once([&] { root.layout(); });
+    const double paint = best(5, [&] { root.paint(drawn); });
+    float x = 0;
+    const double pan = best(5, [&] {
+        x -= 60;
+        canvas.setOrigin({x, 0});
+        root.paint(drawn);
+    });
+    // all of them in view: as far out as it zooms
+    canvas.setZoomRange(0.02f, 4);
+    canvas.frameItems();
+    root.paint(drawn);
+    const double all = best(5, [&] { root.paint(drawn); });
+    // a step of the wheel each time, in and out again
+    int step = 0;
+    canvas.setZoom(1);
+    const double zoom = best(6, [&] {
+        canvas.setZoom(step++ % 2 == 0 ? 1.15f : 1.0f, glw::Point{640, 360});
+        root.paint(drawn);
+    });
+    std::printf("%9d | %8.1f | %8.1f | %8.2f | %8.2f | %8.2f | %8.1f | %8zu\n", count, build, layout, paint, pan, zoom, all,
+                drawn.vertices.size());
+}
+
 } // namespace
 
 int main(int argc, char** argv) {
@@ -263,5 +309,10 @@ int main(int argc, char** argv) {
     std::printf("     rows | columns |    build |   layout |    paint |   scroll |   across |     jump |  widgets\n");
     cellsInATableView(ui, 1'000'000, 100);
     cellsInATableView(ui, 100'000'000, 1000);
+
+    std::printf("\nNodes on a canvas, milliseconds (all: every one in view, zoomed out)\n");
+    std::printf("    nodes |    build |   layout |    paint |      pan |     zoom |      all | vertices\n");
+    for (int count : {1000, 10000})
+        nodesOnACanvas(ui, count);
     return 0;
 }

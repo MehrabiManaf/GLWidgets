@@ -50,6 +50,15 @@ struct Rect {
         const float r = std::min(right(), o.right()), b = std::min(bottom(), o.bottom());
         return {l, t, std::max(0.0f, r - l), std::max(0.0f, b - t)};
     }
+    // The least that holds both; an empty one is no part of it.
+    Rect united(const Rect& o) const {
+        if (o.empty())
+            return *this;
+        if (empty())
+            return o;
+        const float l = std::min(x, o.x), t = std::min(y, o.y);
+        return {l, t, std::max(right(), o.right()) - l, std::max(bottom(), o.bottom()) - t};
+    }
 
     friend bool operator==(const Rect&, const Rect&) = default;
 };

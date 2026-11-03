@@ -29,6 +29,7 @@ add_library(GLWidgets ${GLW_LIB_TYPE}
     Source/Text/TextLayout.cpp
     Source/Widgets/Application.cpp
     Source/Widgets/Button.cpp
+    Source/Widgets/Canvas.cpp
     Source/Widgets/CheckBox.cpp
     Source/Widgets/Docking.cpp
     Source/Widgets/ItemModel.cpp

@@ -279,7 +279,14 @@ The widget layer is the face of the library, so it lives in `glw` itself (`glw::
 - **`Application`** owns the platform, the device, the fonts and the glyph atlas, and runs the loop. It routes events to the
   windows by id, draws only windows that need it, and keeps a window dirty until a frame really reaches it. `Window::close`
   waits until the event being handled is done, so a button can close its own window. During live resize (Windows, macOS),
-  the platform's expose handler draws the window from inside the system's loop.
+  the platform's expose handler draws the window from inside the system's loop, and waits for the GPU before it goes
+  back to it, so that what is drawn has the window's new size.
+- **What shows follows the input as closely as vsync allows.** The device keeps one frame in flight
+  (`DeviceDesc::framesInFlight`; SDL's default is two), and the loop waits for the windows' next images
+  (`Surface::waitUntilReady`) before it reads the input, not after: a frame is drawn from the newest input and is not
+  queued behind another. Measured on Windows (Direct3D 12 and Vulkan, Release), a dragged node is one refresh behind the
+  mouse (the system draws the cursor itself, at once: no windowed application with vsync does better), and a window
+  resized by its edge is about a refresh behind where Notepad's is. A Debug build adds about a refresh.
 
 ### Declarative construction
 
@@ -408,6 +415,22 @@ told (to sort by it, say: sorting is the model's), and the table scrolls across 
 Shift or tilted, and Left and Right; in right to left the first column is at the right and scrolling goes left. With a
 million rows of a hundred columns (or a hundred million of a thousand), some 190 widgets show it; painting and scrolling
 down or across take less than half a millisecond, a jump to anywhere 3 ms.
+
+**A canvas is a surface without edges with widgets on it** (`Widgets/Canvas.hpp`): the ground of a node editor, a
+diagram, a level map. A widget may give its children coordinates of their own (`childrenTransform`: a uniform scale and a
+translation, `paint::Transform`); they are then painted, found under the mouse and mapped to the root
+(`mapToRoot`, `mapFromRoot`, `transformToRoot`) through it, and culled in their own coordinates, so a widget in a canvas
+is an ordinary widget at any zoom: a field in a node takes the focus and is typed into, its text is rasterized at the size
+it shows and stays sharp. A `Canvas` places its items at points of the canvas, as big as they measure; zooming and
+panning change its transform only, nothing is laid out again, and moving an item arranges that item alone. The wheel
+zooms at the mouse, the middle or the right button drags the view (the right one let go without moving asks for a
+context menu); it draws a grid, leaving out the lines that would come closer than 6 dips, and a subclass draws under its
+items or over them in the canvas's coordinates (links, a selection rectangle). `Widget::setChildIndex` raises an item
+without taking it out of the tree (the mouse it captured, its focus are kept). The painter draws cubic Bezier curves
+(`drawBezier`, flattened by Wang's formula to a quarter of a pixel at the scale they show). With ten thousand nodes of
+three labels, painting, panning and a step of the wheel take less than half a millisecond, and 6 ms with all of them in
+view, zoomed out (text smaller than a pixel is left out); the first layout, shaping 30,000 texts, 0.3 s.
+`Examples/NodeEditor` is a node editor on it (nodes with pins and fields, links, selection, comments).
 
 Still to come in the widget core: a blinking caret and animations (they need timers), mouse cursors (the resize cursor
 over a splitter's handle and a table header's edge), and the native extras of the chrome (Windows 11 shadow, rounded corners and snap layouts).
@@ -649,10 +672,12 @@ The `GLW_USE_SYSTEM_SDL3` option uses an installed SDL3 instead of the pinned re
 | M3 | Widget core: tree, events, focus, layout, a UI root independent of the platform, window chrome as widgets (with the native extras), live resize | Done, apart from the native extras of the chrome and what is listed in [Widgets](#widgets) |
 | M4 | Basic widgets (label, button, line edit, scroll area, splitter), styles, `LocalizedText` and catalogs, right-to-left layouts | Done, apart from plural rules and the formatting of numbers and dates (see [Localization](#localization-and-right-to-left)) |
 | M5 | Docking: major and panel tabs, windows merging and splitting by their tabs, both modes, layout persistence | Done: docking in a window, major tabs and saved layouts (M5a), across windows in the full mode (M5b), global panels, saved workspaces and Wayland's restricted mode (M5c). Wayland's drag-and-drop between windows, and keeping restored windows on the screens there are, later; the restricted mode not yet run on Wayland |
-| M6 | Validation: a node canvas and a code editor (FlowGraph), a chart widget with custom commands, an engine embedding example | |
+| M6 | Validation: a node canvas and a code editor (FlowGraph), a chart widget with custom commands, an engine embedding example | In progress: the node canvas (`Canvas`, `node_editor`) |
 
 ## Open questions
 
 - Where GPU support for older machines would be needed (no Vulkan 1.0 / Direct3D 12): if it ever is, an OpenGL backend.
-- Text on the node canvas: glyphs rasterized at each zoom level (as now) or MSDF (measure in M5, with a real canvas).
+- Text on the node canvas: glyphs rasterized at each zoom level (as now) or MSDF. Measured with the canvas (M6): the wheel
+  zooms by steps, so a few sizes are rasterized and kept, and painting stays well under a millisecond; MSDF would matter
+  for zoom animated without steps, which would fill the atlas with sizes.
 - Whether ICU is needed at all, or the small `Locale` implementation is enough.
