@@ -1,8 +1,8 @@
 // SPDX-FileCopyrightText: 2026 Abdolmanaf Mehrabi Sisakht
 // SPDX-License-Identifier: MIT
 #pragma once
-// A small JSON reader, for the catalogs of translations: objects, arrays, strings (with every escape, \u surrogate pairs
-// included), numbers (as doubles), true, false, null.
+// A small JSON reader and writer, for the catalogs of translations, saved layouts and workspaces: objects, arrays, strings
+// (with every escape, \u surrogate pairs included), numbers (as doubles), true, false, null.
 #include <optional>
 #include <string>
 #include <string_view>
@@ -38,5 +38,9 @@ struct Value {
 
 // The value `text` holds, or none (and `error`) when it is not JSON.
 std::optional<Value> parse(std::string_view text, std::string* error = nullptr);
+// `value` as JSON text, on one line.
+std::string write(const Value& value);
+// `text` as a JSON string, quoted and escaped, at the end of `out`.
+void appendString(std::string& out, std::string_view text);
 
 } // namespace glw::json

@@ -364,8 +364,9 @@ corners and snap layouts).
 
 ## Docking
 
-*In a window and across windows, with global panels: done (`Widgets/Docking.hpp`, `Widgets/MajorTabs.hpp`,
-`Widgets/DockingHost.hpp`), in the full mode. Saving windows, and Wayland's mode: planned (M5c).*
+*In a window and across windows, with global panels and saved workspaces: done (`Widgets/Docking.hpp`,
+`Widgets/MajorTabs.hpp`, `Widgets/DockingHost.hpp`, `Widgets/Workspace.hpp`), in the full mode. Wayland's mode: planned
+(M5c).*
 
 Two kinds of tabs, as in Slate:
 
@@ -452,6 +453,16 @@ The tests use a host of their own, with windows that are only roots at places of
   panel leaves.
   Closed by the user, its panels go back to their area. The floating windows hide while their area does (another major
   tab is shown), follow their area to another window, and close when it is destroyed.
+
+**A workspace is saved and restored** as JSON (`saveWorkspace`, `restoreWorkspace`): the windows (where they are, how
+large, maximized or not), the major tabs of each by their ids (`MajorTabs::setTabId`) with the layout of their panels and
+their floating windows, and the global panels of each window with theirs. What is saved is the arrangement, not the
+content: restoring asks the application for each window's `MajorTabs` (with its handlers), each document by its tab's
+id and each global panel by its id (`WorkspaceFactory`), and puts each where it was; a document's own panels are made
+with it and arranged by its saved layout. `Application::setOnQuitting` is the moment to save: once, while every window is
+still there (a window closed before is not in it, as in a browser). Screen positions are saved as they are, so a window
+of a screen no longer there comes back off it: keeping windows on the screens there are needs the screens' list, which
+the platform layer does not give yet.
 
 A window closed during the events is told (`onWindowClosing`) while every tree is still whole, and destroyed after the
 events, one at a time: what one destroys may close others. Before a window is destroyed, the tool windows above it are
@@ -577,7 +588,7 @@ The `GLW_USE_SYSTEM_SDL3` option uses an installed SDL3 instead of the pinned re
 | M2 | Text: HarfBuzz and FreeType, glyph atlas, bidi, line breaking, text layout with cursor and selection | Done, apart from system fonts and visual cursor movement (see [Text](#text)) |
 | M3 | Widget core: tree, events, focus, layout, a UI root independent of the platform, window chrome as widgets (with the native extras), live resize | Done, apart from the native extras of the chrome and what is listed in [Widgets](#widgets) |
 | M4 | Basic widgets (label, button, line edit, scroll area, splitter), styles, `LocalizedText` and catalogs, right-to-left layouts | Done, apart from plural rules and the formatting of numbers and dates (see [Localization](#localization-and-right-to-left)) |
-| M5 | Docking: major and panel tabs, windows merging and splitting by their tabs, both modes, layout persistence | In progress: docking in a window, major tabs and saved layouts (M5a), across windows in the full mode (M5b), and global panels done; saving windows and Wayland's mode next (M5c) |
+| M5 | Docking: major and panel tabs, windows merging and splitting by their tabs, both modes, layout persistence | In progress: docking in a window, major tabs and saved layouts (M5a), across windows in the full mode (M5b), global panels and saved workspaces done; Wayland's mode next (M5c) |
 | M6 | Validation: a node canvas and a code editor (FlowGraph), a chart widget with custom commands, an engine embedding example | |
 
 ## Open questions

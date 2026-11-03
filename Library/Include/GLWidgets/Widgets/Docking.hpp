@@ -181,6 +181,12 @@ public:
     // Arranges the panels it has as `layout` (from saveLayout) says. Panels it does not name go in the first stack; names
     // of panels it does not have are passed over. False, and `error`, when `layout` is not a layout (nothing changes).
     bool restoreLayout(std::string_view layout, std::string* error = nullptr);
+    // The panels a saved layout names (none when it is not a layout).
+    static std::vector<std::string> panelsIn(std::string_view layout);
+    // A floating window at `position` (the screen) of `size` (dips), with the panels of the group `layout` names, arranged
+    // as it says (a floating area's saveLayout): a saved workspace's (Workspace.hpp). False when it names none of them, or
+    // there are no windows (no DockingHost).
+    bool restoreFloating(std::string_view layout, Point position, Size size);
 
     // ---- dragging a tab (DockTabs' tabs do it) ----
 

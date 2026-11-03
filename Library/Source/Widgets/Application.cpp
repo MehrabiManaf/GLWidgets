@@ -52,17 +52,19 @@ struct Application::Impl final : DockingHost {
     std::unique_ptr<text::GlyphAtlas> atlas;
     std::unique_ptr<Translator> translator;
     std::unique_ptr<UiContext> context;
-    std::vector<std::unique_ptr<Window>> windows;      // last: closed before what they draw with
+    std::vector<std::unique_ptr<Window>> opened;       // last: closed before what they draw with
     std::vector<Window*> order;                         // the windows from the one in front (focused last) back
-    std::unique_ptr<Window> preview;                    // showWindowPreview's, made the first time; not one of `windows`
+    std::unique_ptr<Window> preview;                    // showWindowPreview's, made the first time; not one of `opened`
     bool quitting = false;
     int exitCode = 0;
+    std::function<void()> onQuitting;
+    bool toldQuitting = false;
     bool inFrame = false;
 
     explicit Impl(Application& app) : app(app) {}
 
     Window* find(platform::WindowId id) const {
-        for (const auto& w : windows) {
+        for (const auto& w : opened) {
             if (w->id() == id)
                 return w.get();
         }
@@ -70,11 +72,23 @@ struct Application::Impl final : DockingHost {
     }
 
     Window* find(const UiRoot& root) const {
-        for (const auto& w : windows) {
+        for (const auto& w : opened) {
             if (&w->root_ == &root)
                 return w.get();
         }
         return nullptr;
+    }
+
+    // Every window that is not a tool window (a floating panel's) closes, or quit was called: told once.
+    void quittingSoon() {
+        if (toldQuitting)
+            return;
+        const bool open = std::any_of(opened.begin(), opened.end(), [](const auto& w) { return !w->closing_ && !w->owner_; });
+        if (open && !quitting)
+            return;
+        toldQuitting = true;
+        if (onQuitting)
+            onQuitting();
     }
 
     void toFront(Window* window) {
@@ -83,15 +97,15 @@ struct Application::Impl final : DockingHost {
     }
 
     Window& open(const WindowOptions& options, std::unique_ptr<Widget> content, Window* owner, bool focus = true) {
-        windows.push_back(std::unique_ptr<Window>(new Window(app, options, std::move(content), owner, false, focus)));
-        toFront(windows.back().get());
-        return *windows.back();
+        opened.push_back(std::unique_ptr<Window>(new Window(app, options, std::move(content), owner, false, focus)));
+        toFront(opened.back().get());
+        return *opened.back();
     }
 
     // `closed` is destroyed: the windows above it are on their own (the system would close them with it).
     void destroy(std::unique_ptr<Window> closed, bool unparent) {
         std::erase(order, closed.get());
-        for (const auto& w : windows) {
+        for (const auto& w : opened) {
             if (w->owner_ == closed.get()) {
                 if (unparent)
                     w->window_->setParent(nullptr);
@@ -106,8 +120,8 @@ struct Application::Impl final : DockingHost {
     void closeWindows() {
         for (bool told = true; told;) {
             told = false;
-            for (std::size_t i = 0; i < windows.size(); ++i) {
-                if (Window& w = *windows[i]; w.closing_ && !w.told_) {
+            for (std::size_t i = 0; i < opened.size(); ++i) {
+                if (Window& w = *opened[i]; w.closing_ && !w.told_) {
                     w.told_ = true;
                     w.root_.windowClosing();
                     told = true;
@@ -115,11 +129,11 @@ struct Application::Impl final : DockingHost {
             }
         }
         for (;;) {
-            const auto it = std::find_if(windows.begin(), windows.end(), [](const auto& w) { return w->closing_; });
-            if (it == windows.end())
+            const auto it = std::find_if(opened.begin(), opened.end(), [](const auto& w) { return w->closing_; });
+            if (it == opened.end())
                 break;
             std::unique_ptr<Window> closed = std::move(*it);
-            windows.erase(it);
+            opened.erase(it);
             destroy(std::move(closed), true);
         }
     }
@@ -155,7 +169,7 @@ struct Application::Impl final : DockingHost {
 
     std::vector<Window*> windowsToDraw(bool all) const {
         std::vector<Window*> result;
-        for (const auto& w : windows) {
+        for (const auto& w : opened) {
             if (w->closing_ || !w->window_->visible() || w->windowState() == platform::WindowState::Minimized)
                 continue;
             if (all || w->root_.needsPaint() || w->root_.needsLayout())
@@ -218,18 +232,25 @@ struct Application::Impl final : DockingHost {
 
     UiRoot& openWindow(NewWindow window) override {
         Window* owner = window.owner ? find(*window.owner) : nullptr;
-        Window& opened =
+        Window& made =
             open({.title = window.title, .size = window.size, .position = window.position}, std::move(window.content), owner, window.focus);
-        if (window.titleCenter && opened.frame_)
-            opened.frame_->titleBar().setCenter(std::move(window.titleCenter));
-        if (!window.titleBar && opened.frame_)
-            opened.frame_->titleBar().setVisible(false);
-        return opened.root_;
+        if (window.titleCenter && made.frame_)
+            made.frame_->titleBar().setCenter(std::move(window.titleCenter));
+        if (!window.titleBar && made.frame_)
+            made.frame_->titleBar().setVisible(false);
+        return made.root_;
     }
 
     void closeWindow(const UiRoot& root) override {
         if (Window* w = find(root))
             w->close();
+    }
+
+    std::vector<UiRoot*> windows() const override {
+        std::vector<UiRoot*> roots;
+        for (const auto& w : opened)
+            roots.push_back(&w->root_);
+        return roots;
     }
 
     bool closing(const UiRoot& root) const override {
@@ -419,9 +440,9 @@ Application::~Application() {
     d.platform->setExposeHandler(nullptr);
     d.preview.reset();
     // the last opened first (a floating panel's window before its owner), one at a time: what one destroys may close others
-    while (!d.windows.empty()) {
-        std::unique_ptr<Window> closed = std::move(d.windows.back());
-        d.windows.pop_back();
+    while (!d.opened.empty()) {
+        std::unique_ptr<Window> closed = std::move(d.opened.back());
+        d.opened.pop_back();
         d.destroy(std::move(closed), false);
     }
 }
@@ -431,14 +452,14 @@ Window& Application::openWindow(const WindowOptions& options, std::unique_ptr<Wi
 }
 
 std::span<const std::unique_ptr<Window>> Application::windows() const {
-    return impl_->windows;
+    return impl_->opened;
 }
 
 int Application::run(int frames) {
     Impl& d = *impl_;
     bool retry = false;     // a window had no image to draw into: drawn again soon
     int drawn = 0, attempts = 0;
-    while (!d.quitting && !d.windows.empty()) {
+    while (!d.quitting && !d.opened.empty()) {
         if (frames < 0) {
             if (d.windowsToDraw(false).empty())
                 d.platform->waitForEvents();
@@ -450,8 +471,9 @@ int Application::run(int frames) {
         platform::Event event;
         while (!d.quitting && d.platform->pollEvent(event))
             d.handle(event);
+        d.quittingSoon();
         d.closeWindows();
-        if (d.quitting || d.windows.empty())
+        if (d.quitting || d.opened.empty())
             break;
 
         const std::vector<Window*> which = d.windowsToDraw(frames >= 0);
@@ -473,6 +495,14 @@ int Application::run(int frames) {
     return d.exitCode;
 }
 
+void Application::setOnQuitting(std::function<void()> handler) {
+    impl_->onQuitting = std::move(handler);
+}
+
+DockingHost& Application::docking() {
+    return *impl_;
+}
+
 void Application::quit(int exitCode) {
     impl_->quitting = true;
     impl_->exitCode = exitCode;
@@ -485,13 +515,13 @@ const UiContext& Application::context() const {
 
 void Application::setTheme(const Theme& theme) {
     impl_->context->theme = theme;
-    for (const auto& w : impl_->windows)
+    for (const auto& w : impl_->opened)
         w->root_.styleChanged();
 }
 
 void Application::setLanguage(const std::string& language) {
     impl_->translator->setLanguage(language);
-    for (const auto& w : impl_->windows)
+    for (const auto& w : impl_->opened)
         w->languageChanged();
 }
 

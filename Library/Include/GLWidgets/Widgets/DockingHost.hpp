@@ -12,6 +12,7 @@
 
 #include <memory>
 #include <optional>
+#include <vector>
 
 namespace glw {
 
@@ -36,6 +37,9 @@ public:
     virtual void captureMouse(bool capture) = 0;
 
     // ---- windows ----
+
+    // The application's windows (floating panels' too), in the order they were opened; closing ones too, until they go.
+    virtual std::vector<UiRoot*> windows() const = 0;
 
     struct NewWindow {
         LocalizedText title;

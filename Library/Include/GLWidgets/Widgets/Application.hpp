@@ -19,6 +19,7 @@
 #include <GLWidgets/Widgets/UiRoot.hpp>
 #include <GLWidgets/Widgets/Widget.hpp>
 
+#include <functional>
 #include <memory>
 #include <optional>
 #include <span>
@@ -31,6 +32,7 @@ class FontLibrary;
 namespace glw {
 
 class Application;
+class DockingHost;
 class WindowFrame;
 
 struct WindowOptions {
@@ -95,6 +97,12 @@ public:
     // A window showing `content` (in a WindowFrame with custom chrome).
     Window& openWindow(const WindowOptions& options, std::unique_ptr<Widget> content);
     std::span<const std::unique_ptr<Window>> windows() const;
+
+    // Called once when the application is about to end (its last window closes, or quit is called), while its windows are
+    // all still there: to save them (Workspace.hpp). The tool windows of floating panels do not keep it running.
+    void setOnQuitting(std::function<void()> handler);
+    // What docking across the windows asks of them, to save and restore them (Workspace.hpp).
+    DockingHost& docking();
 
     // Runs until the last window is closed or quit is called, and returns the exit code. With `frames` (a smoke test), draws
     // every window that many times in a row and returns: 1 when the frames did not reach the windows.

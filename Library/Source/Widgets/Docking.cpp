@@ -358,23 +358,6 @@ void dockIcon(PaintContext& context, const Rect& r, Color color) {
 
 // ---- layouts as JSON ----
 
-void appendString(std::string& out, std::string_view s) {
-    out += '"';
-    for (const char c : s) {
-        if (c == '"' || c == '\\') {
-            out += '\\';
-            out += c;
-        } else if (static_cast<unsigned char>(c) < 0x20) {
-            char escaped[8];
-            std::snprintf(escaped, sizeof escaped, "\\u%04x", static_cast<unsigned>(c));
-            out += escaped;
-        } else {
-            out += c;
-        }
-    }
-    out += '"';
-}
-
 void appendNumber(std::string& out, float value) {
     char text[32];
     std::snprintf(text, sizeof text, "%g", static_cast<double>(value));
@@ -401,7 +384,7 @@ void writeNode(std::string& out, const Widget& node, const Widget* center) {
         for (std::size_t i = 0; i < tabs->count(); ++i) {
             if (i > 0)
                 out += ',';
-            appendString(out, tabs->panelId(i));
+            json::appendString(out, tabs->panelId(i));
         }
         out += "],\"active\":";
         appendNumber(out, static_cast<float>(tabs->active()));
@@ -517,6 +500,19 @@ Rect dropRoom(const Widget& node) {
 
 Rect guideOf(const Widget& node, DockSide side) {
     return guideIn(dropRoom(node), node.rightToLeft(), side);
+}
+
+void collectPanels(const json::Value& node, std::vector<std::string>& ids) {
+    if (const json::Value* tabs = node.member("tabs"); tabs && tabs->array()) {
+        for (const json::Value& id : *tabs->array()) {
+            if (id.string())
+                ids.push_back(*id.string());
+        }
+    }
+    if (const json::Value* panes = node.member("panes"); panes && panes->array()) {
+        for (const json::Value& pane : *panes->array())
+            collectPanels(pane, ids);
+    }
 }
 
 std::size_t indexIn(const Widget& parent, const Widget& child) {
@@ -1403,6 +1399,49 @@ std::string DockArea::saveLayout() const {
     return out;
 }
 
+std::vector<std::string> DockArea::panelsIn(std::string_view layout) {
+    std::vector<std::string> ids;
+    std::string message;
+    if (const std::optional<json::Value> saved = json::parse(layout, &message); saved && validNode(*saved, message))
+        collectPanels(*saved, ids);
+    return ids;
+}
+
+bool DockArea::restoreFloating(std::string_view layout, Point position, Size size) {
+    DockingHost* h = host();
+    if (!h || !root())
+        return false;
+    // the panels it names, out of where they are, into a floating area of the group
+    std::unique_ptr<DockArea> area = makeSibling(nullptr);
+    area->floating_ = true;
+    for (const std::string& id : panelsIn(layout)) {
+        DockTabs* tabs = tabsOf(id);
+        if (!tabs || tabs->area() == area.get())
+            continue;
+        DockArea* from = tabs->area();
+        DockPanel panel = tabs->take(*tabs->indexOf(id));
+        prune(*tabs);
+        area->addPanel(std::move(panel));
+        from->closeIfEmpty();
+    }
+    DockTabs* first = area->firstTabs();
+    if (!first)
+        return false;
+    area->restoreLayout(layout);
+    LocalizedText title = area->firstTabs()->panelTitle(0);
+    DockArea* home = homeFor();
+    h->openWindow({.title = std::move(title),
+                   .content = std::move(area),
+                   .titleCenter = nullptr,
+                   .position = position,
+                   .size = size,
+                   .owner = home ? home->root() : root(),
+                   .titleBar = false});
+    if (home)
+        home->showFloating(home->visibleInTree());      // hidden with its major tab, when that is not shown
+    return true;
+}
+
 bool DockArea::restoreLayout(std::string_view layout, std::string* error) {
     std::string message;
     const std::optional<json::Value> saved = json::parse(layout, &message);
@@ -1444,8 +1483,13 @@ bool DockArea::restoreLayout(std::string_view layout, std::string* error) {
     }
     if (built)
         addChild(std::move(built), 0);
+    // those it does not name join the first stack, which still shows the tab the layout says
+    DockTabs* first = firstTabs();
+    const std::size_t shown = first ? first->active() : 0;
     for (auto& [id, panel] : panels)
         addPanel(std::move(panel));
+    if (first && first == firstTabs())
+        first->setActive(shown);
     return true;
 }
 

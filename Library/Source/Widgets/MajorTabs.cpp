@@ -516,8 +516,10 @@ void MajorTabStrip::endDrag(Point point) {
                 return;
             LocalizedText title = tabs->title(from);
             const bool closable = tabs->closable(from);
+            std::string id = tabs->tabId(from);
             std::unique_ptr<Widget> content = tabs->removeTab(from);
             into->insertTab(slot, std::move(title), std::move(content), closable);
+            into->setTabId(std::min(slot, into->count() - 1), std::move(id));
             if (const UiRoot* intoRoot = into->root())
                 host->raiseWindow(*intoRoot);
             if (tabs->count() == 0)
@@ -538,7 +540,9 @@ void MajorTabStrip::endDrag(Point point) {
         torn->onCloseRequested_ = tabs->onCloseRequested_;
         const bool closable = tabs->closable(from);
         LocalizedText title = tabs->title(from);
+        std::string id = tabs->tabId(from);
         torn->insertTab(0, title, tabs->removeTab(from), closable);
+        torn->setTabId(0, std::move(id));
         std::unique_ptr<MajorTabStrip> strip = torn->makeStrip();
         // the center of a window's area (of its global panels): the new window gets one of the same group around them
         std::unique_ptr<Widget> content = std::move(torn);

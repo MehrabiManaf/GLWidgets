@@ -44,6 +44,7 @@ add_library(GLWidgets ${GLW_LIB_TYPE}
     Source/Widgets/UiRoot.cpp
     Source/Widgets/Widget.cpp
     Source/Widgets/WindowFrame.cpp
+    Source/Widgets/Workspace.cpp
     ${GLW_DEFAULT_FONT_SOURCE})
 add_library(GLWidgets::GLWidgets ALIAS GLWidgets)
 set_target_properties(GLWidgets PROPERTIES

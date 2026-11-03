@@ -11,6 +11,7 @@
 #include <GLWidgets/Widgets/MajorTabs.hpp>
 #include <GLWidgets/Widgets/UiRoot.hpp>
 #include <GLWidgets/Widgets/WindowFrame.hpp>
+#include <GLWidgets/Widgets/Workspace.hpp>
 
 #include <algorithm>
 #include <memory>
@@ -32,14 +33,16 @@ struct Screen final : DockingHost {
         float opacity = 1;
         bool closing = false;
         bool told = false;                  // its root was told it closes
+        int serial = 0;                     // the order it was opened in
         const UiRoot* owner = nullptr;
         LocalizedText title;
     };
 
     UiContext context{tests::testContext()};
-    std::vector<std::unique_ptr<Win>> windows;
+    std::vector<std::unique_ptr<Win>> all;
     Point mouse;
     int captures = 0;
+    int opened = 0;
     std::optional<Point> preview;       // showWindowPreview's
     Size previewSize;
 
@@ -55,13 +58,14 @@ struct Screen final : DockingHost {
             frame->titleBar().setCenter(std::move(titleCenter));
         w->root->setContent(std::move(frame));
         w->position = position;
-        windows.insert(windows.begin(), std::move(w));
-        windows.front()->root->layout();
-        return *windows.front();
+        w->serial = opened++;
+        all.insert(all.begin(), std::move(w));
+        all.front()->root->layout();
+        return *all.front();
     }
 
     Win* find(const UiRoot& root) const {
-        for (const auto& w : windows) {
+        for (const auto& w : all) {
             if (w->root.get() == &root)
                 return w.get();
         }
@@ -74,8 +78,8 @@ struct Screen final : DockingHost {
     void closeWindows() {
         for (bool told = true; told;) {
             told = false;
-            for (std::size_t i = 0; i < windows.size(); ++i) {
-                if (Win& w = *windows[i]; closing(w) && !w.told) {
+            for (std::size_t i = 0; i < all.size(); ++i) {
+                if (Win& w = *all[i]; closing(w) && !w.told) {
                     w.told = true;
                     w.root->windowClosing();
                     told = true;
@@ -83,17 +87,17 @@ struct Screen final : DockingHost {
             }
         }
         for (;;) {
-            const auto it = std::find_if(windows.begin(), windows.end(), [&](const auto& w) { return closing(*w); });
-            if (it == windows.end())
+            const auto it = std::find_if(all.begin(), all.end(), [&](const auto& w) { return closing(*w); });
+            if (it == all.end())
                 break;
             std::unique_ptr<Win> closed = std::move(*it);
-            windows.erase(it);
+            all.erase(it);
             closed.reset();
         }
     }
 
     void layout() {
-        for (const auto& w : windows)
+        for (const auto& w : all)
             w->root->layout();
     }
 
@@ -128,7 +132,7 @@ struct Screen final : DockingHost {
         return w ? point + w->position : point;
     }
     Hit windowAt(Point screen, const UiRoot* except) const override {
-        for (const auto& w : windows) {
+        for (const auto& w : all) {
             const Size size = w->root->size();
             if (w->root.get() != except && w->visible && !closing(*w) &&
                 Rect{w->position.x, w->position.y, size.width, size.height}.contains(screen))
@@ -137,6 +141,16 @@ struct Screen final : DockingHost {
         return {};
     }
     void captureMouse(bool capture) override { captures += capture ? 1 : -1; }
+    std::vector<UiRoot*> windows() const override {
+        std::vector<const Win*> byOrder;
+        for (const auto& w : all)
+            byOrder.push_back(w.get());
+        std::sort(byOrder.begin(), byOrder.end(), [](const Win* a, const Win* b) { return a->serial < b->serial; });
+        std::vector<UiRoot*> roots;
+        for (const Win* w : byOrder)
+            roots.push_back(w->root.get());
+        return roots;
+    }
     UiRoot& openWindow(NewWindow window) override {
         Win& w = open(std::move(window.content), window.position, window.size, std::move(window.titleCenter));
         if (!window.titleBar)
@@ -162,9 +176,9 @@ struct Screen final : DockingHost {
             w->owner = owner;
     }
     void raiseWindow(const UiRoot& root) override {
-        const auto it = std::find_if(windows.begin(), windows.end(), [&](const auto& w) { return w->root.get() == &root; });
-        if (it != windows.end())
-            std::rotate(windows.begin(), it, it + 1);
+        const auto it = std::find_if(all.begin(), all.end(), [&](const auto& w) { return w->root.get() == &root; });
+        if (it != all.end())
+            std::rotate(all.begin(), it, it + 1);
     }
     Point windowPosition(const UiRoot& root) const override {
         const Win* w = find(root);
@@ -267,8 +281,8 @@ TEST(majorTabMovesToAnotherWindow) {
     CHECK((titles(*a.tabs) == std::vector<std::string>{"one"}));
     CHECK((titles(*b.tabs) == std::vector<std::string>{"three", "two"}));
     CHECK(b.tabs->active() == 1 && b.tabs->content(1)->visible());
-    CHECK(screen.windows.front()->root.get() == b.tabs->root());     // raised
-    CHECK(screen.windows.size() == 2 && screen.captures == 0);
+    CHECK(screen.all.front()->root.get() == b.tabs->root());     // raised
+    CHECK(screen.all.size() == 2 && screen.captures == 0);
 }
 
 TEST(windowDraggedByItsOnlyTabMerges) {
@@ -286,14 +300,14 @@ TEST(windowDraggedByItsOnlyTabMerges) {
     screen.release(*a.window, {from.x + 200, from.y + 100});
     screen.closeWindows();
     CHECK(a.window->opacity == 1);
-    CHECK(screen.windows.size() == 2 && a.tabs->count() == 1);
+    CHECK(screen.all.size() == 2 && a.tabs->count() == 1);
 
     // let go over b's strip: its tab goes there, and the window, empty, closes
     screen.layout();
     const Point start = majorTab(screen, *a.tabs, 0);
     const Point onto = majorTab(screen, *b.tabs, 0);
     screen.drag(*a.window, start, onto);
-    CHECK(screen.windows.size() == 1);
+    CHECK(screen.all.size() == 1);
     CHECK((titles(*b.tabs) == std::vector<std::string>{"one", "three", "four"}) ||
           (titles(*b.tabs) == std::vector<std::string>{"three", "one", "four"}));
 }
@@ -311,8 +325,8 @@ TEST(majorTabTornOffIntoANewWindow) {
     // let go far below the strip: a window of its own, with the same handlers
     screen.drag(*a.window, majorTab(screen, *a.tabs, 1), {300, 900});
     CHECK((titles(*a.tabs) == std::vector<std::string>{"one", "three"}));
-    CHECK(screen.windows.size() == 2);
-    Screen::Win& torn = *screen.windows.front();
+    CHECK(screen.all.size() == 2);
+    Screen::Win& torn = *screen.all.front();
     CHECK(torn.title.source == "two" && torn.owner == nullptr);
     CHECK(torn.position.y > 600);
     // its tabs: the one dragged, with a + that calls the handler with them
@@ -336,7 +350,7 @@ TEST(majorTabTornOffIntoANewWindow) {
     screen.press(torn, close);
     screen.release(torn, close);
     screen.closeWindows();
-    CHECK(screen.windows.size() == 1);
+    CHECK(screen.all.size() == 1);
 }
 
 TEST(panelFloatsAndDocksBack) {
@@ -345,8 +359,8 @@ TEST(panelFloatsAndDocksBack) {
 
     // let go out of the window: a floating window above it, with the panel
     screen.drag(*t.window, panelTab(screen, *t.area, "palette"), {1200, 300});
-    CHECK(screen.windows.size() == 2);
-    Screen::Win& floating = *screen.windows.front();
+    CHECK(screen.all.size() == 2);
+    Screen::Win& floating = *screen.all.front();
     CHECK(floating.owner == t.window->root.get() && floating.title.source == "palette");
     CHECK(t.area->floatingAreas().size() == 1);
     DockArea* away = t.area->floatingAreas()[0];
@@ -382,7 +396,7 @@ TEST(panelFloatsAndDocksBack) {
     screen.release(floating, onto);
     screen.closeWindows();
     screen.layout();
-    CHECK(screen.windows.size() == 1);
+    CHECK(screen.all.size() == 1);
     CHECK(t.area->tabsOf("palette") == t.area->tabsOf("graph"));
     CHECK(t.area->floatingAreas().empty());
 }
@@ -391,28 +405,28 @@ TEST(floatingPanelsGoHomeAndFollowTheirArea) {
     Screen screen;
     Tools t(screen, {0, 0});
     screen.drag(*t.window, panelTab(screen, *t.area, "palette"), {1200, 300});
-    CHECK(screen.windows.size() == 2);
+    CHECK(screen.all.size() == 2);
 
     // the area hidden (its major tab not shown): its floating windows hide; shown again, they show
     t.area->setVisible(false);
-    CHECK(!screen.windows.front()->visible);
+    CHECK(!screen.all.front()->visible);
     t.area->setVisible(true);
-    CHECK(screen.windows.front()->visible);
+    CHECK(screen.all.front()->visible);
 
     // the floating window closed: its panel goes back to the area
-    screen.windows.front()->host.closeWindow();
+    screen.all.front()->host.closeWindow();
     screen.closeWindows();
-    CHECK(screen.windows.size() == 1);
+    CHECK(screen.all.size() == 1);
     CHECK(t.area->tabsOf("palette") && t.area->tabsOf("palette")->area() == t.area);
 
     // floated again, then the area goes: its floating windows close
     screen.layout();
     screen.drag(*t.window, panelTab(screen, *t.area, "palette"), {1200, 300});
-    CHECK(screen.windows.size() == 2);
+    CHECK(screen.all.size() == 2);
     auto* frame = dynamic_cast<WindowFrame*>(t.window->root->content());
     frame->setContent(nullptr);
     screen.closeWindows();
-    CHECK(screen.windows.size() == 1);
+    CHECK(screen.all.size() == 1);
 }
 
 TEST(outlinesWhereAWindowWouldOpen) {
@@ -428,7 +442,7 @@ TEST(outlinesWhereAWindowWouldOpen) {
     screen.moveTo(*a.window, from);
     CHECK(!screen.preview);
     screen.release(*a.window, from);
-    CHECK(screen.windows.size() == 1 && !screen.preview);
+    CHECK(screen.all.size() == 1 && !screen.preview);
 
     // a panel: no outline, its window itself
     Tools t(screen, {0, 1000});
@@ -436,7 +450,7 @@ TEST(outlinesWhereAWindowWouldOpen) {
     screen.press(*t.window, tab);
     screen.moveTo(*t.window, {tab.x + 10, tab.y});
     screen.moveTo(*t.window, {1200, 1300});
-    CHECK(!screen.preview && screen.windows.size() == 3);
+    CHECK(!screen.preview && screen.all.size() == 3);
     screen.release(*t.window, {1200, 1300});
     screen.closeWindows();
     CHECK(!screen.preview);
@@ -452,14 +466,14 @@ TEST(panelFloatsAsSoonAsItLeavesItsTabBar) {
     screen.press(*t.window, tab);
     screen.moveTo(*t.window, {tab.x + 10, tab.y});
     screen.moveTo(*t.window, {tab.x + 12, tab.y + 10});
-    CHECK(screen.windows.size() == 1 && t.area->tabsOf("palette")->area() == t.area);
+    CHECK(screen.all.size() == 1 && t.area->tabsOf("palette")->area() == t.area);
 
     // down into its own area (another stack of it, the graph): it floats at once, in a window under the mouse, seen
     // through, without the focus; the drag goes on with that window
     const Point inGraph = t.graph->mapToRoot({60, 200});
     screen.moveTo(*t.window, inGraph);
-    CHECK(screen.windows.size() == 2);
-    Screen::Win& torn = *screen.windows.front();
+    CHECK(screen.all.size() == 2);
+    Screen::Win& torn = *screen.all.front();
     CHECK(t.area->tabsOf("palette")->area()->floating() && torn.opacity < 1);
     const Point at = torn.position;
     screen.moveTo(*t.window, {inGraph.x + 30, inGraph.y + 20});
@@ -471,7 +485,7 @@ TEST(panelFloatsAsSoonAsItLeavesItsTabBar) {
     screen.release(*t.window, guide);
     screen.closeWindows();
     screen.layout();
-    CHECK(screen.windows.size() == 1 && screen.captures == 0);
+    CHECK(screen.all.size() == 1 && screen.captures == 0);
     DockTabs* palette = t.area->tabsOf("palette");
     CHECK(palette && palette->area() == t.area && palette != t.graph);
     CHECK(palette->mapToRoot({}).x > t.graph->mapToRoot({}).x);      // at its end
@@ -479,8 +493,8 @@ TEST(panelFloatsAsSoonAsItLeavesItsTabBar) {
 
     // let go on no guide: it stays floating where it is, raised
     screen.drag(*t.window, panelTab(screen, *t.area, "palette"), {500, 300});
-    CHECK(screen.windows.size() == 2 && screen.windows.front()->root.get() == t.area->tabsOf("palette")->root());
-    CHECK(screen.windows.front()->opacity == 1);
+    CHECK(screen.all.size() == 2 && screen.all.front()->root.get() == t.area->tabsOf("palette")->root());
+    CHECK(screen.all.front()->opacity == 1);
 }
 
 TEST(floatingWindowDraggedByItsTitleDocksAllItsPanels) {
@@ -490,12 +504,12 @@ TEST(floatingWindowDraggedByItsTitleDocksAllItsPanels) {
     t.area->addPanel(panel("inspector"), t.graph, DockSide::End, 0.6f);      // wide enough for two tabs and the buttons
     screen.layout();
     screen.drag(*t.window, panelTab(screen, *t.area, "inspector"), {1200, 300});
-    Screen::Win& floating = *screen.windows.front();
+    Screen::Win& floating = *screen.all.front();
     screen.layout();
     DockTabs& inspector = *t.area->tabsOf("inspector");
     const Point middle = inspector.mapToRoot(inspector.guide(DockSide::Center).center()) + floating.position;
     screen.drag(*t.window, panelTab(screen, *t.area, "palette"), middle);
-    CHECK(screen.windows.size() == 2 && t.area->tabsOf("palette") == t.area->tabsOf("inspector"));
+    CHECK(screen.all.size() == 2 && t.area->tabsOf("palette") == t.area->tabsOf("inspector"));
 
     // its title (its tab bar after the tabs): a double click maximizes it
     screen.layout();
@@ -517,7 +531,7 @@ TEST(floatingWindowDraggedByItsTitleDocksAllItsPanels) {
     screen.moveTo(floating, graphMiddle);
     screen.release(floating, graphMiddle);
     screen.closeWindows();
-    CHECK(screen.windows.size() == 1);
+    CHECK(screen.all.size() == 1);
     CHECK(t.area->tabsOf("palette") == t.graph && t.area->tabsOf("inspector") == t.graph && t.graph->count() == 3);
 }
 
@@ -535,16 +549,16 @@ TEST(floatButtonFloatsAndDocksBack) {
     screen.press(*t.window, p);
     screen.release(*t.window, p);
     screen.closeWindows();
-    CHECK(screen.windows.size() == 2 && t.area->tabsOf("palette")->area()->floating());
+    CHECK(screen.all.size() == 2 && t.area->tabsOf("palette")->area()->floating());
 
     // in its floating window, the same button docks it back
     screen.layout();
-    Screen::Win& floating = *screen.windows.front();
+    Screen::Win& floating = *screen.all.front();
     const Point back = floatButton(*t.area->tabsOf("palette"));
     screen.press(floating, back);
     screen.release(floating, back);
     screen.closeWindows();
-    CHECK(screen.windows.size() == 1 && t.area->tabsOf("palette")->area() == t.area);
+    CHECK(screen.all.size() == 1 && t.area->tabsOf("palette")->area() == t.area);
 }
 
 namespace {
@@ -622,8 +636,8 @@ TEST(globalPanelsGoToAnotherWindowWhenTheirsCloses) {
     Editor e(screen, {0, 0});
     // a script's tab torn off: its window gets a global area of the same group around its major tabs
     screen.drag(*e.window, majorTab(screen, *e.documents, 1), {600, 1200});
-    CHECK(screen.windows.size() == 2);
-    Screen::Win& second = *screen.windows.front();
+    CHECK(screen.all.size() == 2);
+    Screen::Win& second = *screen.all.front();
     auto* frame = dynamic_cast<WindowFrame*>(second.root->content());
     auto* area = frame ? dynamic_cast<DockArea*>(frame->content()) : nullptr;
     CHECK(area && area->scope() == DockScope::Global && dynamic_cast<MajorTabs*>(area->center()));
@@ -638,7 +652,7 @@ TEST(globalPanelsGoToAnotherWindowWhenTheirsCloses) {
     // the first window closes: its global panels go to the second
     e.window->host.closeWindow();
     screen.closeWindows();
-    CHECK(screen.windows.size() == 1);
+    CHECK(screen.all.size() == 1);
     CHECK(area->tabsOf("files") && area->tabsOf("files")->area() == area && area->tabsOf("log")->area() == area);
 }
 
@@ -666,4 +680,79 @@ TEST(aWindowsAreaWithItsCenterIsSavedAndRestored) {
     CHECK(area.restoreLayout(R"({"tabs":["files","log"]})"));
     root.layout();
     CHECK(area.center() == center && center->root() == &root && center->mapToRoot({}).x < area.tabsOf("files")->mapToRoot({}).x);
+}
+
+namespace {
+
+// The documents and global panels of an Editor, made again by their ids.
+WorkspaceFactory editorFactory() {
+    WorkspaceFactory factory;
+    factory.title = "Editor";
+    factory.document = [](const std::string& id) -> std::optional<WorkspaceDocument> {
+        if (id == "missing")
+            return std::nullopt;
+        auto area = std::make_unique<DockArea>();
+        DockTabs& graph = area->addPanel(panel("graph " + id));
+        area->addPanel(panel("palette " + id), &graph, DockSide::Start, 0.3f);
+        return WorkspaceDocument{id, std::move(area)};
+    };
+    factory.panel = [](const std::string& id) -> std::optional<DockPanel> {
+        if (id == "files" || id == "log")
+            return globalPanel(id);
+        return std::nullopt;
+    };
+    return factory;
+}
+
+} // namespace
+
+TEST(aWorkspaceIsSavedAndRestored) {
+    std::string saved;
+    {
+        Screen screen;
+        Editor e(screen, {0, 0});
+        e.documents->setTabId(0, "one");
+        e.documents->setTabId(1, "two");
+        // a script's panel floating; the second script in a window of its own; the log floating
+        screen.drag(*e.window, panelTab(screen, *e.script, "palette one"), {1500, 200});
+        screen.layout();
+        screen.drag(*e.window, majorTab(screen, *e.documents, 1), {600, 1200});
+        screen.layout();
+        screen.drag(*e.window, panelTab(screen, *e.global, "log"), {1500, 900});
+        screen.layout();
+        CHECK(screen.all.size() == 4);
+        saved = saveWorkspace(screen);
+    }
+    CHECK(saved.find("\"id\":\"one\"") != std::string::npos && saved.find("\"id\":\"two\"") != std::string::npos);
+
+    // made again from their ids, each where it was: saved again, the same
+    Screen screen;
+    CHECK(restoreWorkspace(screen, saved, editorFactory()));
+    screen.layout();
+    CHECK(screen.all.size() == 4);
+    CHECK(saveWorkspace(screen) == saved);
+    // the first window: script one, its palette floating above it; the files beside its scripts
+    const std::vector<UiRoot*> roots = screen.windows();
+    auto* frame = dynamic_cast<WindowFrame*>(roots[0]->content());
+    auto* global = frame ? dynamic_cast<DockArea*>(frame->content()) : nullptr;
+    CHECK(global && global->scope() == DockScope::Global && global->tabsOf("files") && global->tabsOf("files")->area() == global);
+    auto* tabs = global ? dynamic_cast<MajorTabs*>(global->center()) : nullptr;
+    CHECK(tabs && tabs->count() == 1 && tabs->tabId(0) == "one");
+    CHECK(global->tabsOf("log") && global->tabsOf("log")->area()->floating());
+    CHECK(screen.find(*roots[1])->owner == roots[0]);      // the palette's window
+}
+
+TEST(aWorkspaceThatCannotBeMadeOpensNothing) {
+    Screen screen;
+    std::string error;
+    CHECK(!restoreWorkspace(screen, "not json", editorFactory(), &error) && !error.empty());
+    CHECK(!restoreWorkspace(screen, R"({"windows":[{"tabs":[{"id":"missing"}]}]})", editorFactory(), &error));
+    CHECK(screen.all.empty());
+    // a document left out: the others are restored
+    CHECK(restoreWorkspace(screen, R"({"windows":[{"position":[10,20],"size":[800,600],"tabs":[{"id":"missing"},{"id":"three"}]}]})",
+                           editorFactory()));
+    CHECK(screen.all.size() == 1 && screen.all.front()->position.x == 10);
+    auto* frame = dynamic_cast<WindowFrame*>(screen.all.front()->root->content());
+    auto* tabs = frame ? dynamic_cast<MajorTabs*>(frame->content()) : nullptr;
+    CHECK(tabs && tabs->count() == 1 && tabs->tabId(0) == "three");
 }

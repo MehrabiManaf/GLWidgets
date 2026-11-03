@@ -6,6 +6,8 @@
 #include <cctype>
 #include <charconv>
 #include <cstdint>
+#include <cstdio>
+#include <type_traits>
 
 namespace glw::json {
 
@@ -224,6 +226,70 @@ private:
 };
 
 } // namespace
+
+void appendString(std::string& out, std::string_view text) {
+    out += '"';
+    for (const char c : text) {
+        if (c == '"' || c == '\\') {
+            out += '\\';
+            out += c;
+        } else if (static_cast<unsigned char>(c) < 0x20) {
+            char escaped[8];
+            std::snprintf(escaped, sizeof escaped, "\\u%04x", static_cast<unsigned>(c));
+            out += escaped;
+        } else {
+            out += c;     // UTF-8 as it is
+        }
+    }
+    out += '"';
+}
+
+namespace {
+
+void writeTo(std::string& out, const Value& value) {
+    std::visit(
+        [&](const auto& v) {
+            using T = std::decay_t<decltype(v)>;
+            if constexpr (std::is_same_v<T, std::nullptr_t>) {
+                out += "null";
+            } else if constexpr (std::is_same_v<T, bool>) {
+                out += v ? "true" : "false";
+            } else if constexpr (std::is_same_v<T, double>) {
+                char number[32];
+                std::snprintf(number, sizeof number, "%.9g", v);
+                out += number;
+            } else if constexpr (std::is_same_v<T, std::string>) {
+                appendString(out, v);
+            } else if constexpr (std::is_same_v<T, Array>) {
+                out += '[';
+                for (std::size_t i = 0; i < v.size(); ++i) {
+                    if (i > 0)
+                        out += ',';
+                    writeTo(out, v[i]);
+                }
+                out += ']';
+            } else {
+                out += '{';
+                for (std::size_t i = 0; i < v.size(); ++i) {
+                    if (i > 0)
+                        out += ',';
+                    appendString(out, v[i].first);
+                    out += ':';
+                    writeTo(out, v[i].second);
+                }
+                out += '}';
+            }
+        },
+        value.data);
+}
+
+} // namespace
+
+std::string write(const Value& value) {
+    std::string out;
+    writeTo(out, value);
+    return out;
+}
 
 std::optional<Value> parse(std::string_view text, std::string* error) {
     return Parser(text).document(error);

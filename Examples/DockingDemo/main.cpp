@@ -12,20 +12,26 @@
 // at the end of a stack's tab bar floats its panel (docks it back, in a floating window); the Search panel has one more,
 // which clears its field. Tabs that do not fit scroll: by the wheel, or by the thin bar along their bottom.
 //
-//   docking_demo [--frames N] [--language fa]
+//   docking_demo [--frames N] [--language fa] [--workspace FILE]
 //
-// --frames N draws N frames and exits: a smoke test.
+// --frames N draws N frames and exits: a smoke test. --workspace FILE starts with the windows FILE has (if it is there),
+// and saves them there when the demo ends: the windows, the scripts in each, where every panel is.
 #include <GLWidgets/Paint/Painter.hpp>
 #include <GLWidgets/Widgets/Application.hpp>
 #include <GLWidgets/Widgets/Declarative.hpp>
 #include <GLWidgets/Widgets/Docking.hpp>
 #include <GLWidgets/Widgets/MajorTabs.hpp>
 #include <GLWidgets/Widgets/WindowFrame.hpp>
+#include <GLWidgets/Widgets/Workspace.hpp>
 
 #include <algorithm>
 #include <cstdio>
 #include <cstdlib>
 #include <exception>
+#include <fstream>
+#include <iterator>
+#include <optional>
+#include <sstream>
 #include <string>
 #include <string_view>
 
@@ -70,7 +76,6 @@ std::unique_ptr<glw::Widget> padded(ui::Element<glw::Widget> content) {
 
 struct Studio {
     glw::Application& app;
-    glw::MajorTabs* documents = nullptr;
     int scripts = 0;
 
     // A script: its graph in the middle, the other panels docked around it.
@@ -121,44 +126,92 @@ struct Studio {
         return area;
     }
 
-    // The application's panels, around the scripts: whichever is shown, in any window.
-    static void addGlobalPanels(glw::DockArea& area) {
-        ui::Children files;
-        for (const char* name : {"main.flow", "player.flow", "enemy.flow", "inventory.flow", "dialogue.flow", "save.flow"})
-            files.push_back(ui::Label({.text = name}));
-        area.addPanel({.id = "files",
-                       .title = tr("Files"),
-                       .content = ui::ScrollArea({}, ui::VStack({.spacing = 6}, std::move(files)).padding(glw::Insets::all(12))),
-                       .scope = glw::DockScope::Global},
-                      nullptr, glw::DockSide::Start, 0.16f);
-        ui::Children lines;
-        for (const char* name : {"main.flow", "player.flow", "enemy.flow"})
-            lines.push_back(ui::Label({.text = tr("Opened {file}.").arg("file", name), .muted = true}));
-        area.addPanel({.id = "log",
-                       .title = tr("Log"),
-                       .content = ui::ScrollArea({}, ui::VStack({.spacing = 4}, std::move(lines)).padding(glw::Insets::all(10))),
-                       .scope = glw::DockScope::Global},
-                      nullptr, glw::DockSide::Bottom, 0.2f);
+    // The application's panels, around the scripts: whichever is shown, in any window. By their ids: a saved workspace asks
+    // for them so.
+    static std::optional<glw::DockPanel> globalPanel(const std::string& id) {
+        if (id == "files") {
+            ui::Children files;
+            for (const char* name : {"main.flow", "player.flow", "enemy.flow", "inventory.flow", "dialogue.flow", "save.flow"})
+                files.push_back(ui::Label({.text = name}));
+            return glw::DockPanel{.id = "files",
+                                  .title = tr("Files"),
+                                  .content = ui::ScrollArea({}, ui::VStack({.spacing = 6}, std::move(files)).padding(glw::Insets::all(12))),
+                                  .scope = glw::DockScope::Global};
+        }
+        if (id == "log") {
+            ui::Children lines;
+            for (const char* name : {"main.flow", "player.flow", "enemy.flow"})
+                lines.push_back(ui::Label({.text = tr("Opened {file}.").arg("file", name), .muted = true}));
+            return glw::DockPanel{.id = "log",
+                                  .title = tr("Log"),
+                                  .content = ui::ScrollArea({}, ui::VStack({.spacing = 4}, std::move(lines)).padding(glw::Insets::all(10))),
+                                  .scope = glw::DockScope::Global};
+        }
+        return std::nullopt;
+    }
+
+    static glw::LocalizedText title(int n) { return tr("Script {n}").arg("n", std::to_string(n)); }
+
+    // A script by its id ("script-N"), for a saved workspace.
+    std::optional<glw::WorkspaceDocument> document(const std::string& id) {
+        const int n = id.rfind("script-", 0) == 0 ? std::atoi(id.c_str() + 7) : 0;
+        if (n <= 0)
+            return std::nullopt;
+        scripts = std::max(scripts, n);
+        return glw::WorkspaceDocument{title(n), script(n)};
+    }
+
+    // A window's scripts: + adds one to them.
+    std::unique_ptr<glw::MajorTabs> makeTabs() {
+        auto tabs = std::make_unique<glw::MajorTabs>();
+        tabs->setOnNewTab([this](glw::MajorTabs& into) { addScript(into); });
+        return tabs;
     }
 
     // In `into`: the first window's tabs, or those of a window a script was dragged out to.
     void addScript(glw::MajorTabs& into) {
         ++scripts;
-        into.addTab(tr("Script {n}").arg("n", std::to_string(scripts)), script(scripts));
+        const std::size_t index = into.addTab(title(scripts), script(scripts));
+        into.setTabId(index, "script-" + std::to_string(scripts));
+    }
+
+    // The windows of a first start: two scripts, the application's panels around them.
+    void openFirstWindow() {
+        std::unique_ptr<glw::MajorTabs> tabs = makeTabs();
+        addScript(*tabs);
+        addScript(*tabs);
+        tabs->setActive(0);
+        std::unique_ptr<glw::MajorTabStrip> strip = tabs->makeStrip();
+        auto window = std::make_unique<glw::DockArea>(glw::DockScope::Global);
+        window->setCenter(std::move(tabs));
+        window->addPanel(*globalPanel("files"), nullptr, glw::DockSide::Start, 0.16f);
+        window->addPanel(*globalPanel("log"), nullptr, glw::DockSide::Bottom, 0.2f);
+        glw::Window& shown = app.openWindow({.title = tr("Docking"), .size = {1280, 800}}, std::move(window));
+        shown.frame()->titleBar().setCenter(std::move(strip));
     }
 };
+
+std::optional<std::string> readFile(const std::string& path) {
+    std::ifstream in(path, std::ios::binary);
+    if (!in)
+        return std::nullopt;
+    return std::string(std::istreambuf_iterator<char>(in), {});
+}
 
 } // namespace
 
 int main(int argc, char** argv) {
     int frames = -1;
     std::string language = "en";
+    std::string workspace;
     for (int i = 1; i < argc; ++i) {
         const std::string_view arg(argv[i]);
         if (arg == "--frames" && i + 1 < argc)
             frames = std::max(1, std::atoi(argv[++i]));
         else if (arg == "--language" && i + 1 < argc)
             language = argv[++i];
+        else if (arg == "--workspace" && i + 1 < argc)
+            workspace = argv[++i];
     }
     try {
         glw::Application app;
@@ -166,19 +219,25 @@ int main(int argc, char** argv) {
         app.setLanguage(language);
 
         Studio studio{app};
-        auto tabs = std::make_unique<glw::MajorTabs>();
-        studio.documents = tabs.get();
-        studio.addScript(*tabs);
-        studio.addScript(*tabs);
-        tabs->setActive(0);
-        tabs->setOnNewTab([&studio](glw::MajorTabs& into) { studio.addScript(into); });
-
-        // the window: the scripts in the middle of the application's panels; their tabs in its title bar
-        auto window = std::make_unique<glw::DockArea>(glw::DockScope::Global);
-        window->setCenter(std::move(tabs));
-        Studio::addGlobalPanels(*window);
-        glw::Window& shown = app.openWindow({.title = tr("Docking"), .size = {1280, 800}}, std::move(window));
-        shown.frame()->titleBar().setCenter(studio.documents->makeStrip());
+        bool restored = false;
+        if (!workspace.empty()) {
+            // the windows as they were, made again from the ids they were saved with; saved again at the end
+            if (const std::optional<std::string> saved = readFile(workspace)) {
+                const glw::WorkspaceFactory factory{.title = tr("Docking"),
+                                                    .tabs = [&studio] { return studio.makeTabs(); },
+                                                    .document = [&studio](const std::string& id) { return studio.document(id); },
+                                                    .panel = &Studio::globalPanel};
+                std::string error;
+                restored = glw::restoreWorkspace(app.docking(), *saved, factory, &error);
+                if (!restored)
+                    std::fprintf(stderr, "docking_demo: %s: %s\n", workspace.c_str(), error.c_str());
+            }
+            app.setOnQuitting([&app, &workspace] {
+                std::ofstream(workspace, std::ios::binary) << glw::saveWorkspace(app.docking());
+            });
+        }
+        if (!restored)
+            studio.openFirstWindow();
         return app.run(frames);
     } catch (const std::exception& e) {
         std::fprintf(stderr, "docking_demo: %s\n", e.what());

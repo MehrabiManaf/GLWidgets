@@ -171,6 +171,7 @@ TEST(layoutsSavedAndRestored) {
     Docked third;
     CHECK(third.area->restoreLayout(R"({"tabs":["graph","ghost"]})", &error));
     CHECK(third.area->tabsOf("graph") == third.area->tabsOf("palette"));     // the others joined the first stack
+    CHECK(third.area->tabsOf("graph")->active() == 0);                       // which shows the tab the layout says
     CHECK(third.area->panelIds().size() == 4);
     CHECK(!third.area->restoreLayout(R"({"split":"diagonal","panes":[]})", &error));
     CHECK(!error.empty());

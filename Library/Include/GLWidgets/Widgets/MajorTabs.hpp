@@ -26,6 +26,7 @@
 #include <functional>
 #include <memory>
 #include <optional>
+#include <string>
 #include <vector>
 
 namespace glw {
@@ -50,6 +51,10 @@ public:
     void setActive(std::size_t index);
     const LocalizedText& title(std::size_t index) const { return tabs_[index].title; }
     void setTitle(std::size_t index, LocalizedText title);
+    // What a saved workspace knows the tab's document by (Workspace.hpp): none, it is not saved. It goes with the tab to
+    // another window.
+    const std::string& tabId(std::size_t index) const { return tabs_[index].id; }
+    void setTabId(std::size_t index, std::string id) { tabs_[index].id = std::move(id); }
     Widget* content(std::size_t index) const { return tabs_[index].content; }
     bool closable(std::size_t index) const { return tabs_[index].closable; }
     const MajorTabStyle& style() const;
@@ -70,6 +75,7 @@ private:
         LocalizedText title;
         Widget* content = nullptr;
         bool closable = true;
+        std::string id;
     };
     void changed();                     // the tabs: the strip shows them again
     void requestClose(std::size_t index);
