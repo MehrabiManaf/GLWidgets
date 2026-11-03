@@ -11,6 +11,7 @@
 #include <GLWidgets/Widgets/Layout.hpp>
 #include <GLWidgets/Widgets/ListView.hpp>
 #include <GLWidgets/Widgets/ScrollArea.hpp>
+#include <GLWidgets/Widgets/TreeView.hpp>
 #include <GLWidgets/Widgets/UiRoot.hpp>
 
 #include <algorithm>
@@ -124,6 +125,50 @@ void itemsInAListView(glw::UiContext& ui, std::size_t count, bool uniform) {
                 layout, paint, scroll, jump, text, list->children().size());
 }
 
+// A thousand folders of a thousand files, made when asked.
+class Folders final : public glw::TreeModel {
+public:
+    std::size_t childCount(std::optional<glw::TreeNode> parent) const override {
+        return !parent ? 1000 : parent->id < 1000 ? 1000 : 0;
+    }
+    glw::TreeNode child(std::optional<glw::TreeNode> parent, std::size_t index) const override {
+        return {!parent ? index : 1000 + parent->id * 1000 + index};
+    }
+    bool hasChildren(glw::TreeNode node) const override { return node.id < 1000; }
+};
+
+void nodesInATreeView(glw::UiContext& ui) {
+    glw::UiRoot root(ui);
+    root.setSize({800, 600});
+    auto made = std::make_unique<glw::TreeView>();
+    glw::TreeView& tree = *made;
+    tree.setModel(std::make_shared<Folders>());
+    tree.setDelegate(std::make_unique<glw::TreeTextDelegate>([](glw::TreeNode n) { return glw::LocalizedText(std::to_string(n.id)); }));
+    root.setContent(std::move(made));
+    root.layout();
+    glw::paint::DrawList drawn;
+    const double expandAll = once([&] {
+        tree.expandAll();
+        root.paint(drawn);
+    });
+    const double paint = best(5, [&] { root.paint(drawn); });
+    double at = 0;
+    const double scroll = best(5, [&] {
+        at += 120;
+        tree.list().setOffset(at);
+        root.paint(drawn);
+    });
+    // a folder near the top collapsed and expanded again, a million rows after it
+    bool open = true;
+    const double toggle = best(6, [&] {
+        open = !open;
+        tree.setExpanded({1}, open);
+        root.paint(drawn);
+    });
+    std::printf("%9zu | %10.1f | %8.2f | %8.2f | %8.2f | %8zu\n", tree.shownCount(), expandAll, paint, scroll, toggle,
+                tree.list().children().size());
+}
+
 } // namespace
 
 int main(int argc, char** argv) {
@@ -152,5 +197,9 @@ int main(int argc, char** argv) {
         if (count <= 1'000'000)
             itemsInAListView(ui, count, false);
     }
+
+    std::printf("\nA tree view, all expanded, milliseconds\n");
+    std::printf("    nodes | expand all |    paint |   scroll |   toggle |  widgets\n");
+    nodesInATreeView(ui);
     return 0;
 }

@@ -22,6 +22,7 @@
 #include <GLWidgets/Widgets/Declarative.hpp>
 #include <GLWidgets/Widgets/Docking.hpp>
 #include <GLWidgets/Widgets/MajorTabs.hpp>
+#include <GLWidgets/Widgets/TreeView.hpp>
 #include <GLWidgets/Widgets/WindowFrame.hpp>
 #include <GLWidgets/Widgets/Workspace.hpp>
 
@@ -35,6 +36,7 @@
 #include <sstream>
 #include <string>
 #include <string_view>
+#include <vector>
 
 namespace {
 
@@ -73,6 +75,48 @@ constexpr const char* nodes[] = {"Branch", "Sequence", "For Each", "While", "Del
 std::unique_ptr<glw::Widget> padded(ui::Element<glw::Widget> content) {
     return std::move(content).padding(glw::Insets::all(12));
 }
+
+// The project's files, as folders: a node's id is its index.
+class ProjectFiles final : public glw::TreeModel {
+public:
+    ProjectFiles() {
+        const std::size_t scripts = add(std::nullopt, "scripts");
+        for (const char* name : {"main.flow", "player.flow", "enemy.flow", "inventory.flow", "dialogue.flow", "save.flow"})
+            add(scripts, name);
+        const std::size_t ai = add(scripts, "ai");
+        for (const char* name : {"patrol.flow", "chase.flow", "flee.flow"})
+            add(ai, name);
+        const std::size_t levels = add(std::nullopt, "levels");
+        for (int i = 1; i <= 12; ++i)
+            add(levels, "level" + std::to_string(i) + ".map");
+        const std::size_t ui = add(std::nullopt, "ui");
+        for (const char* name : {"menu.ui", "hud.ui", "settings.ui"})
+            add(ui, name);
+        add(std::nullopt, "project.json");
+    }
+
+    const std::string& name(glw::TreeNode node) const { return nodes_[node.id].name; }
+
+    std::size_t childCount(std::optional<glw::TreeNode> parent) const override {
+        return parent ? nodes_[parent->id].children.size() : top_.size();
+    }
+    glw::TreeNode child(std::optional<glw::TreeNode> parent, std::size_t index) const override {
+        return {parent ? nodes_[parent->id].children[index] : top_[index]};
+    }
+
+private:
+    struct Node {
+        std::string name;
+        std::vector<std::size_t> children;
+    };
+    std::size_t add(std::optional<std::size_t> parent, std::string name) {
+        nodes_.push_back({std::move(name), {}});
+        (parent ? nodes_[*parent].children : top_).push_back(nodes_.size() - 1);
+        return nodes_.size() - 1;
+    }
+    std::vector<Node> nodes_;
+    std::vector<std::size_t> top_;
+};
 
 struct Studio {
     glw::Application& app;
@@ -132,13 +176,14 @@ struct Studio {
     // for them so.
     static std::optional<glw::DockPanel> globalPanel(const std::string& id) {
         if (id == "files") {
-            ui::Children files;
-            for (const char* name : {"main.flow", "player.flow", "enemy.flow", "inventory.flow", "dialogue.flow", "save.flow"})
-                files.push_back(ui::Label({.text = name}));
-            return glw::DockPanel{.id = "files",
-                                  .title = tr("Files"),
-                                  .content = ui::ScrollArea({}, ui::VStack({.spacing = 6}, std::move(files)).padding(glw::Insets::all(12))),
-                                  .scope = glw::DockScope::Global};
+            // a tree of the project's folders, its scripts' open
+            auto files = std::make_shared<ProjectFiles>();
+            auto tree = std::make_unique<glw::TreeView>();
+            tree->setModel(files);
+            tree->setDelegate(std::make_unique<glw::TreeTextDelegate>([files](glw::TreeNode n) { return glw::LocalizedText(files->name(n)); }));
+            tree->setExpanded(files->child(std::nullopt, 0), true);
+            tree->setPadding(glw::Insets::all(4));
+            return glw::DockPanel{.id = "files", .title = tr("Files"), .content = std::move(tree), .scope = glw::DockScope::Global};
         }
         if (id == "log") {
             ui::Children lines;

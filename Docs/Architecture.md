@@ -374,8 +374,8 @@ measures it (Release, by hand): with 100 000 labels in a scroll area, painting w
 wheel from 104 to 2.9 ms. What stays proportional to the number of widgets (a stack walks its children when one changes,
 and every widget is made and measured once) is for virtualized views of models, for data of any size.
 
-**Item views show models of any size** (`Widgets/ItemModel.hpp`, `Widgets/ListView.hpp`; tree and table views planned on
-the same ground). A model says how many items it has and tells its views what changed, by ranges (inserted, removed,
+**Item views show models of any size** (`Widgets/ItemModel.hpp`, `Widgets/ListView.hpp`, `Widgets/TreeView.hpp`; a
+table view planned on the same ground). A model says how many items it has and tells its views what changed, by ranges (inserted, removed,
 changed, reset); what an item is stays the model's own, and a delegate that knows the model makes a row's widget
 (`makeRow`) and shows an item in it (`bindRow`): nothing goes through a value of any type, as Qt's `QVariant` would. Only
 the rows that show are widgets, used again for other items as the view scrolls (the view scrolls itself: no content of
@@ -386,6 +386,15 @@ million items (or a hundred million), laying out, painting, scrolling a step and
 than a millisecond (`glw_benchmarks`). A ListView has a current item, selected in Single mode (a soft background and a
 short bar at its start, as Fluent's lists), chosen by the mouse and the keys, activated by a double click or Enter; a
 `StringListModel` shows its texts by itself.
+
+A `TreeView` is a ListView of the nodes that show: the top level's and, in order, the children of those expanded (an
+entry each: the node, its depth, whether it has children and is expanded). A `TreeModel` gives a node's children and
+whether it has any before they are counted, so a folder is read when it is expanded; its nodes are ids of its own
+(`TreeNode`). Expanding inserts a node's subtree in the entries (the list keeps what shows in place), collapsing removes
+it; a node expanded stays so when its parent is collapsed and expanded again. The view draws each row's indent and arrow
+(a chevron, mirrored in right to left), the delegate the rest; Right and Left go in and out, a double click or Enter
+expands, collapses and activates. With a thousand folders of a thousand files, all of them expanded (a million rows),
+painting and scrolling take less than a tenth of a millisecond, and a folder collapsed or expanded above them 1.5 ms.
 
 Still to come in the widget core: a blinking caret and animations (they need timers), mouse cursors (the resize cursor
 over a splitter's handle), and the native extras of the chrome (Windows 11 shadow, rounded corners and snap layouts).

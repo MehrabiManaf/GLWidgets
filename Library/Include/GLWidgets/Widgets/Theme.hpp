@@ -117,9 +117,11 @@ struct ItemViewStyle {
     Color selected;                 // behind the one selected
     Color indicator;                // the bar at its start
     Color focusRing;
+    Color expander;                 // a tree's arrow, by a node with children
     float rowHeight = 28;
     float cornerRadius = 4;
     float inset = 3;                // rows drawn this much in from the view's sides
+    float indent = 16;              // a tree's, for each level
 };
 
 struct SplitterStyle {

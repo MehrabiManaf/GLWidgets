@@ -38,8 +38,8 @@ Then, in `build/<preset>/bin`:
   dragged out of the title bar opens in a window of its own, and dragged onto another window's title bar goes there; a
   panel's tab dragged out of its tab bar floats at once, and its window, dragged by its tab or its title onto a stack's
   guides, docks again. Around the scripts are the application's own panels (files, log), the same whichever script is
-  shown, in any window. `--workspace FILE` saves the windows and everything in them when it ends, and starts with them
-  again.
+  shown, in any window (the files as a tree). `--workspace FILE` saves the windows and everything in them when it ends,
+  and starts with them again.
 - `widgets_demo` is an application made of widgets, written with the declarative builders (`glw::ui`): a window with its
   own chrome, split in two by a handle, a form (text field, check boxes, buttons; Tab moves the focus) and a list of a
   million items (only those that show are widgets); buttons switch to Persian (the window is mirrored) and to the light

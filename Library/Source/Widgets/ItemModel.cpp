@@ -67,4 +67,39 @@ void StringListModel::set(std::size_t index, LocalizedText text) {
     notifyChanged(index, 1);
 }
 
+// ---- trees ----
+
+TreeModelObserver::~TreeModelObserver() = default;
+
+TreeModel::~TreeModel() = default;
+
+void TreeModel::addObserver(TreeModelObserver& observer) {
+    if (std::find(observers_.begin(), observers_.end(), &observer) == observers_.end())
+        observers_.push_back(&observer);
+}
+
+void TreeModel::removeObserver(TreeModelObserver& observer) {
+    std::erase(observers_, &observer);
+}
+
+void TreeModel::notifyInserted(std::optional<TreeNode> parent, std::size_t first, std::size_t count) {
+    for (TreeModelObserver* o : std::vector(observers_))
+        o->childrenInserted(parent, first, count);
+}
+
+void TreeModel::notifyRemoved(std::optional<TreeNode> parent, std::size_t first, std::size_t count) {
+    for (TreeModelObserver* o : std::vector(observers_))
+        o->childrenRemoved(parent, first, count);
+}
+
+void TreeModel::notifyChanged(std::optional<TreeNode> parent, std::size_t first, std::size_t count) {
+    for (TreeModelObserver* o : std::vector(observers_))
+        o->childrenChanged(parent, first, count);
+}
+
+void TreeModel::notifyReset() {
+    for (TreeModelObserver* o : std::vector(observers_))
+        o->modelReset();
+}
+
 } // namespace glw

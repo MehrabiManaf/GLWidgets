@@ -15,6 +15,8 @@
 #include <GLWidgets/Widgets/Localization.hpp>
 
 #include <cstddef>
+#include <cstdint>
+#include <optional>
 #include <vector>
 
 namespace glw {
@@ -73,6 +75,52 @@ public:
 
 private:
     std::vector<LocalizedText> items_;
+};
+
+// ---- trees ----
+
+// A node of a tree model: what the model knows it by (an index, a pointer as a number...), its own. A node's id stays its
+// while it is in the model.
+struct TreeNode {
+    std::uint64_t id = 0;
+    friend bool operator==(const TreeNode&, const TreeNode&) = default;
+};
+
+// What a view of a tree model is told, after the model changed. `parent`: none for the top level.
+class GLW_EXPORT TreeModelObserver {
+public:
+    virtual ~TreeModelObserver();
+    virtual void childrenInserted(std::optional<TreeNode> parent, std::size_t first, std::size_t count) = 0;
+    virtual void childrenRemoved(std::optional<TreeNode> parent, std::size_t first, std::size_t count) = 0;
+    virtual void childrenChanged(std::optional<TreeNode> parent, std::size_t first, std::size_t count) = 0;
+    virtual void modelReset() = 0;
+};
+
+// Nodes, each with its children (TreeView). The top level is the children of no node.
+class GLW_EXPORT TreeModel {
+public:
+    virtual ~TreeModel();
+    TreeModel() = default;
+    TreeModel(const TreeModel&) = delete;
+    TreeModel& operator=(const TreeModel&) = delete;
+
+    virtual std::size_t childCount(std::optional<TreeNode> parent) const = 0;
+    virtual TreeNode child(std::optional<TreeNode> parent, std::size_t index) const = 0;
+    // Whether it has children, before they are counted (a folder not read yet: read when it is expanded). By default,
+    // whether it has any.
+    virtual bool hasChildren(TreeNode node) const { return childCount(node) > 0; }
+
+    void addObserver(TreeModelObserver& observer);
+    void removeObserver(TreeModelObserver& observer);
+
+protected:
+    void notifyInserted(std::optional<TreeNode> parent, std::size_t first, std::size_t count);
+    void notifyRemoved(std::optional<TreeNode> parent, std::size_t first, std::size_t count);
+    void notifyChanged(std::optional<TreeNode> parent, std::size_t first, std::size_t count);
+    void notifyReset();
+
+private:
+    std::vector<TreeModelObserver*> observers_;
 };
 
 } // namespace glw
