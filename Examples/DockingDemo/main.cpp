@@ -7,11 +7,14 @@
 //
 // Across windows: a script's tab dragged out of the title bar opens in a window of its own, and dropped on another
 // window's title bar goes there. A panel's tab dragged out of its stack's tab bar floats at once, in a window of its own
-// that follows the mouse; that window, dragged by its tab or by its title, docks where it is let go on a guide.
+// that follows the mouse; that window, dragged by its tab or by its title, docks where it is let go on a guide. The button
+// at the end of a stack's tab bar floats its panel (docks it back, in a floating window); the Search panel has one more,
+// which clears its field. Tabs that do not fit scroll: by the wheel, or by the thin bar along their bottom.
 //
 //   docking_demo [--frames N] [--language fa]
 //
 // --frames N draws N frames and exits: a smoke test.
+#include <GLWidgets/Paint/Painter.hpp>
 #include <GLWidgets/Widgets/Application.hpp>
 #include <GLWidgets/Widgets/Declarative.hpp>
 #include <GLWidgets/Widgets/Docking.hpp>
@@ -102,7 +105,15 @@ struct Studio {
             lines.push_back(ui::Label({.text = tr("Script {n} compiled.").arg("n", number), .muted = true}));
         glw::DockTabs& bottom = area->addPanel({"output", tr("Output"), ui::ScrollArea({}, ui::VStack({.spacing = 4}, std::move(lines)).padding(glw::Insets::all(10)))},
                                                &middle, glw::DockSide::Bottom, 0.3f);
-        area->addPanel({"search", tr("Search"), padded(ui::VStack({}, ui::LineEdit({.placeholder = tr("Search the nodes")})))}, &bottom);
+        // a button of its own on the tab bar while it is shown: it clears the field
+        glw::LineEdit* field = nullptr;
+        glw::DockPanel search{"search", tr("Search"), padded(ui::VStack({}, ui::LineEdit({.placeholder = tr("Search the nodes")}).bind(field)))};
+        search.buttons.push_back({[](glw::PaintContext& context, const glw::Rect& r, glw::Color color) {
+                                      context.painter.drawLine({r.x + 2, r.y + 2}, {r.right() - 2, r.bottom() - 2}, 1.2f, color);
+                                      context.painter.drawLine({r.x + 2, r.bottom() - 2}, {r.right() - 2, r.y + 2}, 1.2f, color);
+                                  },
+                                  [field] { field->setText(""); }});
+        area->addPanel(std::move(search), &bottom);
         return area;
     }
 

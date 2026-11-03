@@ -516,3 +516,29 @@ TEST(floatingWindowDraggedByItsTitleDocksAllItsPanels) {
     CHECK(screen.windows.size() == 1);
     CHECK(t.area->tabsOf("palette") == t.graph && t.area->tabsOf("inspector") == t.graph && t.graph->count() == 3);
 }
+
+TEST(floatButtonFloatsAndDocksBack) {
+    Screen screen;
+    Tools t(screen, {0, 0});
+    // the float button: last on the palette's tab bar
+    auto floatButton = [&](DockTabs& tabs) -> Point {
+        const Widget& tools = *tabs.children()[1];
+        const Widget& button = *tools.children().back();
+        return button.mapToRoot({12, 12}) + screen.windowPosition(*tabs.root());
+    };
+    screen.layout();
+    const Point p = floatButton(*t.area->tabsOf("palette"));
+    screen.press(*t.window, p);
+    screen.release(*t.window, p);
+    screen.closeWindows();
+    CHECK(screen.windows.size() == 2 && t.area->tabsOf("palette")->area()->floating());
+
+    // in its floating window, the same button docks it back
+    screen.layout();
+    Screen::Win& floating = *screen.windows.front();
+    const Point back = floatButton(*t.area->tabsOf("palette"));
+    screen.press(floating, back);
+    screen.release(floating, back);
+    screen.closeWindows();
+    CHECK(screen.windows.size() == 1 && t.area->tabsOf("palette")->area() == t.area);
+}

@@ -121,7 +121,10 @@ struct DockStyle {
     Color text;
     Color mutedText;                // the titles of the tabs not shown
     Color dropZone;
+    Color scrollThumb;              // the thin bar that scrolls the tabs, when they do not fit
     float tabHeight = 30;
+    float tabMinimumWidth = 64;     // a tab is as wide as its title, between these (a longer title is cut with …)
+    float tabMaximumWidth = 200;
 };
 
 // The major tabs in a window's title bar, as a browser's.

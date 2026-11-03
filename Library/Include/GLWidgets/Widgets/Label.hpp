@@ -26,6 +26,7 @@ public:
         bool muted = false;                             // with no color: the theme's muted text color
         text::TextAlignment alignment = text::TextAlignment::Start;
         bool wrap = false;
+        bool elide = false;                             // one line cut with … to the width it gets (a tab's title)
     };
 
     explicit Label(Props props);
@@ -39,6 +40,9 @@ public:
     void setColor(std::optional<Color> color);          // none: the theme's text color
     void setTextAlignment(text::TextAlignment alignment);
     void setWrap(bool wrap);
+    void setElide(bool elide);
+    // Whether it shows its text cut (elide, and not wide enough), as it was last painted.
+    bool elided() const { return elided_.has_value() && elidedWidth_ == content_.width; }
 
 protected:
     Size measureContent(Size available) override;
@@ -51,6 +55,8 @@ protected:
 private:
     // The text laid out for `width` (unbounded: not wrapped), made again when what it depends on changed.
     const text::TextLayout* textLayout(float width);
+    // The longest start of its text that fits in `width` with …, laid out.
+    const text::TextLayout* elidedLayout(float width);
     void textChanged();
 
     LocalizedText text_;
@@ -59,8 +65,11 @@ private:
     bool muted_ = false;
     text::TextAlignment alignment_ = text::TextAlignment::Start;
     bool wrap_ = false;
+    bool elide_ = false;
 
     std::optional<text::TextLayout> layout_;
+    std::optional<text::TextLayout> elided_;
+    float elidedWidth_ = -1;
     float layoutWidth_ = -1;
     bool layoutRightToLeft_ = false;
     Rect content_;

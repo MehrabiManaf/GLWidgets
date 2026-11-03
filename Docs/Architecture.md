@@ -408,6 +408,12 @@ In a dock area:
   drop is never a surprise.
 - **A stack left without tabs goes**, and a split left with one pane gives way to it.
 - **A tab's ×** closes its panel (`setOnPanelClosed` gets it).
+- **A tab is as wide as its title**, between the style's minimum and maximum widths; a longer title is cut with …
+  (`Label`'s `elide`). Tabs that do not fit scroll rather than shrink: by the wheel, and by a thin bar along the bottom
+  of the tab bar, shown while the mouse is over the tabs. The tab shown is kept in view.
+- **Buttons at the end of a stack's tab bar**: those of the panel shown (`DockPanel::buttons`: an icon drawn by the
+  application, and what a click does), then the float button, which floats the panel shown by its stack's place, or,
+  in a floating window, docks it back in its area. The float button is there only with a docking host.
 - **`addPanel(panel, nextTo, side, share)`** builds a layout in code: beside a stack on its Start, End, Top or Bottom
   side, or in it.
 

@@ -88,6 +88,7 @@ Theme Theme::fromPalette(const Palette& p) {
     t.dock.text = p.text;
     t.dock.mutedText = p.mutedText;
     t.dock.dropZone = {p.accent.r, p.accent.g, p.accent.b, 0.22f};
+    t.dock.scrollThumb = {p.mutedText.r, p.mutedText.g, p.mutedText.b, 0.55f};
 
     t.majorTab.background = {.normal = {0, 0, 0, 0}, .hovered = p.hover, .pressed = p.pressed};
     t.majorTab.active = p.window;

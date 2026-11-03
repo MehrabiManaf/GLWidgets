@@ -5,7 +5,9 @@
 #include "Check.hpp"
 #include "TestUi.hpp"
 
+#include <GLWidgets/Paint/DrawList.hpp>
 #include <GLWidgets/Widgets/Docking.hpp>
+#include <GLWidgets/Widgets/Label.hpp>
 #include <GLWidgets/Widgets/MajorTabs.hpp>
 #include <GLWidgets/Widgets/UiRoot.hpp>
 
@@ -224,4 +226,76 @@ TEST(majorTabs) {
 
     std::unique_ptr<Widget> removed = documents.removeTab(2);
     CHECK(documents.count() == 2 && documents.active() == 1);
+}
+
+TEST(tabsAreAsWideAsTheirTitlesAndLongOnesAreCut) {
+    Docked d;
+    d.area->addPanel({"long", "A panel whose title is far longer than any tab may be", std::make_unique<Widget>()}, d.graph);
+    d.root.layout();
+    paint::DrawList list;
+    d.root.paint(list);
+    const DockStyle& s = tests::testContext().theme.dock;
+    const Widget& row = *d.graph->children()[0];
+    const Widget& graphTab = *row.children()[0];
+    const Widget& longTab = *row.children()[1];
+    CHECK(graphTab.size().width >= s.tabMinimumWidth && graphTab.size().width < s.tabMaximumWidth);
+    CHECK(near(longTab.size().width, s.tabMaximumWidth));
+    CHECK(static_cast<const Label&>(*longTab.children()[0]).elided());
+    CHECK(!static_cast<const Label&>(*graphTab.children()[0]).elided());
+}
+
+TEST(tabsThatDoNotFitScroll) {
+    Docked d;
+    // the palette's stack (a quarter of the area) with many tabs: the one shown, the last added, is in view
+    for (int i = 0; i < 12; ++i)
+        d.area->addPanel(panel("tool " + std::to_string(i)), d.palette);
+    d.root.layout();
+    const Widget& row = *d.palette->children()[0];
+    const Rect rowRect{row.mapToRoot({}).x, row.mapToRoot({}).y, row.size().width, row.size().height};
+    auto onScreen = [&](std::size_t i) {
+        const Widget& tab = *row.children()[i];
+        const Point at = tab.mapToRoot({});
+        return at.x >= rowRect.x - 0.5f && at.x + tab.size().width <= rowRect.right() + 0.5f;
+    };
+    CHECK(d.palette->active() == 12 && onScreen(12) && !onScreen(0));
+    CHECK(row.mapToRoot({}).x + row.size().width <= d.palette->mapToRoot({}).x + d.palette->size().width);
+
+    // the wheel up: back to the start
+    const Point over = row.mapToRoot({20, 10});
+    for (int i = 0; i < 40; ++i)
+        d.root.dispatch(platform::MouseWheelScrolled{1, {0, 1}, over});
+    CHECK(onScreen(0) && !onScreen(12));
+
+    // pressed, a tab is shown and brought into view; the thin bar at the bottom, dragged to its end, shows the last
+    d.root.dispatch(platform::MouseButtonChanged{1, platform::MouseButton::Left, true, 1, over});
+    d.root.dispatch(platform::MouseButtonChanged{1, platform::MouseButton::Left, false, 1, over});
+    CHECK(d.palette->active() == 0);
+    const Point bar{rowRect.x + 10, rowRect.bottom() - 2};
+    d.root.dispatch(platform::MouseButtonChanged{1, platform::MouseButton::Left, true, 1, bar});
+    d.root.dispatch(platform::MouseMoved{1, {rowRect.right() + 50, bar.y}});
+    d.root.dispatch(platform::MouseButtonChanged{1, platform::MouseButton::Left, false, 1, {rowRect.right() + 50, bar.y}});
+    CHECK(onScreen(12) && d.palette->active() == 0);
+}
+
+TEST(panelButtonsOnTheTabBar) {
+    Docked d;
+    int cleared = 0;
+    DockPanel log{"log", "Log", std::make_unique<Widget>()};
+    log.buttons.push_back({[](PaintContext&, const Rect&, Color) {}, [&] { ++cleared; }});
+    d.area->addPanel(std::move(log), d.graph);
+    d.root.layout();
+    // shown while its panel is (no float button without a docking host)
+    const Widget& tools = *d.graph->children()[1];
+    CHECK(tools.children().size() == 1);
+    const Widget& button = *tools.children()[0];
+    CHECK(button.mapToRoot({}).x > d.graph->children()[0]->mapToRoot({}).x);      // after the tabs
+    const Point at = button.mapToRoot({12, 12});
+    d.root.dispatch(platform::MouseButtonChanged{1, platform::MouseButton::Left, true, 1, at});
+    d.root.dispatch(platform::MouseButtonChanged{1, platform::MouseButton::Left, false, 1, at});
+    CHECK(cleared == 1);
+    d.graph->setActive(0);
+    CHECK(tools.children().empty());
+    // it goes with its panel
+    DockPanel taken = d.graph->take(1);
+    CHECK(taken.buttons.size() == 1);
 }

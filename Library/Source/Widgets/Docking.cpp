@@ -31,6 +31,9 @@ namespace {
 constexpr float dragThreshold = 6;      // dips the mouse moves with a tab before it is dragged
 constexpr float draggedOpacity = 0.6f;  // of a window dragged by its only tab
 constexpr float tearReach = 24;         // dips above and below a stack's tab bar where a tab dragged from it stays in it
+constexpr float wheelStep = 40;         // dips the tabs scroll by a step of the wheel
+constexpr float thumbZone = 7;          // dips along the bottom of a tab bar where a press is on its scroll bar
+constexpr float titleGrip = 28;         // dips after the tabs of a floating window's title, always there to drag it by
 
 // A tab of a stack: its title, a × when the panel can be closed. Pressed, it shows its panel; dragged, it moves it.
 class DockTab final : public Widget {
@@ -38,7 +41,11 @@ public:
     DockTab(DockTabs& owner, std::size_t index, const LocalizedText& title, bool closable, bool active)
         : owner_(owner), index_(index), closable_(closable), active_(active) {
         setPadding({12, 0, closable ? 32.0f : 12.0f, 0});
-        label_ = &add(std::make_unique<Label>(title));
+        setClipsChildren(true);
+        // as wide as its title, between the style's widths: a longer one is cut with …
+        setMinimumSize({owner.style().tabMinimumWidth, 0});
+        setMaximumSize({owner.style().tabMaximumWidth, unbounded});
+        label_ = &add(std::make_unique<Label>(Label::Props{.text = title, .elide = true}));
         label_->setAlignment(Alignment::Start, Alignment::Center);
     }
 
@@ -150,6 +157,203 @@ private:
     bool closeHovered_ = false;
     Point pressPoint_;
 };
+
+// The tabs of a stack side by side, each as wide as it wants. When they do not fit they are scrolled: by the wheel, by
+// the thin bar along its bottom (shown while the mouse is over the tabs; dragged, or pressed beside its thumb), and so
+// that the tab shown is in view.
+class TabRow final : public Widget {
+public:
+    TabRow() { setClipsChildren(true); }
+
+    // The tab at `index` comes into view when it is next arranged.
+    void reveal(std::size_t index) {
+        reveal_ = index;
+        invalidateLayout();
+    }
+
+protected:
+    Size measureContent(Size available) override {
+        Size size;
+        for (const auto& tab : children()) {
+            const Size s = tab->measure({unbounded, available.height});
+            size.width += s.width;
+            size.height = std::max(size.height, s.height);
+        }
+        return size;
+    }
+
+    void arrangeContent(const Rect& content) override {
+        area_ = content;
+        std::vector<float> widths;
+        total_ = 0;
+        for (const auto& tab : children()) {
+            widths.push_back(tab->measure({unbounded, content.height}).width);
+            total_ += widths.back();
+        }
+        if (reveal_ && *reveal_ < widths.size()) {
+            float start = 0;
+            for (std::size_t i = 0; i < *reveal_; ++i)
+                start += widths[i];
+            const float end = start + widths[*reveal_];
+            if (start < offset_)
+                offset_ = start;
+            else if (end > offset_ + content.width)
+                offset_ = end - content.width;
+        }
+        reveal_.reset();
+        offset_ = std::clamp(offset_, 0.0f, maxOffset());
+        // from the start side, less what is scrolled
+        const bool rtl = rightToLeft();
+        float at = -offset_;
+        for (std::size_t i = 0; i < widths.size(); ++i) {
+            const float x = rtl ? content.right() - at - widths[i] : content.x + at;
+            children()[i]->arrange({x, content.y, widths[i], content.height});
+            at += widths[i];
+        }
+    }
+
+    void paintOver(PaintContext& context) override {
+        if (maxOffset() <= 0 || !(hovered() || grab_))
+            return;
+        const Rect t = thumb();
+        context.painter.fillRoundedRect(t, t.height / 2, context.ui.theme.dock.scrollThumb);
+    }
+
+    // the bar along the bottom before the tab there: dragged, or pressed beside its thumb to go there
+    void onPreviewMouse(MouseEvent& event) override {
+        if (event.type != MouseEventType::Press || event.button != platform::MouseButton::Left || maxOffset() <= 0 ||
+            event.position.y < size().height - thumbZone)
+            return;
+        event.handled = true;
+        Rect t = thumb();
+        if (event.position.x < t.x || event.position.x > t.right()) {
+            const float travel = std::max(1.0f, area_.width - 4 - t.width);
+            const float fromStart = rightToLeft() ? area_.right() - 2 - event.position.x - t.width / 2 : event.position.x - area_.x - 2 - t.width / 2;
+            scrollTo(fromStart / travel * maxOffset());
+        }
+        grab_ = event.position.x;
+        grabOffset_ = offset_;
+    }
+
+    void onMouse(MouseEvent& event) override {
+        switch (event.type) {
+        case MouseEventType::Wheel:
+            if (maxOffset() <= 0)
+                return;
+            // up (or left in left to right) towards the start
+            scrollTo(offset_ + (-event.wheelDelta.y + (rightToLeft() ? -event.wheelDelta.x : event.wheelDelta.x)) * wheelStep);
+            event.handled = true;
+            break;
+        case MouseEventType::Move:
+            if (!grab_)
+                return;
+            {
+                const float travel = std::max(1.0f, area_.width - 4 - thumb().width);
+                const float moved = (event.position.x - *grab_) * (rightToLeft() ? -1.0f : 1.0f);
+                scrollTo(grabOffset_ + moved / travel * maxOffset());
+            }
+            event.handled = true;
+            break;
+        case MouseEventType::Release:
+            if (grab_) {
+                grab_.reset();
+                invalidatePaint();
+                event.handled = true;
+            }
+            break;
+        case MouseEventType::Press:
+            break;
+        }
+    }
+
+    void onHoverChanged(bool) override { invalidatePaint(); }
+
+private:
+    float maxOffset() const { return std::max(0.0f, total_ - area_.width); }
+
+    Rect thumb() const {
+        const float track = std::max(0.0f, area_.width - 4);
+        const float width = std::min(track, std::max(24.0f, track * area_.width / std::max(total_, 1.0f)));
+        const float along = maxOffset() > 0 ? offset_ / maxOffset() * (track - width) : 0;
+        const float x = rightToLeft() ? area_.right() - 2 - along - width : area_.x + 2 + along;
+        const float height = grab_ ? 4.0f : 3.0f;
+        return {x, size().height - height - 1, width, height};
+    }
+
+    void scrollTo(float offset) {
+        reveal_.reset();        // scrolled by the user: where the user says
+        offset_ = std::clamp(offset, 0.0f, maxOffset());
+        arrange(bounds());      // the tabs move: nothing measured again
+        invalidatePaint();
+    }
+
+    Rect area_;
+    float total_ = 0;
+    float offset_ = 0;          // dips scrolled from the start
+    std::optional<std::size_t> reveal_;
+    std::optional<float> grab_; // the thumb dragged: where it was pressed
+    float grabOffset_ = 0;
+};
+
+// A button after a stack's tabs: an icon, a background while the mouse is over it; clicked, its handler after the event.
+class DockToolButton final : public Widget {
+public:
+    DockToolButton(std::function<void(PaintContext&, const Rect&, Color)> icon, std::function<void()> onClick)
+        : icon_(std::move(icon)), onClick_(std::move(onClick)) {
+        setAlignment(Alignment::Start, Alignment::Center);
+    }
+
+protected:
+    Size measureContent(Size) override { return {24, 24}; }
+
+    void paint(PaintContext& context) override {
+        const Palette& palette = context.ui.theme.palette;
+        const Rect r{0, 0, size().width, size().height};
+        if (hovered())
+            context.painter.fillRoundedRect(r, 4, pressed_ ? palette.pressed : palette.hover);
+        const DockStyle& s = context.ui.theme.dock;
+        if (icon_)
+            icon_(context, {r.center().x - 6, r.center().y - 6, 12, 12}, hovered() ? s.text : s.mutedText);
+    }
+
+    void onMouse(MouseEvent& event) override {
+        if (event.button != platform::MouseButton::Left || event.type == MouseEventType::Move || event.type == MouseEventType::Wheel)
+            return;
+        event.handled = true;
+        if (event.type == MouseEventType::Press) {
+            pressed_ = true;
+        } else if (std::exchange(pressed_, false) && Rect{0, 0, size().width, size().height}.contains(event.position) && onClick_) {
+            // it may take this button away (another panel shown, this one floated): after the event
+            if (UiRoot* r = root())
+                r->defer(onClick_);
+            else
+                onClick_();
+        }
+        invalidatePaint();
+    }
+
+    void onHoverChanged(bool) override { invalidatePaint(); }
+
+private:
+    std::function<void(PaintContext&, const Rect&, Color)> icon_;
+    std::function<void()> onClick_;
+    bool pressed_ = false;
+};
+
+// The float button's icons: a box with an arrow out of its corner (float), a box filled at its bottom (dock).
+void floatIcon(PaintContext& context, const Rect& r, Color color) {
+    paint::Painter& p = context.painter;
+    p.strokeRoundedRect({r.x + 0.5f, r.y + 3.5f, r.width - 4, r.height - 4}, 1.5f, 1.2f, color);
+    p.drawLine({r.x + r.width * 0.45f, r.y + r.height * 0.55f}, {r.right(), r.y}, 1.2f, color);
+    p.drawLine({r.right() - 5, r.y}, {r.right(), r.y}, 1.2f, color);
+    p.drawLine({r.right(), r.y}, {r.right(), r.y + 5}, 1.2f, color);
+}
+
+void dockIcon(PaintContext& context, const Rect& r, Color color) {
+    paint::Painter& p = context.painter;
+    p.strokeRoundedRect({r.x + 0.5f, r.y + 0.5f, r.width - 1, r.height - 1}, 1.5f, 1.2f, color);
+    p.fillRect({r.x + 0.5f, r.y + r.height * 0.55f, r.width - 1, r.height * 0.45f - 0.5f}, color);
+}
 
 // ---- layouts as JSON ----
 
@@ -287,9 +491,12 @@ std::size_t indexIn(const Widget& parent, const Widget& child) {
 DockTabs::DockTabs() {
     setMinimumSize({90, 70});
     setClipsChildren(true);
-    auto bar = std::make_unique<Widget>();
-    bar->setLayout(std::make_unique<StackLayout>(Orientation::Horizontal));
-    bar_ = &addChild(std::move(bar));
+    bar_ = &addChild(std::make_unique<TabRow>());
+    auto tools = std::make_unique<Widget>();
+    tools->setLayout(std::make_unique<StackLayout>(Orientation::Horizontal));
+    tools->setHitTestVisible(false);        // between the buttons: the stack
+    tools->setPadding({2, 0, 4, 0});
+    tools_ = &addChild(std::move(tools));
 }
 
 DockArea* DockTabs::area() const {
@@ -319,7 +526,8 @@ void DockTabs::add(DockPanel panel, std::size_t index) {
     index = std::min(index, entries_.size());
     std::unique_ptr<Widget> content = panel.content ? std::move(panel.content) : std::make_unique<Widget>();
     Widget& shown = addChild(std::move(content));
-    entries_.insert(entries_.begin() + static_cast<std::ptrdiff_t>(index), Entry{std::move(panel.id), std::move(panel.title), &shown, panel.closable});
+    entries_.insert(entries_.begin() + static_cast<std::ptrdiff_t>(index),
+                    Entry{std::move(panel.id), std::move(panel.title), &shown, panel.closable, std::move(panel.buttons)});
     rebuildBar();
     setActive(index);
 }
@@ -334,7 +542,9 @@ DockPanel DockTabs::take(std::size_t index) {
     rebuildBar();
     if (!entries_.empty())
         setActive(active_);
-    return DockPanel{std::move(entry.id), std::move(entry.title), std::move(content), entry.closable};
+    else
+        rebuildTools();
+    return DockPanel{std::move(entry.id), std::move(entry.title), std::move(content), entry.closable, std::move(entry.buttons)};
 }
 
 void DockTabs::setActive(std::size_t index) {
@@ -346,7 +556,34 @@ void DockTabs::setActive(std::size_t index) {
     // the tabs are told in place: one of them may be the one pressed, in its own handler
     for (std::size_t i = 0; i < bar_->children().size(); ++i)
         static_cast<DockTab&>(*bar_->children()[i]).setActive(i == active_);
+    static_cast<TabRow&>(*bar_).reveal(active_);
+    rebuildTools();
     invalidateLayout();
+}
+
+void DockTabs::rebuildTools() {
+    while (!tools_->children().empty())
+        tools_->removeChild(*tools_->children().back());
+    if (entries_.empty())
+        return;
+    for (const DockButton& button : entries_[active_].buttons)
+        tools_->add(std::make_unique<DockToolButton>(button.icon, button.onClick));
+    // the float button, where there are windows to float in
+    const UiContext* ui = context();
+    if (!ui || !ui->docking)
+        return;
+    auto icon = [this](PaintContext& context, const Rect& r, Color color) {
+        const DockArea* a = area();
+        (a && a->floating() ? dockIcon : floatIcon)(context, r, color);
+    };
+    tools_->add(std::make_unique<DockToolButton>(icon, [this] {
+        if (DockArea* a = area(); a && !entries_.empty())
+            a->toggleFloating(entries_[active_].id);
+    }));
+}
+
+void DockTabs::onRootChanged() {
+    rebuildTools();     // the float button: with a docking host only
 }
 
 void DockTabs::rebuildBar() {
@@ -359,6 +596,7 @@ void DockTabs::rebuildBar() {
 Size DockTabs::measureContent(Size available) {
     const float bar = style().tabHeight;
     bar_->measure({available.width, bar});
+    tools_->measure({unbounded, bar});
     Size content;
     for (const Entry& e : entries_) {
         if (e.content->visible())
@@ -370,8 +608,15 @@ Size DockTabs::measureContent(Size available) {
 void DockTabs::arrangeContent(const Rect& content) {
     const float bar = style().tabHeight;
     const bool rtl = rightToLeft();
+    // the bar: what the window buttons leave (a floating window's), the tools at its end, the tabs before them
     const float reserve = std::min(reserve_, content.width);
-    arrangeInCell(*bar_, {reserveLeft_ ? content.x + reserve : content.x, content.y, content.width - reserve, bar}, rtl);
+    const Rect line{reserveLeft_ ? content.x + reserve : content.x, content.y, content.width - reserve, bar};
+    const float tools = std::min(tools_->measure({unbounded, bar}).width, line.width);
+    arrangeInCell(*tools_, {rtl ? line.x : line.right() - tools, line.y, tools, bar}, rtl);
+    // a window's title keeps a little room after its tabs, to drag the window by
+    const float grip = title_ ? std::min(titleGrip, line.width - tools) : 0.0f;
+    const float tabs = std::max(0.0f, line.width - tools - grip);
+    arrangeInCell(*bar_, {rtl ? line.right() - tabs : line.x, line.y, tabs, bar}, rtl);
     const Rect below{content.x, content.y + bar, content.width, std::max(0.0f, content.height - bar)};
     for (const Entry& e : entries_) {
         if (e.content->visible())
@@ -380,9 +625,9 @@ void DockTabs::arrangeContent(const Rect& content) {
 }
 
 void DockTabs::setTitleArea(bool title, float reserve, bool left) {
-    title_ = title;     // its area drags the window from there itself: docking as it goes
-    if (reserve == reserve_ && left == reserveLeft_)
+    if (reserve == reserve_ && left == reserveLeft_ && title == title_)
         return;
+    title_ = title;     // its area drags the window from there itself: docking as it goes
     reserve_ = reserve;
     reserveLeft_ = left;
     arrange(bounds());      // in its area's arrangement: the bar again, nothing measured again
@@ -600,6 +845,36 @@ void DockArea::move(const std::string& id, DockTabs& target, DockSide side) {
         h->raiseWindow(*target.root());
 }
 
+void DockArea::toggleFloating(std::string_view id) {
+    auto apply = [this, id = std::string(id)] {
+        DockTabs* tabs = tabsOf(id);
+        DockingHost* h = group_->host;
+        const UiRoot* r = tabs ? tabs->root() : nullptr;
+        if (!r || !h)
+            return;
+        DockArea* from = tabs->area();
+        if (from->floating_) {
+            // back to the area its window belongs to, in its first stack
+            DockArea* to = group_->home;
+            if (!to || !to->root())
+                return;
+            DockPanel panel = tabs->take(*tabs->indexOf(id));
+            prune(*tabs);
+            to->addPanel(std::move(panel));
+            from->closeIfEmpty();
+            h->raiseWindow(*to->root());
+            return;
+        }
+        // by where its stack is, a little in from its corner, as large
+        const Point position = h->toScreen(*r, tabs->mapToRoot({24, 24}));
+        floatPanel(id, position, {std::max(tabs->size().width, 240.0f), std::max(tabs->size().height, 160.0f)});
+    };
+    if (UiRoot* r = root())
+        r->defer(std::move(apply));
+    else
+        apply();
+}
+
 void DockArea::move(const std::vector<std::string>& ids, DockTabs& target, DockSide side) {
     if (ids.empty())
         return;
@@ -783,8 +1058,18 @@ void DockArea::beginTitleDrag() {
 bool DockArea::onTitle(Point point) const {
     const UiRoot* r = root();
     const Widget* w = r ? r->widgetAt(mapToRoot(point)) : nullptr;
-    const auto* tabs = w ? dynamic_cast<const DockTabs*>(w->parent()) : nullptr;
-    return tabs && w == tabs->bar_ && tabs->title_ && tabs->area() == this;
+    if (!w)
+        return false;
+    // the stack itself (by its buttons, after its tabs) on its bar, or its tab row where it has no tab
+    const auto* tabs = dynamic_cast<const DockTabs*>(w);
+    if (tabs && tabs->mapFromRoot(mapToRoot(point)).y >= tabs->style().tabHeight)
+        return false;
+    if (!tabs) {
+        tabs = dynamic_cast<const DockTabs*>(w->parent());
+        if (tabs && w != tabs->bar_)
+            return false;
+    }
+    return tabs && tabs->title_ && tabs->area() == this;
 }
 
 void DockArea::onMouse(MouseEvent& event) {

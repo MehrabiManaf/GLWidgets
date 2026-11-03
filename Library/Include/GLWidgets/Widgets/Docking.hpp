@@ -20,6 +20,11 @@
 // leaves, and its panels go back to the area they came from when it is closed. The floating windows show while their area
 // does (they hide with its major tab), and close with it.
 //
+// A stack's tabs are each as wide as their title (cut with … past the style's maximum); when they do not fit they scroll,
+// by the wheel and by a thin bar along the bottom of the tab bar, the tab shown kept in view. At the end of the tab bar are
+// the buttons of the panel shown (DockPanel::buttons) and the stack's float button: it floats the panel shown, or, in a
+// floating window, docks it back in its area.
+//
 // Start and End are the sides of the layout direction (Start is the right in right to left).
 #include <GLWidgets/Export.hpp>
 #include <GLWidgets/Widgets/Localization.hpp>
@@ -52,12 +57,19 @@ enum class DockSide : std::uint8_t {
     Bottom,
 };
 
+// A button at the end of a stack's tab bar, for the panel shown.
+struct DockButton {
+    std::function<void(PaintContext&, const Rect&, Color)> icon;   // draws it in the rectangle, in the color
+    std::function<void()> onClick;          // after the event
+};
+
 // A panel to dock: a tool shown in a tab.
 struct DockPanel {
     std::string id;                         // unique in its dock area: what saved layouts know it by
     LocalizedText title;
     std::unique_ptr<Widget> content;
     bool closable = true;                   // a × on its tab
+    std::vector<DockButton> buttons;        // on the tab bar while it is shown, before the float button
 };
 
 // A stack of panels: their tabs, and the content of the one shown under them.
@@ -88,6 +100,7 @@ protected:
     Size measureContent(Size available) override;
     void arrangeContent(const Rect& content) override;
     void paint(PaintContext& context) override;
+    void onRootChanged() override;
 
 private:
     friend class DockArea;
@@ -96,15 +109,18 @@ private:
         LocalizedText title;
         Widget* content = nullptr;          // a child, shown when it is the active one
         bool closable = true;
+        std::vector<DockButton> buttons;
     };
     void rebuildBar();
+    void rebuildTools();                    // the buttons of the panel shown, and the float button
     // In a floating window: its bar is the window's title where it has no tab (`title`), and leaves `reserve` at its
     // `left` or right for the window buttons.
     void setTitleArea(bool title, float reserve, bool left);
 
     std::vector<Entry> entries_;
     std::size_t active_ = 0;
-    Widget* bar_ = nullptr;
+    Widget* bar_ = nullptr;                 // the tabs, scrolled when they do not fit
+    Widget* tools_ = nullptr;               // the buttons after them
     float reserve_ = 0;
     bool reserveLeft_ = false;
     bool title_ = false;
@@ -155,6 +171,9 @@ public:
     bool dragging() const { return drag_.has_value(); }
     // A tab's × pressed: the panel goes (after the event).
     void closePanel(std::string_view id);
+    // The float button: the panel `id` floats in a window by its stack's place; in a floating window, it goes back to the
+    // area the window belongs to (after the event).
+    void toggleFloating(std::string_view id);
 
 protected:
     void arrangeContent(const Rect& content) override;
