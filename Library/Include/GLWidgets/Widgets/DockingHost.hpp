@@ -56,6 +56,11 @@ public:
     // Its top left corner on the screen.
     virtual Point windowPosition(const UiRoot& root) const = 0;
     virtual void moveWindow(const UiRoot& root, Point position) = 0;
+    // A window dragged by a tab is seen through (`opacity` below 1), so that the drop indicators under it show.
+    virtual void setWindowOpacity(const UiRoot& root, float opacity) = 0;
+    // Where a dragged tab would open a window if let go: an outline at `position` (the screen) of `size` (dips), above
+    // every window; none: hidden.
+    virtual void showWindowPreview(std::optional<Point> position, Size size = {}) = 0;
 };
 
 } // namespace glw

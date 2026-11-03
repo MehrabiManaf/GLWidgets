@@ -3,6 +3,7 @@
 #include <GLWidgets/Widgets/Application.hpp>
 
 #include <GLWidgets/Core/Assert.hpp>
+#include <GLWidgets/Paint/Painter.hpp>
 #include <GLWidgets/Text/Font.hpp>
 #include <GLWidgets/Text/GlyphAtlas.hpp>
 #include <GLWidgets/Widgets/DockingHost.hpp>
@@ -30,6 +31,16 @@ platform::WindowId windowOf(const platform::Event& event) {
         event);
 }
 
+// The window a dragged tab would open: a tinted rectangle, seen through.
+class WindowPreview final : public Widget {
+protected:
+    void paint(PaintContext& context) override {
+        context.painter.fillRect({0, 0, size().width, size().height}, context.ui.theme.dock.activeLine);
+    }
+};
+
+constexpr float previewOpacity = 0.35f;
+
 } // namespace
 
 struct Application::Impl final : DockingHost {
@@ -43,6 +54,7 @@ struct Application::Impl final : DockingHost {
     std::unique_ptr<UiContext> context;
     std::vector<std::unique_ptr<Window>> windows;      // last: closed before what they draw with
     std::vector<Window*> order;                         // the windows from the one in front (focused last) back
+    std::unique_ptr<Window> preview;                    // showWindowPreview's, made the first time; not one of `windows`
     bool quitting = false;
     int exitCode = 0;
     bool inFrame = false;
@@ -149,6 +161,8 @@ struct Application::Impl final : DockingHost {
             if (all || w->root_.needsPaint() || w->root_.needsLayout())
                 result.push_back(w.get());
         }
+        if (preview && preview->window_->visible() && (all || preview->root_.needsPaint()))
+            result.push_back(preview.get());
         return result;
     }
 
@@ -254,27 +268,57 @@ struct Application::Impl final : DockingHost {
         if (Window* w = find(root))
             w->window_->setPosition(position);
     }
+
+    void setWindowOpacity(const UiRoot& root, float opacity) override {
+        if (Window* w = find(root))
+            w->window_->setOpacity(opacity);
+    }
+
+    void showWindowPreview(std::optional<Point> position, Size size) override {
+        if (!position || size.width <= 0 || size.height <= 0) {
+            if (preview && preview->window_->visible())
+                preview->window_->hide();
+            return;
+        }
+        if (!preview) {
+            preview.reset(new Window(app, {.title = "", .size = size, .customChrome = false}, std::make_unique<WindowPreview>(), nullptr, true));
+            preview->window_->setOpacity(previewOpacity);
+        }
+        platform::Window& w = *preview->window_;
+        if (w.size() != size) {
+            w.setSize(size);
+            preview->root_.setSize(size);       // its events are not read: it is told here
+        }
+        w.setPosition(*position);
+        if (!w.visible()) {
+            w.show();
+            preview->root_.setScale(w.scale());
+            preview->root_.invalidatePaint();
+        }
+    }
 };
 
 DockingHost::~DockingHost() = default;
 
 // ---- window ----
 
-Window::Window(Application& app, const WindowOptions& options, std::unique_ptr<Widget> content, Window* owner)
+Window::Window(Application& app, const WindowOptions& options, std::unique_ptr<Widget> content, Window* owner, bool overlay)
     : app_(app), root_(*app.impl_->context, this), owner_(owner) {
     Application::Impl& impl = *app.impl_;
     title_ = options.title;
     window_ = impl.platform->createWindow({.title = impl.translator->resolve(title_),
                                            .size = options.size,
-                                           .borderless = options.customChrome,
+                                           .resizable = !overlay,
+                                           .borderless = options.customChrome || overlay,
                                            .position = options.position,
-                                           .tool = owner != nullptr});
+                                           .tool = owner != nullptr,
+                                           .overlay = overlay});
     if (owner)
         window_->setParent(owner->window_.get());
     surface_ = impl.device->createSurface(*window_);
     if (impl.translator->rightToLeft())
         root_.setLayoutDirection(LayoutDirection::RightToLeft);
-    if (options.customChrome) {
+    if (options.customChrome && !overlay) {
         auto frame = std::make_unique<WindowFrame>(std::move(content));
         frame->titleBar().setTitle(title_);
         frame_ = frame.get();
@@ -285,7 +329,8 @@ Window::Window(Application& app, const WindowOptions& options, std::unique_ptr<W
     }
     root_.setSize(window_->size());
     root_.setScale(window_->scale());
-    window_->show();
+    if (!overlay)
+        window_->show();
 }
 
 Window::~Window() {
@@ -365,6 +410,7 @@ Application::Application() : impl_(std::make_unique<Impl>(*this)) {
 Application::~Application() {
     Impl& d = *impl_;
     d.platform->setExposeHandler(nullptr);
+    d.preview.reset();
     // the last opened first (a floating panel's window before its owner), one at a time: what one destroys may close others
     while (!d.windows.empty()) {
         std::unique_ptr<Window> closed = std::move(d.windows.back());

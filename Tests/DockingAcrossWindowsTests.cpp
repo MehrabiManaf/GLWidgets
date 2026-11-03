@@ -14,6 +14,7 @@
 
 #include <algorithm>
 #include <memory>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -28,6 +29,7 @@ struct Screen final : DockingHost {
         std::unique_ptr<UiRoot> root;
         Point position;
         bool visible = true;
+        float opacity = 1;
         bool closing = false;
         bool told = false;                  // its root was told it closes
         const UiRoot* owner = nullptr;
@@ -38,6 +40,8 @@ struct Screen final : DockingHost {
     std::vector<std::unique_ptr<Win>> windows;
     Point mouse;
     int captures = 0;
+    std::optional<Point> preview;       // showWindowPreview's
+    Size previewSize;
 
     Screen() { context.docking = this; }
 
@@ -166,6 +170,14 @@ struct Screen final : DockingHost {
         if (Win* w = find(root))
             w->position = position;
     }
+    void setWindowOpacity(const UiRoot& root, float opacity) override {
+        if (Win* w = find(root))
+            w->opacity = opacity;
+    }
+    void showWindowPreview(std::optional<Point> position, Size size) override {
+        preview = position;
+        previewSize = size;
+    }
 };
 
 // A window of documents: its major tabs, their strip in the title bar.
@@ -266,8 +278,10 @@ TEST(windowDraggedByItsOnlyTabMerges) {
     screen.moveTo(*a.window, {from.x + 10, from.y});
     screen.moveTo(*a.window, {from.x + 200, from.y + 100});
     CHECK(a.window->position.x == 190 && a.window->position.y == 100);
+    CHECK(a.window->opacity < 1 && !screen.preview);       // seen through while it moves; no window would open
     screen.release(*a.window, {from.x + 200, from.y + 100});
     screen.closeWindows();
+    CHECK(a.window->opacity == 1);
     CHECK(screen.windows.size() == 2 && a.tabs->count() == 1);
 
     // let go over b's strip: its tab goes there, and the window, empty, closes
@@ -359,7 +373,7 @@ TEST(panelFloatsAndDocksBack) {
     // (from where it was when the drag began, past the threshold)
     CHECK(floating.position.x == before.x + 40 && floating.position.y == before.y + 40);
     // over the graph's stack: shown there, and docked there when let go
-    const Point onto = middleOf(screen, *t.graph);
+    const Point onto = t.graph->mapToRoot(t.graph->guide(DockSide::Center).center()) + t.window->position;
     screen.moveTo(floating, onto);
     screen.release(floating, onto);
     screen.closeWindows();
@@ -395,4 +409,46 @@ TEST(floatingPanelsGoHomeAndFollowTheirArea) {
     frame->setContent(nullptr);
     screen.closeWindows();
     CHECK(screen.windows.size() == 1);
+}
+
+TEST(outlinesWhereAWindowWouldOpen) {
+    Screen screen;
+    Documents a(screen, {0, 0}, {"one", "two"});
+
+    // a major tab out of every strip: the outline of its window, the size of this one; back on the strip, none
+    const Point from = majorTab(screen, *a.tabs, 1);
+    screen.press(*a.window, from);
+    screen.moveTo(*a.window, {from.x + 10, from.y});
+    screen.moveTo(*a.window, {300, 900});
+    CHECK(screen.preview && screen.preview->y > 600 && screen.previewSize == Size{800, 600});
+    screen.moveTo(*a.window, from);
+    CHECK(!screen.preview);
+    screen.release(*a.window, from);
+    CHECK(screen.windows.size() == 1 && !screen.preview);
+
+    // a panel: none over its own area, one out of it, where its window then opens
+    Tools t(screen, {0, 1000});
+    const Point tab = panelTab(screen, *t.area, "palette");
+    screen.press(*t.window, tab);
+    screen.moveTo(*t.window, {tab.x + 10, tab.y});
+    screen.moveTo(*t.window, {400, 1300});
+    CHECK(!screen.preview);
+    screen.moveTo(*t.window, {1200, 1300});
+    CHECK(screen.preview && screen.previewSize.width >= 240);
+    const Point outline = *screen.preview;
+    screen.release(*t.window, {1200, 1300});
+    screen.closeWindows();
+    CHECK(!screen.preview);
+    CHECK(screen.windows.front()->position.x == outline.x && screen.windows.front()->position.y == outline.y);
+
+    // its only tab drags the floating window, seen through
+    screen.layout();
+    Screen::Win& floating = *screen.windows.front();
+    const Point floatingTab = panelTab(screen, *t.area, "palette");
+    screen.press(floating, floatingTab);
+    screen.moveTo(floating, {floatingTab.x + 10, floatingTab.y});
+    screen.moveTo(floating, {floatingTab.x + 60, floatingTab.y + 20});
+    CHECK(floating.opacity < 1 && !screen.preview);
+    screen.release(floating, {floatingTab.x + 60, floatingTab.y + 20});
+    CHECK(floating.opacity == 1);
 }

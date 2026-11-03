@@ -401,8 +401,11 @@ widget tree.
 
 In a dock area:
 
-- **Dragging a tab** onto another stack's tabs (or the middle of the stack) makes it one of them. Dragged to an edge of a
-  stack, it makes a new stack on that side, sharing the stack's room. While it is dragged, where it would go shows.
+- **Dragging a tab**, the stack under the mouse shows its guides: a cross of five in its middle, as in Visual Studio and
+  Unreal Engine. Let go on the middle one, or on the stack's tabs, the tab joins them. Let go on one of the four around
+  it, it makes a new stack on that side, sharing the stack's room. The guide under the mouse is lit and where the tab
+  would go is shaded. Elsewhere on a stack, nothing is dropped: the guides are aimed at, not the stack's edges, so a
+  drop is never a surprise.
 - **A stack left without tabs goes**, and a split left with one pane gives way to it.
 - **A tab's ×** closes its panel (`setOnPanelClosed` gets it).
 - **`addPanel(panel, nextTo, side, share)`** builds a layout in code: beside a stack on its Start, End, Top or Bottom
@@ -443,8 +446,11 @@ Tearing off and docking back needs what not every system gives:
 
 So docking has two modes:
 
-- **Full** (Windows, macOS, X11): our own drag loop. Drop indicators are drawn inside the target window, not as separate
-  overlay windows.
+- **Full** (Windows, macOS, X11): our own drag loop. Guides and drop zones are drawn inside the target window. A window
+  dragged by its only tab is seen through while it moves (`DockingHost::setWindowOpacity`), so the guides under it show.
+  Where a tab would open a window of its own (torn off, or floated), a translucent outline shows it: an overlay window
+  (`DockingHost::showWindowPreview`), above every window and never focused, since the place may be outside every window
+  of the application.
 - **Restricted** (Wayland): tabs are dragged with an ordinary drag-and-drop session, and the drop targets are inside our
   windows. A tab dropped outside every window becomes a new window where the compositor places it.
   `xdg-toplevel-drag` will be used through SDL's `wl_display` / `wl_surface` where the compositor has it.

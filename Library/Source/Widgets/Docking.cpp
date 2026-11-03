@@ -29,7 +29,7 @@ struct DockGroup {
 namespace {
 
 constexpr float dragThreshold = 6;      // dips the mouse moves with a tab before it is dragged
-constexpr float edgeZone = 0.28f;       // of a stack's width or height along each edge: dropped there, a new stack
+constexpr float draggedOpacity = 0.6f;  // of a window dragged by its only tab
 
 // A tab of a stack: its title, a × when the panel can be closed. Pressed, it shows its panel; dragged, it moves it.
 class DockTab final : public Widget {
@@ -384,6 +384,25 @@ void DockTabs::setTitleArea(bool caption, float reserve, bool left) {
     arrange(bounds());      // in its area's arrangement: the bar again, nothing measured again
 }
 
+Rect DockTabs::guide(DockSide side) const {
+    const float bar = style().tabHeight;
+    const Rect content{0, bar, size().width, std::max(0.0f, size().height - bar)};
+    constexpr float gap = 4;
+    // as large as the stack lets the cross be, from 12 to 32 dips a guide
+    const float g = std::clamp((std::min(content.width, content.height) - 2 * gap - 8) / 3, 12.0f, 32.0f);
+    const Point c = content.center();
+    const bool rtl = rightToLeft();
+    float dx = 0, dy = 0;
+    switch (side) {
+    case DockSide::Center: break;
+    case DockSide::Start: dx = rtl ? 1.0f : -1.0f; break;
+    case DockSide::End: dx = rtl ? -1.0f : 1.0f; break;
+    case DockSide::Top: dy = -1; break;
+    case DockSide::Bottom: dy = 1; break;
+    }
+    return {c.x - g / 2 + dx * (g + gap), c.y - g / 2 + dy * (g + gap), g, g};
+}
+
 void DockTabs::paint(PaintContext& context) {
     const DockStyle& s = style();
     const float bar = s.tabHeight;
@@ -711,23 +730,42 @@ void DockArea::beginDrag(DockTabs& source, std::size_t index) {
     const UiRoot* r = root();
     if (DockingHost* h = host(); h && r) {
         h->captureMouse(true);
-        // the only panel of a floating window: the window goes with it
+        // the only panel of a floating window: the window goes with it, seen through so the guides under it show
         std::size_t own = 0;
         if (Widget* n = node())
             forEachTabs(*n, [&](DockTabs& tabs) { own += tabs.count(); });
         if (floating_ && own == 1) {
             drag_->movingWindow = true;
             drag_->grab = h->mouseOnScreen() - h->windowPosition(*r);
+            h->setWindowOpacity(*r, draggedOpacity);
         }
     }
     invalidatePaint();
+}
+
+std::pair<Point, Size> DockArea::floatPlace(const DockTabs& source, Point point) const {
+    const UiRoot* r = root();
+    DockingHost* h = host();
+    if (!r || !h)
+        return {};
+    // the mouse a little into its tab bar, the size of its stack
+    const Point grabbed = h->toScreen(*r, {40, 16}) - h->toScreen(*r, {});
+    return {h->toScreen(*r, point) - grabbed, Size{std::max(source.size().width, 240.0f), std::max(source.size().height, 160.0f)}};
+}
+
+void DockArea::clearDrop() {
+    if (indicator_ || guides_) {
+        indicator_.reset();
+        guides_.reset();
+        invalidatePaint();
+    }
 }
 
 void DockArea::dragTo(Point point) {
     if (!drag_)
         return;
     drag_->target = nullptr;
-    DockArea* shown = std::exchange(drag_->targetArea, nullptr);
+    DockArea* shown = std::exchange(drag_->shownArea, nullptr);
     UiRoot* r = root();
     if (!r)
         return;
@@ -749,61 +787,60 @@ void DockArea::dragTo(Point point) {
     const Point inArea = mapFromRoot(point);
     drag_->outside = over != r || !Rect{0, 0, size().width, size().height}.contains(inArea);
     DockTabs* tabs = over ? tabsAt(*over, at) : nullptr;
-    if (!tabs) {
-        if (shown) {
-            shown->indicator_.reset();
-            shown->invalidatePaint();
-        }
-        return;
-    }
-    point = at;
+    DockArea* area = tabs ? tabs->area() : nullptr;
+    if (shown && shown != area)
+        shown->clearDrop();
 
-    const float bar = tabs->style().tabHeight;
-    const Point local = tabs->mapFromRoot(point);
-    const Rect content{0, bar, tabs->size().width, std::max(0.0f, tabs->size().height - bar)};
-    // over the tabs: among them; near an edge of the content: beside the stack
-    int edge = -1;      // left, right, top, bottom: on the screen
-    if (local.y >= bar && !content.empty()) {
-        const float fx = (local.x - content.x) / content.width, fy = (local.y - content.y) / content.height;
-        const float distances[4] = {fx, 1 - fx, fy, 1 - fy};
-        const int nearest = static_cast<int>(std::min_element(distances, distances + 4) - distances);
-        if (distances[nearest] < edgeZone)
-            edge = nearest;
+    // the stack's guides; on one of them (or on its tabs), where the tab would go
+    const bool own = tabs == drag_->source;
+    if (tabs && own && tabs->count() == 1) {
+        area->clearDrop();      // its only tab: nothing it could do there
+        tabs = nullptr;
     }
-    const bool rtl = tabs->rightToLeft();
-    const DockSide side = edge == 0   ? (rtl ? DockSide::End : DockSide::Start)
-                          : edge == 1 ? (rtl ? DockSide::Start : DockSide::End)
-                          : edge == 2 ? DockSide::Top
-                          : edge == 3 ? DockSide::Bottom
-                                      : DockSide::Center;
-    // where nothing would change: no target
-    if (tabs == drag_->source && (side == DockSide::Center || tabs->count() == 1)) {
-        if (shown) {
-            shown->indicator_.reset();
-            shown->invalidatePaint();
+    if (tabs) {
+        const Point local = tabs->mapFromRoot(at);
+        const float bar = tabs->style().tabHeight;
+        std::optional<DockSide> side;
+        if (local.y >= 0 && local.y < bar && local.x >= 0 && local.x < tabs->size().width)
+            side = DockSide::Center;
+        for (DockSide s : {DockSide::Center, DockSide::Start, DockSide::End, DockSide::Top, DockSide::Bottom}) {
+            if (tabs->guide(s).contains(local))
+                side = s;
         }
-        return;
+        if (own && side == DockSide::Center)
+            side.reset();       // where it is already
+        area->guides_ = Guides{tabs, side, !own};
+        area->indicator_.reset();
+        if (side) {
+            Rect zone{0, bar, tabs->size().width, std::max(0.0f, tabs->size().height - bar)};
+            const bool rtl = tabs->rightToLeft();
+            if (*side == DockSide::Start || *side == DockSide::End) {
+                zone.width /= 2;
+                if ((*side == DockSide::End) != rtl)        // the right half
+                    zone.x += zone.width;
+            } else if (*side == DockSide::Top || *side == DockSide::Bottom) {
+                zone.height /= 2;
+                if (*side == DockSide::Bottom)
+                    zone.y += zone.height;
+            }
+            const Point offset = tabs->mapToRoot({}) - area->mapToRoot({});
+            area->indicator_ = Rect{zone.x + offset.x, zone.y + offset.y, zone.width, zone.height};
+            drag_->target = tabs;
+            drag_->side = *side;
+        }
+        area->invalidatePaint();
+        drag_->shownArea = area;
     }
-    Rect zone = content;
-    if (edge == 0 || edge == 1)
-        zone.width /= 2;
-    if (edge == 1)
-        zone.x += zone.width;
-    if (edge == 2 || edge == 3)
-        zone.height /= 2;
-    if (edge == 3)
-        zone.y += zone.height;
-    DockArea* area = tabs->area();
-    const Point offset = tabs->mapToRoot({}) - area->mapToRoot({});
-    drag_->target = tabs;
-    drag_->side = side;
-    drag_->targetArea = area;
-    if (shown && shown != area) {
-        shown->indicator_.reset();
-        shown->invalidatePaint();
+
+    // out of the area, where no stack takes it: where it would float
+    if (h) {
+        if (!drag_->movingWindow && drag_->outside && !drag_->target) {
+            const auto [position, size] = floatPlace(*drag_->source, point);
+            h->showWindowPreview(position, size);
+        } else {
+            h->showWindowPreview(std::nullopt);
+        }
     }
-    area->indicator_ = Rect{zone.x + offset.x, zone.y + offset.y, zone.width, zone.height};
-    area->invalidatePaint();
 }
 
 void DockArea::endDrag(Point point, bool drop) {
@@ -811,25 +848,26 @@ void DockArea::endDrag(Point point, bool drop) {
         return;
     dragTo(point);
     const Drag done = *drag_;
+    const auto [position, floatSize] = floatPlace(*done.source, point);
     drag_.reset();
-    if (done.targetArea) {
-        done.targetArea->indicator_.reset();
-        done.targetArea->invalidatePaint();
-    }
+    if (done.shownArea)
+        done.shownArea->clearDrop();
     UiRoot* r = root();
     DockingHost* h = host();
-    if (h)
+    if (h) {
         h->captureMouse(false);
+        h->showWindowPreview(std::nullopt);
+        if (done.movingWindow && r)
+            h->setWindowOpacity(*r, 1);
+    }
     if (!drop)
         return;
     std::function<void()> apply;
     if (done.target) {
         apply = [this, id = done.id, target = done.target, side = done.side] { move(id, *target, side); };
     } else if (h && r && done.outside && !done.movingWindow) {
-        // let go out of the area, where no stack takes it: it floats where it was let go, the size of its stack
-        const Point grabbed = h->toScreen(*r, {40, 16}) - h->toScreen(*r, {});
-        const Size size{std::max(done.source->size().width, 240.0f), std::max(done.source->size().height, 160.0f)};
-        apply = [this, id = done.id, position = h->toScreen(*r, point) - grabbed, size] { floatPanel(id, position, size); };
+        // let go out of the area, where no stack takes it: it floats where the outline was
+        apply = [this, id = done.id, position, size = floatSize] { floatPanel(id, position, size); };
     } else {
         return;
     }
@@ -840,12 +878,42 @@ void DockArea::endDrag(Point point, bool drop) {
 }
 
 void DockArea::paintOver(PaintContext& context) {
-    if (!indicator_)
-        return;
     const DockStyle& s = context.ui.theme.dock;
-    const Rect r = indicator_->inflated(-4);
-    context.painter.fillRoundedRect(r, 6, s.dropZone);
-    context.painter.strokeRoundedRect(r, 6, 1.5f, s.activeLine);
+    paint::Painter& p = context.painter;
+    if (indicator_) {
+        const Rect r = indicator_->inflated(-4);
+        p.fillRoundedRect(r, 6, s.dropZone);
+        p.strokeRoundedRect(r, 6, 1.5f, s.activeLine);
+    }
+    if (!guides_)
+        return;
+    // the cross: each guide a small picture of where the tab would go, the one under the mouse lit
+    const DockTabs& tabs = *guides_->tabs;
+    const Point offset = tabs.mapToRoot({}) - mapToRoot({});
+    const bool rtl = tabs.rightToLeft();
+    const Palette& palette = context.ui.theme.palette;
+    for (DockSide side : {DockSide::Center, DockSide::Start, DockSide::End, DockSide::Top, DockSide::Bottom}) {
+        if (side == DockSide::Center && !guides_->center)
+            continue;
+        const Rect local = tabs.guide(side);
+        const Rect g{local.x + offset.x, local.y + offset.y, local.width, local.height};
+        const bool lit = guides_->hovered == side;
+        p.fillRoundedRect(g, 4, lit ? s.activeLine : palette.surface);
+        p.strokeRoundedRect(g, 4, 1, s.activeLine);
+        const Color ink = lit ? palette.window : s.activeLine;
+        Rect picture = g.inflated(-g.width * 0.22f);
+        p.strokeRoundedRect(picture, 1, 1, ink);
+        if (side == DockSide::Start || side == DockSide::End) {
+            picture.width /= 2;
+            if ((side == DockSide::End) != rtl)
+                picture.x += picture.width;
+        } else if (side == DockSide::Top || side == DockSide::Bottom) {
+            picture.height /= 2;
+            if (side == DockSide::Bottom)
+                picture.y += picture.height;
+        }
+        p.fillRect(picture, ink);
+    }
 }
 
 // ---- layouts ----

@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: MIT
 // Docking, as a script editor would have it: the scripts are major tabs in the title bar (+ adds one, dragging a tab moves
 // it along, its × closes it); each has its panels (graph, palette, inspector, output, search) docked around its graph.
-// Drag a panel's tab onto another stack's tabs to join them, or to an edge of a stack to split it; drag the line between
-// two stacks to share their room.
+// Drag a panel's tab onto another stack's tabs, or onto the middle of the guides the stack shows, to join them; onto one of
+// the guides around it to split the stack; drag the line between two stacks to share their room.
 //
 // Across windows: a script's tab dragged out of the title bar opens in a window of its own, and dropped on another
 // window's title bar goes there. A panel's tab let go out of its script floats in a window of its own; its tab dragged
@@ -41,8 +41,8 @@ constexpr const char* persianCatalog = R"({
     "Output": "خروجی",
     "Search": "جستجو",
     "The graph of script {n}": "گراف اسکریپت {n}",
-    "Drag a tab onto another stack's tabs to join them, or to an edge of a stack to split it. Drag the line between two stacks to share their room. The + in the title bar adds a script.":
-      "یک تب را روی تب‌های پشته‌ای دیگر بکشید تا به آن بپیوندد، یا به لبه‌ی یک پشته تا آن را تقسیم کند. خط میان دو پشته را بکشید تا جایشان را جابه‌جا کنید. + در نوار عنوان یک اسکریپت می‌افزاید.",
+    "Drag a tab onto another stack's tabs, or onto the middle guide it shows, to join them; onto a guide around it to split the stack. Drag the line between two stacks to share their room. The + in the title bar adds a script.":
+      "یک تب را روی تب‌های پشته‌ای دیگر، یا روی راهنمای وسطی که آن پشته نشان می‌دهد، بکشید تا به آن بپیوندد؛ روی یکی از راهنماهای اطراف آن بکشید تا پشته را تقسیم کند. خط میان دو پشته را بکشید تا جایشان را جابه‌جا کنید. + در نوار عنوان یک اسکریپت می‌افزاید.",
     "Drag a tab out of its window to float it, a script's tab out of the title bar to open it in a window of its own.":
       "یک تب را از پنجره‌اش بیرون بکشید تا شناور شود، و تب یک اسکریپت را از نوار عنوان بیرون بکشید تا در پنجره‌ای جدا باز شود.",
     "Name": "نام",
@@ -73,9 +73,9 @@ struct Studio {
 
         auto graph = ui::VStack({.spacing = 12},
                                 ui::Label({.text = tr("The graph of script {n}").arg("n", number), .fontSize = 20}),
-                                ui::Label({.text = tr("Drag a tab onto another stack's tabs to join them, or to an edge of a stack to split "
-                                                      "it. Drag the line between two stacks to share their room. The + in the title bar adds "
-                                                      "a script."),
+                                ui::Label({.text = tr("Drag a tab onto another stack's tabs, or onto the middle guide it shows, to join them; "
+                                                      "onto a guide around it to split the stack. Drag the line between two stacks to share "
+                                                      "their room. The + in the title bar adds a script."),
                                            .muted = true,
                                            .wrap = true}),
                                 ui::Label({.text = tr("Drag a tab out of its window to float it, a script's tab out of the title bar to open it "

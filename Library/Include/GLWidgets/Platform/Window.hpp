@@ -26,6 +26,8 @@ struct WindowDesc {
     std::optional<Point> position;
     // A tool window: not in the task bar; above its parent (setParent).
     bool tool = false;
+    // Shown above every window, never given the focus (a drop preview while a tab is dragged).
+    bool overlay = false;
 };
 
 // What a point of a window is, for the system to move and resize it (Window::setHitTest).
@@ -61,6 +63,8 @@ public:
     virtual void raise() = 0;
     // A tool window stays above `parent` (and goes with it); none: on its own.
     virtual void setParent(Window* parent) = 0;
+    // From 0 (not seen) to 1 (opaque), where the system can (not on Wayland).
+    virtual void setOpacity(float opacity) = 0;
 
     // Screen coordinates: the system's, for the whole desktop (pixels on Windows and X11, points on macOS). Its top left
     // corner (of the whole window), and from its dips to the screen and back.

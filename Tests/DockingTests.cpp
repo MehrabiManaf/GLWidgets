@@ -46,12 +46,14 @@ struct Docked {
         root.layout();
     }
 
-    // a tab of a stack, the root's coordinates of its middle
+    // a tab of a stack, the root's coordinates of its middle (on its title: its × is at its end)
     Point tab(DockTabs& tabs, std::size_t index) {
-        const Widget& bar = *tabs.children()[0];
-        return bar.children()[index]->mapToRoot({10, 10});
+        const Widget& t = *tabs.children()[0]->children()[index];
+        return t.mapToRoot({t.size().width / 2, t.size().height / 2});
     }
     Point middleOf(const Widget& w) { return w.mapToRoot({w.size().width / 2, w.size().height / 2 + 15}); }
+    // the middle of a stack's guide for `side`, the root's coordinates
+    Point guide(DockTabs& tabs, DockSide side) { return tabs.mapToRoot(tabs.guide(side).center()); }
 
     void drag(Point from, Point to) {
         root.dispatch(platform::MouseButtonChanged{1, platform::MouseButton::Left, true, 1, from});
@@ -94,16 +96,38 @@ TEST(draggingATabOntoAnotherStack) {
     CHECK(dynamic_cast<DockSplit*>(d.area->children()[0].get())->orientation() == Orientation::Vertical);
 }
 
-TEST(draggingATabToAnEdge) {
+TEST(draggingATabToAGuide) {
     Docked d;
-    // search, out of output, to the right edge of graph: a new stack on graph's end side
+    // the guides: a cross in the middle of the stack, below its tabs; Start on the left in left to right
+    const Rect center = d.graph->guide(DockSide::Center);
+    CHECK(center.y > DockStyle{}.tabHeight || center.y > 30);
+    CHECK(d.graph->guide(DockSide::Start).x < center.x && d.graph->guide(DockSide::End).x > center.x);
+    CHECK(d.graph->guide(DockSide::Top).y < center.y && d.graph->guide(DockSide::Bottom).y > center.y);
+
+    // near the right edge of graph, on no guide: nothing (the edges are not drop zones any more)
+    const std::string before = d.area->saveLayout();
     const Rect g{d.graph->mapToRoot({}).x, d.graph->mapToRoot({}).y, d.graph->size().width, d.graph->size().height};
     d.drag(d.tab(*d.output, 1), {g.right() - 10, g.y + g.height / 2});
+    CHECK(d.area->saveLayout() == before);
+
+    // search, out of output, onto graph's End guide: a new stack on graph's end side
+    d.drag(d.tab(*d.output, 1), d.guide(*d.graph, DockSide::End));
     DockTabs* search = d.area->tabsOf("search");
     CHECK(search && search != d.output && search->count() == 1);
     CHECK(search->mapToRoot({}).x > d.graph->mapToRoot({}).x);
     CHECK(near(search->mapToRoot({}).y, d.graph->mapToRoot({}).y));
     CHECK(d.output->count() == 1);
+
+    // output onto graph's Center guide: in its stack
+    d.drag(d.tab(*d.output, 0), d.guide(*d.graph, DockSide::Center));
+    CHECK(d.area->tabsOf("output") == d.graph);
+}
+
+TEST(guidesAreMirroredRightToLeft) {
+    Docked d(LayoutDirection::RightToLeft);
+    CHECK(d.graph->guide(DockSide::Start).x > d.graph->guide(DockSide::Center).x);
+    d.drag(d.tab(*d.output, 1), d.guide(*d.graph, DockSide::Start));
+    CHECK(d.area->tabsOf("search")->mapToRoot({}).x > d.graph->mapToRoot({}).x);     // on the right: the start
 }
 
 TEST(droppingWhereNothingChanges) {

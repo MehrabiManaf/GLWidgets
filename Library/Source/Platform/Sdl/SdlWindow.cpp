@@ -25,6 +25,8 @@ SdlWindow::SdlWindow(SdlPlatform& platform, const WindowDesc& desc) : platform_(
         flags |= SDL_WINDOW_BORDERLESS;
     if (desc.tool)
         flags |= SDL_WINDOW_UTILITY;
+    if (desc.overlay)
+        flags |= SDL_WINDOW_UTILITY | SDL_WINDOW_ALWAYS_ON_TOP | SDL_WINDOW_NOT_FOCUSABLE;
     window_ = SDL_CreateWindow(desc.title.c_str(), static_cast<int>(desc.size.width), static_cast<int>(desc.size.height), flags);
     if (!window_)
         throw Error(std::string("SDL_CreateWindow: ") + SDL_GetError());
@@ -83,6 +85,10 @@ bool SdlWindow::visible() const {
 
 void SdlWindow::raise() {
     SDL_RaiseWindow(window_);
+}
+
+void SdlWindow::setOpacity(float opacity) {
+    SDL_SetWindowOpacity(window_, opacity);     // false where it cannot: the window stays opaque
 }
 
 void SdlWindow::setParent(Window* parent) {

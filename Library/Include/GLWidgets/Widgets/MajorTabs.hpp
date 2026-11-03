@@ -7,7 +7,8 @@
 //
 // Across windows (with a DockingHost: Application): a tab dragged out of its strip goes into a new window of its own;
 // dropped on another window's strip, it goes there. Dragging the only tab of a window drags the window, and dropping it on
-// another window's strip merges them. A window left without tabs closes. The new windows' MajorTabs have the same
+// another window's strip merges them (it is seen through while it moves, the strip under it showing where its tab would
+// go). Where a tab would open a window, an outline shows it. A window left without tabs closes. The new windows' MajorTabs have the same
 // handlers, which are given the MajorTabs they are for.
 //
 //   auto tabs = std::make_unique<glw::MajorTabs>();
@@ -109,6 +110,8 @@ private:
     // The strip a dragged tab would go to (this one, another window's, or none), and where in it.
     void setTarget(MajorTabStrip* target, Point point);
     void showInsertion(std::optional<float> x);
+    // Where a tab let go at `point` (the root's) would open a window of its own: its position and size.
+    std::pair<Point, Size> tearPlace(Point point) const;
 
     MajorTabs* tabs_;
     Widget* row_ = nullptr;

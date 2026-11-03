@@ -27,6 +27,7 @@ public:
     bool visible() const override;
     void raise() override;
     void setParent(Window* parent) override;
+    void setOpacity(float opacity) override;
     Point position() const override;
     void setPosition(Point position) override;
     Point toScreen(Point point) const override;

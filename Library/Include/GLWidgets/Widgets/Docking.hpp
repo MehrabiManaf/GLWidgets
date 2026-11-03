@@ -2,15 +2,18 @@
 // SPDX-License-Identifier: MIT
 #pragma once
 // Docked panels: the tools of a document (a node palette, an inspector, an output log), each in a tab of a stack, the
-// stacks split side by side or one above the other. The user rearranges them with the mouse: a tab dragged onto a stack's
-// tabs joins them, dragged to an edge of a stack makes a new stack there; a stack left without tabs goes, and a split
-// left with one pane gives way to it. Each split's handle shares the room between its panes.
+// stacks split side by side or one above the other. The user rearranges them with the mouse: while a tab is dragged, the
+// stack under the mouse shows its guides, a cross of five in its middle. Let go on the middle one or on the stack's tabs,
+// the tab joins them; on one of the four around it, it makes a new stack on that side. Where it would go shows. A stack
+// left without tabs goes, and a split left with one pane gives way to it. Each split's handle shares the room between its
+// panes.
 //
 // The widgets are the layout: a DockArea holds one node, a DockTabs (a stack) or a DockSplit (a Splitter of nodes). The
 // tree is saved and restored as JSON (saveLayout / restoreLayout), panels known by their ids.
 //
 // Across windows (with a DockingHost: Application): a tab let go where no stack takes it, out of its area, floats: its panel
-// goes into a window of its own, a tool window above the area's, with a DockArea of the same group. A floating window has
+// goes into a window of its own, a tool window above the area's, with a DockArea of the same group. While it would, an
+// outline shows where that window would be. A floating window has
 // no title bar of its own: the tab bars along its top are, dragging it where they have no tab, with the window buttons at
 // their end. Panels move between the
 // areas of a group as within one; a floating window goes when its last panel leaves, and its panels go back to the area
@@ -32,6 +35,7 @@
 #include <optional>
 #include <string>
 #include <string_view>
+#include <utility>
 #include <vector>
 
 namespace glw {
@@ -73,6 +77,10 @@ public:
 
     // Adds `panel` (at `index`, at the end by default) and shows it.
     void add(DockPanel panel, std::size_t index = std::numeric_limits<std::size_t>::max());
+
+    // Where its guide for `side` is (its coordinates), shown while a tab is dragged over it: the middle of the cross for
+    // Center, the one on that side of it for the others (Start and End mirrored with the direction).
+    Rect guide(DockSide side) const;
     // Takes the panel at `index` out: the caller has it now.
     DockPanel take(std::size_t index);
 
@@ -159,7 +167,7 @@ private:
         std::string id;
         DockTabs* target = nullptr;
         DockSide side = DockSide::Center;
-        DockArea* targetArea = nullptr;     // the one showing where it would go
+        DockArea* shownArea = nullptr;      // the one showing guides (and where it would go)
         bool outside = false;               // the mouse is out of this area
         bool movingWindow = false;          // the only tab of a floating window: the window follows the mouse
         Point grab;                         // the mouse on the screen less the window's position, while it moves
@@ -170,6 +178,10 @@ private:
     DockingHost* host() const;
     // The stack of the group under `point` of `root`.
     DockTabs* tabsAt(const UiRoot& root, Point point) const;
+    // Where the panel of `source` would float, let go at `point` (the root's): its window's position and size.
+    std::pair<Point, Size> floatPlace(const DockTabs& source, Point point) const;
+    // Neither guides nor where a tab would go, shown.
+    void clearDrop();
     // A new stack with `panel`, beside `target` (a node), on `side`, taking `share` of its room.
     static DockTabs& insertBeside(DockPanel panel, Widget& target, DockSide side, float share);
     // `tabs` without panels goes; a split left with one pane gives way to it.
@@ -188,6 +200,12 @@ private:
     bool floating_ = false;
     std::optional<Drag> drag_;
     std::optional<Rect> indicator_;         // where a tab dragged (from this area or another) would go
+    struct Guides {
+        DockTabs* tabs = nullptr;           // the stack under the mouse
+        std::optional<DockSide> hovered;
+        bool center = true;                 // not on the stack the tab is dragged from: it would change nothing
+    };
+    std::optional<Guides> guides_;
     Widget* buttons_ = nullptr;             // a floating area's window buttons, over its node
     std::function<void(DockPanel)> onPanelClosed_;
 };

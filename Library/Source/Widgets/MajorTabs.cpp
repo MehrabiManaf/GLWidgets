@@ -18,6 +18,7 @@ namespace {
 
 constexpr float dragThreshold = 6;
 constexpr float stripReach = 24;        // dips above and below a strip where a tab dragged from it stays in it
+constexpr float draggedOpacity = 0.6f;  // of a window dragged by its only tab
 
 DockingHost* dockingOf(const Widget& widget) {
     const UiRoot* r = widget.root();
@@ -416,9 +417,22 @@ void MajorTabStrip::beginDrag(std::size_t index) {
                     !(r->host() && r->host()->windowState() == platform::WindowState::Maximized);
     if (host) {
         host->captureMouse(true);
-        if (movingWindow_)
+        if (movingWindow_) {
             grab_ = host->mouseOnScreen() - host->windowPosition(*r);
+            host->setWindowOpacity(*r, draggedOpacity);
+        }
     }
+}
+
+std::pair<Point, Size> MajorTabStrip::tearPlace(Point point) const {
+    const UiRoot* r = root();
+    DockingHost* host = dockingOf(*this);
+    if (!r || !host)
+        return {};
+    // the mouse on the first tab of the new window, as high in it as here (at most in the title bar); the size of this one
+    const float firstTab = r->rightToLeft() ? r->size().width - 60 : 60;
+    const Point grabbed = host->toScreen(*r, {firstTab, std::min(point.y, 20.0f)}) - host->toScreen(*r, {});
+    return {host->toScreen(*r, point) - grabbed, r->size()};
 }
 
 void MajorTabStrip::dragTo(Point point) {
@@ -443,11 +457,19 @@ void MajorTabStrip::dragTo(Point point) {
     const Point local = mapFromRoot(point);
     if (local.x >= 0 && local.x <= size().width && local.y >= -stripReach && local.y <= size().height + stripReach) {
         setTarget(this, point);
+        host->showWindowPreview(std::nullopt);
         return;
     }
     const DockingHost::Hit hit = host->windowAt(host->toScreen(*r, point));
     MajorTabStrip* target = hit.root ? stripAt(*hit.root, hit.point) : nullptr;
     setTarget(target, hit.point);
+    // out of every strip: where it would open a window
+    if (!target && tabs_ && tabs_->count() >= 2) {
+        const auto [position, size] = tearPlace(point);
+        host->showWindowPreview(position, size);
+    } else {
+        host->showWindowPreview(std::nullopt);
+    }
 }
 
 void MajorTabStrip::endDrag(Point point) {
@@ -463,8 +485,12 @@ void MajorTabStrip::endDrag(Point point) {
     setTarget(nullptr, {});
     UiRoot* r = root();
     DockingHost* host = dockingOf(*this);
-    if (host)
+    if (host) {
         host->captureMouse(false);
+        host->showWindowPreview(std::nullopt);
+        if (moved && r)
+            host->setWindowOpacity(*r, 1);
+    }
     if (!tabs_ || !r)
         return;
 
@@ -500,11 +526,9 @@ void MajorTabStrip::endDrag(Point point) {
     }
     if (moved || tabs_->count() < 2)
         return;
-    // out of every strip: a window of its own, where it was let go
-    const Point screen = host->toScreen(*r, point);
-    const float firstTab = r->rightToLeft() ? r->size().width - 60 : 60;
-    const Point grabbed = host->toScreen(*r, {firstTab, std::min(point.y, 20.0f)}) - host->toScreen(*r, {});
-    later(*this, [tabs = tabs_, from, host, position = screen - grabbed, size = r->size()] {
+    // out of every strip: a window of its own, where the outline was
+    const auto [position, size] = tearPlace(point);
+    later(*this, [tabs = tabs_, from, host, position, size] {
         if (!tabs || from >= tabs->count())
             return;
         auto torn = std::make_unique<MajorTabs>();
