@@ -16,6 +16,8 @@
 
 namespace glw::platform {
 
+class Window;
+
 struct WindowDesc {
     std::string title;              // UTF-8
     Size size{800, 600};
@@ -28,6 +30,11 @@ struct WindowDesc {
     bool tool = false;
     // Shown above every window, never given the focus (a drop preview while a tab is dragged).
     bool overlay = false;
+    // A popup of this window (a menu, a list to choose from, a tooltip): no frame, not in the task bar, above its parent,
+    // hidden and destroyed with it (destroy it first). `position` is from the parent's top left corner, in the parent's
+    // dips; the system keeps it on the screen. A menu has the keyboard while it is the topmost; a tooltip takes no input.
+    Window* popupOf = nullptr;
+    bool tooltip = false;
 };
 
 // What a point of a window is, for the system to move and resize it (Window::setHitTest).
@@ -62,6 +69,8 @@ public:
     virtual bool visible() const = 0;
     // Above the other windows, and with the focus.
     virtual void raise() = 0;
+    // It has the keyboard.
+    virtual bool focused() const = 0;
     // A tool window stays above `parent` (and goes with it); none: on its own.
     virtual void setParent(Window* parent) = 0;
     // From 0 (not seen) to 1 (opaque), where the system can (not on Wayland).
@@ -75,6 +84,8 @@ public:
     virtual Point fromScreen(Point point) const = 0;
     // Its size in screen coordinates.
     virtual Size screenSize() const = 0;
+    // The part of the screen it is on that windows may cover (without the task bar), screen coordinates.
+    virtual Rect usableScreenArea() const = 0;
 
     virtual WindowState state() const = 0;
     virtual void minimize() = 0;

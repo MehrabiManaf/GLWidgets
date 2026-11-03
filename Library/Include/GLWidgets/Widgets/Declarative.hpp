@@ -32,6 +32,7 @@
 // serialize them, without a line written for each widget.
 #include <GLWidgets/Widgets/Button.hpp>
 #include <GLWidgets/Widgets/CheckBox.hpp>
+#include <GLWidgets/Widgets/ComboBox.hpp>
 #include <GLWidgets/Widgets/Label.hpp>
 #include <GLWidgets/Widgets/Layout.hpp>
 #include <GLWidgets/Widgets/LineEdit.hpp>
@@ -208,6 +209,10 @@ inline Element<glw::LineEdit> LineEdit(glw::LineEdit::Props props) {
 
 inline Element<glw::CheckBox> CheckBox(glw::CheckBox::Props props) {
     return make<glw::CheckBox>(std::move(props));
+}
+
+inline Element<glw::ComboBox> ComboBox(glw::ComboBox::Props props) {
+    return make<glw::ComboBox>(std::move(props));
 }
 
 } // namespace glw::ui

@@ -360,8 +360,11 @@ void LineEdit::onKey(KeyEvent& event) {
         }
         break;
     case Key::Enter:
+        // without a handler, Enter is its parents' (a dialog's default button)
         if (const auto handler = onSubmit_)
             handler(text_);
+        else
+            return;
         break;
     case Key::A:
     case Key::C:

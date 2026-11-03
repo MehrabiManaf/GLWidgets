@@ -172,6 +172,31 @@ struct CardStyle {
     float cornerRadius = 8;
 };
 
+struct MenuStyle {
+    Color background;
+    Color border;
+    Color highlight;                // the item under the mouse, or chosen by the keys
+    Color text;
+    Color shortcut;
+    Color disabledText;
+    Color mark;                     // a check mark, a submenu's arrow
+    Color separator;
+    float itemHeight = 28;
+    float padding = 4;              // around the items
+    float cornerRadius = 4;         // of the highlight
+    float minimumWidth = 160;
+};
+
+struct DialogStyle {
+    Color background;
+    Color border;
+    Color scrim;                    // over the window it opened from
+    float padding = 20;
+    float spacing = 16;             // between its title, its content and its buttons
+    float titleSize = 16;
+    float maximumWidth = 460;       // its text wraps past it
+};
+
 struct CanvasStyle {
     Color background;
     Color grid;                     // its lines, every gridSpacing dips of the canvas
@@ -219,6 +244,8 @@ struct Theme {
     MajorTabStyle majorTab;
     CardStyle card;
     CanvasStyle canvas;
+    MenuStyle menu;
+    DialogStyle dialog;
     TitleBarStyle titleBar;
     WindowButtonStyle windowButton;
     WindowFrameStyle frame;

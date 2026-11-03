@@ -65,9 +65,14 @@ public:
     void setTextInputArea(const Rect& area) override;
     std::string clipboardText() const override;
     void setClipboardText(const std::string& text) override;
+    UiRoot* openPopup(PopupRequest request) override;
 
 private:
+    // The window it is in, or that its popup came from (through popups of popups): what has the keyboard.
+    Window& base();
     friend class Application;
+    // A popup of `parent`: as big as its content measures, placed by the request's anchor, on the screen.
+    Window(Application& app, PopupRequest request, Window& parent);
     // With an owner: a tool window above it. An overlay: above every window, never focused, hidden, no frame.
     Window(Application& app, const WindowOptions& options, std::unique_ptr<Widget> content, Window* owner = nullptr,
            bool overlay = false, bool focus = true);
@@ -81,7 +86,11 @@ private:
     WindowFrame* frame_ = nullptr;
     paint::DrawList list_;
     paint::RenderBuffers buffers_;
-    Window* owner_ = nullptr;
+    Window* owner_ = nullptr;                           // a tool window's, a popup's
+    bool popup_ = false;
+    bool tooltip_ = false;                              // a popup that takes no input
+    bool modal_ = false;                                // a popup the other windows wait for
+    bool popupAtStart_ = false;                         // a popup beside its anchor: at the anchor's start side
     bool closing_ = false;
     bool told_ = false;                                 // its root was told it closes
 };

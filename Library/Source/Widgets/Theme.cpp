@@ -115,6 +115,18 @@ Theme Theme::fromPalette(const Palette& p) {
     t.majorTab.mutedText = p.mutedText;
     t.majorTab.insertion = p.accent;
 
+    t.menu.background = p.layer;
+    t.menu.border = Color{p.text.r, p.text.g, p.text.b, 0.14f};
+    t.menu.highlight = p.hover;
+    t.menu.text = p.text;
+    t.menu.shortcut = p.mutedText;
+    t.menu.disabledText = p.disabledText;
+    t.menu.mark = p.text;
+    t.menu.separator = Color{p.text.r, p.text.g, p.text.b, 0.10f};
+    t.menu.cornerRadius = t.cornerRadius;
+    t.dialog.background = p.layer;
+    t.dialog.border = Color{p.text.r, p.text.g, p.text.b, 0.14f};
+    t.dialog.scrim = Color{0, 0, 0, 0.40f};
     t.canvas.background = p.window;
     t.canvas.grid = Color{p.text.r, p.text.g, p.text.b, 0.035f};
     t.canvas.majorGrid = Color{p.text.r, p.text.g, p.text.b, 0.08f};

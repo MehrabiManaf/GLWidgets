@@ -16,6 +16,7 @@
 #include <cstdint>
 #include <functional>
 #include <memory>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -37,6 +38,31 @@ struct UiContext {
     DockingHost* docking = nullptr;         // the windows, for docking across them; none: in its window only
 };
 
+class UiRoot;
+
+// Where a popup opens, from what it opens from (its anchor).
+enum class PopupPlacement : std::uint8_t {
+    // Under it, their start sides aligned (a menu from a button, a list from a combo box); above it when there is more room
+    // there.
+    Below,
+    // Beside it at its end side, their tops aligned (a submenu); at its start side when there is no room.
+    After,
+    // In its middle (a dialog, over the window it opens from).
+    Center,
+};
+
+// A popup: a window of its own above the one it opens from, so that it may go past that window's edges.
+struct PopupRequest {
+    std::unique_ptr<Widget> content;        // as big as it measures
+    Rect anchor;                            // in the root's dips: a button, a menu's item, the mouse (an empty rectangle)
+    PopupPlacement placement = PopupPlacement::Below;
+    bool tooltip = false;                   // takes no input (a menu or a list has the keyboard)
+    // A dialog: the other windows take no input while it is open (it has the keyboard, and the popups opened from it), and
+    // the one it opened from shows dimmed. It closes only by its host's closeWindow (its buttons, Escape), or with its
+    // window.
+    bool modal = false;
+};
+
 // What a root asks of the window it is in.
 class GLW_EXPORT UiHost {
 public:
@@ -53,6 +79,11 @@ public:
     virtual void setTextInputArea(const Rect& area) = 0;
     virtual std::string clipboardText() const = 0;
     virtual void setClipboardText(const std::string& text) = 0;
+    // Opens a popup and gives its root, which the host keeps until it closes: by its own host's closeWindow, a click
+    // outside it (in a window of the application: that click does nothing else), the application losing the focus, or
+    // its window closing. Its widgets are told by onWindowClosing. A popup's host opens popups of its own (a submenu): they
+    // close with it. None where there are no popups (a host of an engine, by default).
+    virtual UiRoot* openPopup(PopupRequest request) { return nullptr; }
 };
 
 class GLW_EXPORT UiRoot {
@@ -103,6 +134,8 @@ public:
 
     bool needsLayout() const { return needsLayout_; }
     bool needsPaint() const { return needsPaint_; }
+    // A color laid over everything it shows (a window under a dialog, dimmed); none: nothing.
+    void setOverlay(std::optional<Color> color);
     // The theme / the language of the context changed: every widget is told, and the tree laid out again.
     void styleChanged();
     void languageChanged();
@@ -146,6 +179,7 @@ private:
     bool rightToLeft_ = false;
     bool needsLayout_ = true;
     bool needsPaint_ = true;
+    std::optional<Color> overlay_;
     std::uint64_t layoutGeneration_ = 1;
 
     Widget* focus_ = nullptr;

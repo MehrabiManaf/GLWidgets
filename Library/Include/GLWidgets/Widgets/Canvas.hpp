@@ -77,6 +77,7 @@ public:
     Rect visibleArea() const;
 
     void setGridVisible(bool visible);
+    bool grid() const { return grid_; }
     // The right button let go where it was pressed: a menu for that point of the canvas, say.
     void setOnContextRequested(std::function<void(Point canvasPoint)> handler) { onContextRequested_ = std::move(handler); }
     // Zoomed or panned.

@@ -17,6 +17,7 @@
 #include <GLWidgets/Widgets/Label.hpp>
 #include <GLWidgets/Widgets/Layout.hpp>
 #include <GLWidgets/Widgets/LineEdit.hpp>
+#include <GLWidgets/Widgets/Menu.hpp>
 #include <GLWidgets/Widgets/UiRoot.hpp>
 
 #include <algorithm>
@@ -161,7 +162,37 @@ private:
 
 class Graph final : public Canvas {
 public:
-    Graph() { setOnViewChanged([this] { changed(); }); }
+    Graph() {
+        setOnViewChanged([this] { changed(); });
+        setOnContextRequested([this](Point at) { contextMenu(at); });
+    }
+
+    // What the canvas offers where it was clicked: nodes to add there, and what is done to the selection.
+    void contextMenu(Point at) {
+        const auto add = [this, at](NodeSpec spec) { return [this, at, spec] { addNode(spec, at).setSelected(true); }; };
+        const PinSpec exec{"", Type::Exec};
+        bool any = false;
+        for (NodeView* node : nodes_)
+            any = any || node->selected();
+        showContextMenu(*this, fromCanvas(at),
+                        {{.text = "Add Node",
+                          .items = {{.text = "Flow",
+                                     .items = {{.text = "Branch", .onTriggered = add({"Branch", flowHeader, {exec, {"Condition", Type::Bool}}, {{"True", Type::Exec}, {"False", Type::Exec}}})},
+                                               {.text = "Sequence", .onTriggered = add({"Sequence", flowHeader, {exec}, {{"Then 0", Type::Exec}, {"Then 1", Type::Exec}}})}}},
+                                    {.text = "Math",
+                                     .items = {{.text = "Add", .onTriggered = add({"Add", pureHeader, {{"A", Type::Float}, {"B", Type::Float}}, {{"Sum", Type::Float}}})},
+                                               {.text = "Multiply", .onTriggered = add({"Multiply", pureHeader, {{"A", Type::Float}, {"B", Type::Float}}, {{"Result", Type::Float}}})},
+                                               {.text = "Greater", .onTriggered = add({"Greater", pureHeader, {{"A", Type::Float}, {"B", Type::Float}}, {{"Result", Type::Bool}}})}}},
+                                    {.text = "Text",
+                                     .items = {{.text = "Print String", .onTriggered = add({"Print String", functionHeader, {exec, {"In String", Type::String}}, {exec}})},
+                                               {.text = "To Text", .onTriggered = add({"To Text", pureHeader, {{"Value", Type::Int}}, {{"Text", Type::String}}})}}}}},
+                         MenuItem::separatorItem(),
+                         {.text = "Frame", .onTriggered = [this] { frameSelection(); }, .shortcut = "F"},
+                         {.text = "Select All", .onTriggered = [this] { selectAll(true); }, .shortcut = "Ctrl+A"},
+                         {.text = "Delete", .onTriggered = [this] { removeSelected(); }, .shortcut = "Del", .enabled = any},
+                         MenuItem::separatorItem(),
+                         {.text = "Show Grid", .onTriggered = [this] { setGridVisible(!grid()); }, .checked = grid()}});
+    }
 
     NodeView& addNode(const NodeSpec& spec, Point at) {
         NodeView& node = addItem(std::make_unique<NodeView>(*this, spec), at);

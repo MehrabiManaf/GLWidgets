@@ -134,7 +134,16 @@ void UiRoot::paint(paint::DrawList& list) {
     PaintContext context{painter, context_};
     if (content_)
         paintTree(*content_, context, {0, 0, size_.width, size_.height});
+    if (overlay_)
+        painter.fillRect({0, 0, size_.width, size_.height}, *overlay_);
     needsPaint_ = false;
+}
+
+void UiRoot::setOverlay(std::optional<Color> color) {
+    if (color == overlay_)
+        return;
+    overlay_ = color;
+    invalidatePaint();
 }
 
 void UiRoot::paintTree(Widget& widget, PaintContext& context, const Rect& visible) {

@@ -11,6 +11,7 @@
 #include <SDL3/SDL_hints.h>
 #include <SDL3/SDL_keyboard.h>
 
+#include <algorithm>
 #include <cmath>
 #include <string>
 #include <utility>
@@ -28,6 +29,21 @@ SdlWindow::SdlWindow(SdlPlatform& platform, const WindowDesc& desc) : platform_(
         flags |= SDL_WINDOW_UTILITY;
     if (desc.overlay)
         flags |= SDL_WINDOW_UTILITY | SDL_WINDOW_ALWAYS_ON_TOP | SDL_WINDOW_NOT_FOCUSABLE;
+    if (desc.popupOf) {
+        // in the parent's units, from its corner: a popup has the parent's scale
+        popupOf_ = dynamic_cast<SdlWindow*>(desc.popupOf);
+        GLW_EXPECTS(popupOf_ != nullptr);
+        const float f = dipsPerUnit(popupOf_->window_);
+        const Point at = desc.position.value_or(Point{});
+        flags = SDL_WINDOW_HIDDEN | SDL_WINDOW_HIGH_PIXEL_DENSITY | (desc.tooltip ? SDL_WINDOW_TOOLTIP : SDL_WINDOW_POPUP_MENU);
+        window_ = SDL_CreatePopupWindow(popupOf_->window_, static_cast<int>(std::lround(at.x / f)), static_cast<int>(std::lround(at.y / f)),
+                                        std::max(1, static_cast<int>(std::lround(desc.size.width / f))),
+                                        std::max(1, static_cast<int>(std::lround(desc.size.height / f))), flags);
+        if (!window_)
+            throw Error(std::string("SDL_CreatePopupWindow: ") + SDL_GetError());
+        platform_.windowCreated();
+        return;
+    }
     window_ = SDL_CreateWindow(desc.title.c_str(), static_cast<int>(desc.size.width), static_cast<int>(desc.size.height), flags);
     if (!window_)
         throw Error(std::string("SDL_CreateWindow: ") + SDL_GetError());
@@ -90,6 +106,10 @@ void SdlWindow::raise() {
     SDL_RaiseWindow(window_);
 }
 
+bool SdlWindow::focused() const {
+    return (SDL_GetWindowFlags(window_) & SDL_WINDOW_INPUT_FOCUS) != 0;
+}
+
 void SdlWindow::setOpacity(float opacity) {
     SDL_SetWindowOpacity(window_, opacity);     // false where it cannot: the window stays opaque
 }
@@ -102,10 +122,13 @@ void SdlWindow::setParent(Window* parent) {
 Point SdlWindow::position() const {
     int x = 0, y = 0;
     SDL_GetWindowPosition(window_, &x, &y);
-    return {static_cast<float>(x), static_cast<float>(y)};
+    const Point at{static_cast<float>(x), static_cast<float>(y)};
+    return popupOf_ ? popupOf_->position() + at : at;       // a popup's is from its parent's corner
 }
 
 void SdlWindow::setPosition(Point position) {
+    if (popupOf_)
+        position = position - popupOf_->position();
     SDL_SetWindowPosition(window_, static_cast<int>(std::lround(position.x)), static_cast<int>(std::lround(position.y)));
 }
 
@@ -126,6 +149,13 @@ Size SdlWindow::screenSize() const {
     int w = 0, h = 0;
     SDL_GetWindowSize(window_, &w, &h);
     return {static_cast<float>(w), static_cast<float>(h)};
+}
+
+Rect SdlWindow::usableScreenArea() const {
+    SDL_Rect r{};
+    if (!SDL_GetDisplayUsableBounds(SDL_GetDisplayForWindow(popupOf_ ? popupOf_->window_ : window_), &r))
+        return {position().x, position().y, screenSize().width, screenSize().height};
+    return {static_cast<float>(r.x), static_cast<float>(r.y), static_cast<float>(r.w), static_cast<float>(r.h)};
 }
 
 WindowState SdlWindow::state() const {

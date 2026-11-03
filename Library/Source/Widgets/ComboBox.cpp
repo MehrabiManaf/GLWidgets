@@ -1,0 +1,144 @@
+// SPDX-FileCopyrightText: 2026 Abdolmanaf Mehrabi Sisakht
+// SPDX-License-Identifier: MIT
+#include <GLWidgets/Widgets/ComboBox.hpp>
+
+#include <GLWidgets/Paint/Painter.hpp>
+#include <GLWidgets/Text/Font.hpp>
+#include <GLWidgets/Text/TextLayout.hpp>
+#include <GLWidgets/Widgets/Label.hpp>
+#include <GLWidgets/Widgets/Menu.hpp>
+#include <GLWidgets/Widgets/UiRoot.hpp>
+
+#include <algorithm>
+#include <cmath>
+
+namespace glw {
+
+namespace {
+
+constexpr float arrowRoom = 28;         // its arrow's, at the end side
+
+} // namespace
+
+ComboBox::ComboBox() : ComboBox(Props{}) {}
+
+ComboBox::ComboBox(Props props) : items_(std::move(props.items)), onChanged_(std::move(props.onChanged)) {
+    setFocusable(true);
+    setPadding({10, 5, arrowRoom, 5});
+    label_ = &add(std::make_unique<Label>(Label::Props{.elide = true}));
+    label_->setAlignment(Alignment::Stretch, Alignment::Center);
+    label_->setHitTestVisible(false);
+    setCurrent(props.current);
+}
+
+const ButtonStyle& ComboBox::style() const {
+    if (const UiContext* ui = context())
+        return ui->theme.button;
+    static const ButtonStyle unstyled = Theme::dark().button;
+    return unstyled;
+}
+
+void ComboBox::setItems(std::vector<LocalizedText> items) {
+    items_ = std::move(items);
+    setCurrent(std::min(current_, items_.empty() ? 0 : items_.size() - 1));
+    invalidateLayout();
+}
+
+void ComboBox::setCurrent(std::size_t index) {
+    current_ = index;
+    label_->setText(index < items_.size() ? items_[index] : LocalizedText{});
+}
+
+void ComboBox::choose(std::size_t index) {
+    if (index >= items_.size() || index == current_)
+        return;
+    setCurrent(index);
+    if (onChanged_)
+        onChanged_(index);
+}
+
+void ComboBox::open() {
+    if (open_ || items_.empty())
+        return;
+    std::vector<MenuItem> menu;
+    for (std::size_t i = 0; i < items_.size(); ++i)
+        menu.push_back({.text = items_[i], .onTriggered = [this, i] { choose(i); }, .checked = i == current_});
+    open_ = showMenu(*this, {0, 0, size().width, size().height}, std::move(menu), [this] {
+        open_ = false;
+        invalidatePaint();
+    });
+    invalidatePaint();
+}
+
+Size ComboBox::measureContent(Size) {
+    // as wide as its widest text
+    const UiContext* ui = context();
+    if (!ui)
+        return {40, 18};
+    const text::TextStyle style{{&ui->fonts.defaultFont()}, ui->theme.fontSize};
+    float width = 40, height = 0;
+    for (const LocalizedText& item : items_) {
+        const text::TextLayout layout(ui->translator.resolve(item), style);
+        width = std::max(width, layout.size().width);
+        height = std::max(height, layout.size().height);
+    }
+    return {std::ceil(width), std::max(height, label_->measure({unbounded, unbounded}).height)};
+}
+
+void ComboBox::paint(PaintContext& context) {
+    const ButtonStyle& s = style();
+    const VisualState v{.hovered = hovered(), .pressed = open_ || pressed_, .focused = hasFocus(), .disabled = !enabledInTree()};
+    paint::Painter& p = context.painter;
+    const Rect r{0, 0, size().width, size().height};
+    p.fillRoundedRect(r, s.cornerRadius, s.background.resolve(v));
+    if (s.borderWidth > 0)
+        p.strokeRoundedRect(r, s.cornerRadius, s.borderWidth, s.border.resolve(v));
+    label_->setColor(s.text.resolve(v));
+    // a chevron down, at the end side
+    const float x = rightToLeft() ? arrowRoom / 2 : r.width - arrowRoom / 2, y = r.height / 2;
+    const Point points[] = {{x - 4, y - 2}, {x, y + 2}, {x + 4, y - 2}};
+    p.drawPolyline(points, 1.4f, s.text.resolve(v));
+}
+
+void ComboBox::paintOver(PaintContext& context) {
+    if (!hasFocus() || open_)
+        return;
+    const ButtonStyle& s = style();
+    context.painter.strokeRoundedRect(Rect{0, 0, size().width, size().height}.inflated(2), s.cornerRadius + 2, 1.5f, s.focusRing);
+}
+
+void ComboBox::onMouse(MouseEvent& event) {
+    if (event.button != platform::MouseButton::Left || event.type == MouseEventType::Wheel)
+        return;
+    if (event.type == MouseEventType::Press) {
+        pressed_ = true;
+        focus();
+        open();
+        event.handled = true;
+    } else if (event.type == MouseEventType::Release) {
+        pressed_ = false;
+        invalidatePaint();
+        event.handled = true;
+    }
+}
+
+void ComboBox::onKey(KeyEvent& event) {
+    if (!event.pressed || items_.empty())
+        return;
+    const bool alt = platform::hasAny(event.modifiers, platform::KeyModifiers::Alt);
+    switch (event.key) {
+    case platform::Key::Enter:
+    case platform::Key::Space: open(); break;
+    case platform::Key::Down:
+        if (alt)
+            open();
+        else
+            choose(std::min(current_ + 1, items_.size() - 1));
+        break;
+    case platform::Key::Up: choose(current_ > 0 ? current_ - 1 : 0); break;
+    default: return;
+    }
+    event.handled = true;
+}
+
+} // namespace glw

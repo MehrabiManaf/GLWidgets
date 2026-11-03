@@ -26,6 +26,7 @@ public:
     void hide() override;
     bool visible() const override;
     void raise() override;
+    bool focused() const override;
     void setParent(Window* parent) override;
     void setOpacity(float opacity) override;
     Point position() const override;
@@ -33,6 +34,7 @@ public:
     Point toScreen(Point point) const override;
     Point fromScreen(Point point) const override;
     Size screenSize() const override;
+    Rect usableScreenArea() const override;
     WindowState state() const override;
     void minimize() override;
     void maximize() override;
@@ -54,6 +56,7 @@ private:
 
     SdlPlatform& platform_;
     SDL_Window* window_ = nullptr;
+    SdlWindow* popupOf_ = nullptr;          // a popup's parent: SDL keeps its position from the parent's corner
     HitTest hitTest_;
 };
 

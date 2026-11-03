@@ -11,7 +11,9 @@
 // --frames N draws N frames and exits: a smoke test.
 #include <GLWidgets/Widgets/Application.hpp>
 #include <GLWidgets/Widgets/Declarative.hpp>
+#include <GLWidgets/Widgets/Dialog.hpp>
 #include <GLWidgets/Widgets/ListView.hpp>
+#include <GLWidgets/Widgets/Menu.hpp>
 #include <GLWidgets/Widgets/TableView.hpp>
 
 #include <algorithm>
@@ -53,7 +55,29 @@ constexpr const char* persianCatalog = R"({
     "Close it with its button, Alt+F4, or the one above.": "با دکمه‌اش، Alt+F4 یا دکمه‌ی بالا ببندیدش.",
     "A million rows of fifty columns. Drag a header's edge to resize its column; Shift and the wheel scroll across.":
       "یک میلیون سطر در پنجاه ستون. لبه‌ی سرستونی را بکشید تا ستونش اندازه شود؛ Shift و چرخ ماوس به پهلو می‌برند.",
-    "Column {n}": "ستون {n}"
+    "Column {n}": "ستون {n}",
+    "Menu": "منو",
+    "New": "جدید",
+    "Open…": "باز کردن…",
+    "Recent": "اخیر",
+    "Disabled": "غیرفعال",
+    "Size": "اندازه",
+    "Small": "کوچک",
+    "Medium": "متوسط",
+    "Large": "بزرگ",
+    "{item} chosen.": "«{item}» انتخاب شد.",
+    "Dialog…": "پنجره‌ی گفتگو…",
+    "New script": "اسکریپت جدید",
+    "Kind": "نوع",
+    "Script": "اسکریپت",
+    "Function": "تابع",
+    "Macro": "ماکرو",
+    "Create": "ساختن",
+    "Cancel": "لغو",
+    "Script name": "نام اسکریپت",
+    "{name} made.": "«{name}» ساخته شد.",
+    "Close the window?": "پنجره بسته شود؟",
+    "What is not saved is lost.": "آنچه ذخیره نشده از دست می‌رود."
   }
 })";
 
@@ -80,6 +104,7 @@ struct Page {
     glw::Button* themeButton = nullptr;
     glw::Widget* buttons = nullptr;
     glw::Widget* cards = nullptr;
+    glw::Button* menuButton = nullptr;
     bool light = false;
 
     // The form on one side; on the other a list of a million items over a table of a million rows; handles between them.
@@ -144,8 +169,15 @@ struct Page {
                               // in the other language: the button says which one it goes to
                               ui::Button({.text = tr("فارسی"), .onClick = [this] { switchLanguage(); }}),
                               ui::Button({.text = tr("Light theme"), .onClick = [this] { switchTheme(); }}).bind(themeButton),
-                              ui::Button({.text = tr("Close"), .onClick = [this] { window->close(); }}))
+                              ui::Button({.text = tr("Close"), .onClick = [this] { confirmClose(); }}))
                        .bind(buttons),
+                   ui::HStack({.spacing = 10},
+                              ui::Button({.text = tr("Menu"), .onClick = [this] { showDemoMenu(); }}).bind(menuButton),
+                              ui::Button({.text = tr("Dialog…"), .onClick = [this] { showDemoDialog(); }}),
+                              ui::Label({.text = tr("Size")}).alignment(glw::Alignment::Start, glw::Alignment::Center),
+                              ui::ComboBox({.items = {tr("Small"), tr("Medium"), tr("Large")},
+                                            .current = 1,
+                                            .onChanged = [this](std::size_t i) { chosen(i == 0 ? tr("Small") : i == 1 ? tr("Medium") : tr("Large")); }})),
                    ui::HStack({.spacing = 12}, card(1, tr("a share")), card(2, tr("two shares")), card(1, tr("a share"))).bind(cards),
                    ui::Label({.text = tr("Close it with its button, Alt+F4, or the one above."), .fontSize = 12, .muted = true}))
             .padding(glw::Insets::all(28));
@@ -156,6 +188,58 @@ struct Page {
             .stretch(stretch)
             .padding(glw::Insets::all(12))
             .minimumSize({0, 90});
+    }
+
+    // A menu under its button: shortcuts, a submenu, a check mark, a disabled item.
+    void showDemoMenu() {
+        const glw::Rect anchor{0, 0, menuButton->size().width, menuButton->size().height};
+        glw::showMenu(*menuButton, anchor,
+                      {{.text = tr("New"), .onTriggered = [this] { chosen(tr("New")); }, .shortcut = "Ctrl+N"},
+                       {.text = tr("Open…"), .onTriggered = [this] { chosen(tr("Open…")); }, .shortcut = "Ctrl+O"},
+                       {.text = tr("Recent"),
+                        .items = {{.text = "fizzbuzz.flow", .onTriggered = [this] { chosen("fizzbuzz.flow"); }},
+                                  {.text = "inventory.flow", .onTriggered = [this] { chosen("inventory.flow"); }}}},
+                       glw::MenuItem::separatorItem(),
+                       {.text = tr("Show the cards"), .onTriggered = [this] { cards->setVisible(!cards->visible()); }, .checked = cards->visible()},
+                       {.text = tr("Disabled"), .enabled = false},
+                       glw::MenuItem::separatorItem(),
+                       {.text = tr("Close"), .onTriggered = [this] { window->close(); }, .shortcut = "Alt+F4"}});
+    }
+
+    // A dialog asking before the window closes.
+    void confirmClose() {
+        glw::showMessage(*buttons, tr("Close the window?"), tr("What is not saved is lost."), {tr("Close"), tr("Cancel")},
+                         [this](std::optional<std::size_t> button) {
+                             if (button == 0u)
+                                 window->close();
+                         });
+    }
+
+    // A dialog with a form: a field (the focus starts there; Enter makes it) and a combo box (its menu over the dialog).
+    void showDemoDialog() {
+        auto name = std::make_shared<std::string>();
+        auto kind = std::make_shared<std::size_t>(0);
+        glw::LineEdit* field = nullptr;
+        auto form = ui::VStack({.spacing = 10},
+                               ui::Label({.text = tr("Script name"), .muted = true}),
+                               ui::LineEdit({.placeholder = tr("New script"), .onChanged = [name](const std::string& text) { *name = text; }})
+                                   .bind(field)
+                                   .minimumSize({320, 0}),
+                               ui::HStack({.spacing = 10},
+                                          ui::Label({.text = tr("Kind")}).alignment(glw::Alignment::Start, glw::Alignment::Center),
+                                          ui::ComboBox({.items = {tr("Script"), tr("Function"), tr("Macro")},
+                                                        .onChanged = [kind](std::size_t i) { *kind = i; }})));
+        glw::showDialog(*buttons, {.title = tr("New script"),
+                                   .content = std::move(form),
+                                   .buttons = {tr("Create"), tr("Cancel")},
+                                   .onClosed = [this, name](std::optional<std::size_t> button) {
+                                       if (button == 0u)
+                                           status->setText(tr("{name} made.").arg("name", name->empty() ? std::string("…") : *name));
+                                   }});
+    }
+
+    void chosen(const glw::LocalizedText& item) {
+        status->setText(tr("{item} chosen.").arg("item", app.translator().resolve(item)));
     }
 
     void greet(const std::string& name) {

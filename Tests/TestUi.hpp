@@ -7,7 +7,9 @@
 #include <GLWidgets/Text/GlyphAtlas.hpp>
 #include <GLWidgets/Widgets/UiRoot.hpp>
 
+#include <memory>
 #include <string>
+#include <vector>
 
 namespace glw::tests {
 
@@ -24,9 +26,17 @@ inline Translator& testTranslator() {
     return const_cast<Translator&>(testContext().translator);
 }
 
+struct FakePopup;
+
+// A window: its popups are roots of their own, kept here (opened in order, a submenu after its menu).
 struct FakeHost : UiHost {
     platform::WindowState state = platform::WindowState::Normal;
     int minimized = 0, toggled = 0, closed = 0;
+    std::vector<std::unique_ptr<FakePopup>> popups;     // the root host's: every popup, open or closed
+    FakeHost* top = this;                               // the host of the window the popups came from
+    UiRoot* own = nullptr;                              // a popup's root
+    FakeHost* openedFrom = nullptr;                     // a popup's: the host it opened from
+    bool gone = false;
     bool textInput = false;
     Rect inputArea;
     std::string clipboard;
@@ -34,12 +44,62 @@ struct FakeHost : UiHost {
     platform::WindowState windowState() const override { return state; }
     void minimizeWindow() override { ++minimized; }
     void toggleMaximizeWindow() override { ++toggled; }
-    void closeWindow() override { ++closed; }
+    void closeWindow() override;
     void startTextInput() override { textInput = true; }
     void stopTextInput() override { textInput = false; }
     void setTextInputArea(const Rect& area) override { inputArea = area; }
     std::string clipboardText() const override { return clipboard; }
     void setClipboardText(const std::string& text) override { clipboard = text; }
+    UiRoot* openPopup(PopupRequest request) override;
+
+    // The popups open now, in order.
+    std::vector<FakePopup*> open() const;
 };
+
+struct FakePopup {
+    FakeHost host;
+    UiRoot root;
+    Rect anchor;
+    PopupPlacement placement;
+    bool modal;
+
+    FakePopup(const UiContext& context, FakeHost& from, PopupRequest request)
+        : root(context, &host), anchor(request.anchor), placement(request.placement), modal(request.modal) {
+        host.top = from.top;
+        host.own = &root;
+        host.openedFrom = &from;
+        root.setContent(std::move(request.content));
+        const Size size = root.content()->measure({unbounded, unbounded});
+        root.setSize(size);
+        root.layout();
+    }
+};
+
+inline void FakeHost::closeWindow() {
+    ++closed;
+    if (!own || gone)
+        return;
+    // its own popups with it, then it
+    gone = true;
+    for (FakePopup* p : top->open()) {
+        if (p->host.openedFrom == this)
+            p->host.closeWindow();
+    }
+    own->windowClosing();
+}
+
+inline UiRoot* FakeHost::openPopup(PopupRequest request) {
+    top->popups.push_back(std::make_unique<FakePopup>(testContext(), *this, std::move(request)));
+    return &top->popups.back()->root;
+}
+
+inline std::vector<FakePopup*> FakeHost::open() const {
+    std::vector<FakePopup*> result;
+    for (const auto& p : top->popups) {
+        if (!p->host.gone)
+            result.push_back(p.get());
+    }
+    return result;
+}
 
 } // namespace glw::tests

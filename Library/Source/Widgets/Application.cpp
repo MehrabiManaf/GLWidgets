@@ -11,6 +11,7 @@
 
 #include <algorithm>
 #include <chrono>
+#include <cmath>
 #include <cstdio>
 #include <cstdlib>
 #include <string_view>
@@ -43,6 +44,36 @@ protected:
 
 constexpr float previewOpacity = 0.35f;
 
+// Where a popup `size` big goes (its parent's dips), from `anchor` (the same), on the part of the screen windows may cover.
+// Beside its anchor (After), it goes to the start side first when `startFirst` (a submenu of a submenu that went there:
+// they go on the way they went), and says in `atStart` where it went.
+Point placePopup(const platform::Window& parent, const Rect& anchor, PopupPlacement placement, Size size, bool rtl, bool startFirst,
+                 bool& atStart) {
+    const Rect screen = parent.usableScreenArea();
+    const Point a = parent.fromScreen({screen.x, screen.y}), b = parent.fromScreen({screen.right(), screen.bottom()});
+    const Rect area{a.x, a.y, b.x - a.x, b.y - a.y};
+    Point at;
+    if (placement == PopupPlacement::Center) {
+        at = {anchor.center().x - size.width / 2, anchor.center().y - size.height / 2};
+    } else if (placement == PopupPlacement::Below) {
+        at = {rtl ? anchor.right() - size.width : anchor.x, anchor.bottom()};
+        // above, when it does not fit below and there is more room above
+        if (at.y + size.height > area.bottom() && anchor.y - area.y > area.bottom() - anchor.bottom())
+            at.y = anchor.y - size.height;
+    } else {
+        // the sides in this window's dips: the end side is the right in left to right
+        const float right = anchor.right(), left = anchor.x - size.width;
+        const bool fitsRight = right + size.width <= area.right(), fitsLeft = left >= area.x;
+        const bool towardRight = rtl == startFirst;
+        const bool goRight = towardRight ? fitsRight || !fitsLeft : !(fitsLeft || !fitsRight);
+        at = {goRight ? right : left, anchor.y};
+        atStart = goRight == rtl;
+    }
+    at.x = std::clamp(at.x, area.x, std::max(area.x, area.right() - size.width));
+    at.y = std::clamp(at.y, area.y, std::max(area.y, area.bottom() - size.height));
+    return at;
+}
+
 } // namespace
 
 struct Application::Impl final : DockingHost {
@@ -57,6 +88,8 @@ struct Application::Impl final : DockingHost {
     std::vector<std::unique_ptr<Window>> opened;       // last: closed before what they draw with
     std::vector<Window*> order;                         // the windows from the one in front (focused last) back
     std::unique_ptr<Window> preview;                    // showWindowPreview's, made the first time; not one of `opened`
+    std::vector<std::unique_ptr<Window>> popups;        // a submenu after its menu; not of `opened`
+    bool focusLost = false;                             // a window lost the focus: maybe the application did
     bool quitting = false;
     int exitCode = 0;
     std::function<void()> onQuitting;
@@ -70,7 +103,124 @@ struct Application::Impl final : DockingHost {
             if (w->id() == id)
                 return w.get();
         }
+        for (const auto& w : popups) {
+            if (w->id() == id)
+                return w.get();
+        }
         return nullptr;
+    }
+
+    // ---- popups ----
+
+    // `w` is `ancestor`, or came from it (a popup of a popup of it).
+    static bool within(const Window* w, const Window* ancestor) {
+        for (; w; w = w->owner_) {
+            if (w == ancestor)
+                return true;
+        }
+        return false;
+    }
+
+    // The last opened dialog still open.
+    Window* topModal() const {
+        for (auto it = popups.rbegin(); it != popups.rend(); ++it) {
+            if ((*it)->modal_ && !(*it)->closing_)
+                return it->get();
+        }
+        return nullptr;
+    }
+
+    // A dialog, or what one came from: only its own closeWindow closes it.
+    bool kept(const Window* popup) const {
+        for (const auto& p : popups) {
+            if (p->modal_ && !p->closing_ && within(p.get(), popup))
+                return true;
+        }
+        return false;
+    }
+
+    // The windows with a dialog open from them, dimmed; the others not.
+    void updateScrims() {
+        for (const auto& w : opened) {
+            bool dimmed = false;
+            for (const auto& p : popups)
+                dimmed = dimmed || (p->modal_ && !p->closing_ && &p->base() == w.get());
+            w->root_.setOverlay(dimmed ? std::optional<Color>(context->theme.dialog.scrim) : std::nullopt);
+        }
+    }
+
+    // Every popup but `keep` and those it came from (the menu of a submenu): all when it is none or not a popup. Whether
+    // one closes.
+    bool closePopupsBut(const Window* keep) {
+        bool closed = false;
+        for (const auto& p : popups) {
+            bool kept = false;
+            for (const Window* w = keep; w && !kept; w = w->owner_)
+                kept = w == p.get();
+            if (!kept && !p->closing_ && !this->kept(p.get())) {
+                p->closing_ = true;
+                closed = true;
+            }
+        }
+        return closed;
+    }
+
+    // The last opened popup that takes the keyboard and came from `window` (or from a popup that did); none when there is
+    // none open.
+    Window* topPopupOf(const Window* window) const {
+        for (auto it = popups.rbegin(); it != popups.rend(); ++it) {
+            if ((*it)->closing_ || (*it)->tooltip_)
+                continue;
+            for (const Window* w = it->get(); w; w = w->owner_) {
+                if (w == window)
+                    return it->get();
+            }
+        }
+        return nullptr;
+    }
+
+    // Those that opened from `window`, and from them.
+    void closePopupsOf(const Window* window) {
+        for (const auto& p : popups) {
+            if (p.get() != window && within(p.get(), window) && !kept(p.get()))
+                p->closing_ = true;
+        }
+    }
+
+    // The application lost the focus (no window of it has the keyboard): its popups close.
+    void checkFocus() {
+        if (!std::exchange(focusLost, false) || popups.empty())
+            return;
+        const auto has = [](const auto& w) { return w->window_->focused(); };
+        if (std::none_of(opened.begin(), opened.end(), has) && std::none_of(popups.begin(), popups.end(), has))
+            closePopupsBut(nullptr);
+    }
+
+    // The popups closing, with those that opened from them and from the windows closing: told, then destroyed, the last
+    // opened first.
+    void closePopups() {
+        for (bool more = true; more;) {
+            more = false;
+            for (const auto& p : popups) {
+                if (!p->closing_ && p->owner_->closing_)
+                    p->closing_ = more = true;
+            }
+        }
+        for (const auto& p : popups) {
+            if (p->closing_ && !p->told_) {
+                p->told_ = true;
+                p->root_.windowClosing();
+            }
+        }
+        bool closed = false;
+        for (std::size_t i = popups.size(); i-- > 0;) {
+            if (popups[i]->closing_) {
+                popups.erase(popups.begin() + static_cast<std::ptrdiff_t>(i));
+                closed = true;
+            }
+        }
+        if (closed)
+            updateScrims();
     }
 
     Window* find(const UiRoot& root) const {
@@ -120,6 +270,7 @@ struct Application::Impl final : DockingHost {
     // The windows closed during the events go: told first, while every tree is whole (a floating panel goes home from its
     // window), then destroyed one at a time (what one destroys may close others).
     void closeWindows() {
+        closePopups();
         for (bool told = true; told;) {
             told = false;
             for (std::size_t i = 0; i < opened.size(); ++i) {
@@ -174,6 +325,10 @@ struct Application::Impl final : DockingHost {
             if (!w->closing_ && w->window_->visible() && w->windowState() != platform::WindowState::Minimized)
                 w->surface_->waitUntilReady();
         }
+        for (const auto& w : popups) {
+            if (!w->closing_ && w->window_->visible())
+                w->surface_->waitUntilReady();
+        }
         if (preview && preview->window_->visible())
             preview->surface_->waitUntilReady();
     }
@@ -184,6 +339,10 @@ struct Application::Impl final : DockingHost {
             if (w->closing_ || !w->window_->visible() || w->windowState() == platform::WindowState::Minimized)
                 continue;
             if (all || w->root_.needsPaint() || w->root_.needsLayout())
+                result.push_back(w.get());
+        }
+        for (const auto& w : popups) {
+            if (!w->closing_ && w->window_->visible() && (all || w->root_.needsPaint() || w->root_.needsLayout()))
                 result.push_back(w.get());
         }
         if (preview && preview->window_->visible() && (all || preview->root_.needsPaint()))
@@ -199,6 +358,39 @@ struct Application::Impl final : DockingHost {
         Window* window = find(windowOf(event));
         if (!window)
             return;
+        // under a dialog: the keys and typed text are the dialog's (or those of a popup of it); the mouse does nothing, but
+        // close the popups of the dialog when pressed; the window does not close
+        if (Window* modal = topModal(); modal && !within(window, modal)) {
+            if (std::holds_alternative<platform::KeyChanged>(event) || std::holds_alternative<platform::TextInput>(event) ||
+                std::holds_alternative<platform::TextComposition>(event)) {
+                topPopupOf(modal)->root_.dispatch(event);
+                return;
+            }
+            if (const auto* button = std::get_if<platform::MouseButtonChanged>(&event); button && button->pressed)
+                closePopupsBut(modal);
+            if (std::holds_alternative<platform::MouseButtonChanged>(event) || std::holds_alternative<platform::MouseMoved>(event) ||
+                std::holds_alternative<platform::MouseWheelScrolled>(event) || std::holds_alternative<platform::WindowCloseRequested>(event))
+                return;
+        }
+        // the keys and typed text of a window with a menu open: the topmost menu's (the system may not move the keyboard
+        // to it)
+        if (std::holds_alternative<platform::KeyChanged>(event) || std::holds_alternative<platform::TextInput>(event) ||
+            std::holds_alternative<platform::TextComposition>(event)) {
+            if (Window* menu = topPopupOf(window); menu && menu != window) {
+                menu->root_.dispatch(event);
+                return;
+            }
+        }
+        // a press outside the popups closes them; in a window that is not one of them, it does nothing else
+        if (const auto* button = std::get_if<platform::MouseButtonChanged>(&event); button && button->pressed && !popups.empty()) {
+            if (closePopupsBut(window) && !window->popup_)
+                return;
+        }
+        if (const auto* focus = std::get_if<platform::WindowFocusChanged>(&event); focus && !focus->focused)
+            focusLost = true;
+        // the window they opened from resized, minimized or maximized: they would be out of place
+        if (!window->popup_ && (std::holds_alternative<platform::WindowResized>(event) || std::holds_alternative<platform::WindowStateChanged>(event)))
+            closePopupsOf(window);
         if (const auto* focus = std::get_if<platform::WindowFocusChanged>(&event); focus && focus->focused)
             toFront(window);
         if (std::holds_alternative<platform::WindowCloseRequested>(event))
@@ -386,6 +578,51 @@ Window::Window(Application& app, const WindowOptions& options, std::unique_ptr<W
         window_->show(focus);
 }
 
+Window::Window(Application& app, PopupRequest request, Window& parent)
+    : app_(app), root_(*app.impl_->context, this), owner_(&parent), popup_(true), tooltip_(request.tooltip), modal_(request.modal) {
+    Application::Impl& impl = *app.impl_;
+    const bool rtl = parent.root_.rightToLeft();
+    root_.setLayoutDirection(rtl ? LayoutDirection::RightToLeft : LayoutDirection::LeftToRight);
+    root_.setContent(std::move(request.content));
+    const Size wanted = root_.content()->measure({unbounded, unbounded});
+    const Size size{std::max(1.0f, std::ceil(wanted.width)), std::max(1.0f, std::ceil(wanted.height))};
+    const Point at = placePopup(*parent.window_, request.anchor, request.placement, size, rtl, parent.popupAtStart_, popupAtStart_);
+    window_ = impl.platform->createWindow({.title = "",
+                                           .size = size,
+                                           .resizable = false,
+                                           .borderless = true,
+                                           .position = at,
+                                           .popupOf = parent.window_.get(),
+                                           .tooltip = request.tooltip});
+    surface_ = impl.device->createSurface(*window_);
+    root_.setSize(window_->size());
+    root_.setScale(window_->scale());
+    window_->show(!request.tooltip);
+}
+
+UiRoot* Window::openPopup(PopupRequest request) {
+    if (closing_ || !request.content)
+        return nullptr;
+    Application::Impl& impl = *app_.impl_;
+    const bool modal = request.modal;
+    impl.popups.push_back(std::unique_ptr<Window>(new Window(app_, std::move(request), *this)));
+    Window& popup = *impl.popups.back();
+    if (modal) {
+        // what the mouse was over under it is not any more
+        Window& below = popup.base();
+        below.root_.dispatch(platform::MouseCrossed{below.id(), false});
+        impl.updateScrims();
+    }
+    return &popup.root_;
+}
+
+Window& Window::base() {
+    Window* w = this;
+    while (w->popup_ && w->owner_)
+        w = w->owner_;
+    return *w;
+}
+
 Window::~Window() {
     window_->setHitTest(nullptr);       // it asks the root, which goes first
 }
@@ -422,16 +659,23 @@ void Window::toggleMaximizeWindow() {
         window_->maximize();
 }
 
+// A popup's text is typed in the window it came from (which keeps the keyboard), and routed to it.
 void Window::startTextInput() {
-    window_->startTextInput();
+    base().window_->startTextInput();
 }
 
 void Window::stopTextInput() {
-    window_->stopTextInput();
+    base().window_->stopTextInput();
 }
 
 void Window::setTextInputArea(const Rect& area) {
-    window_->setTextInputArea(area);
+    Window& in = base();
+    if (&in == this) {
+        window_->setTextInputArea(area);
+        return;
+    }
+    const Point corner = in.window_->fromScreen(window_->toScreen({area.x, area.y}));
+    in.window_->setTextInputArea({corner.x, corner.y, area.width, area.height});
 }
 
 std::string Window::clipboardText() const {
@@ -464,6 +708,8 @@ Application::~Application() {
     Impl& d = *impl_;
     d.platform->setExposeHandler(nullptr);
     d.preview.reset();
+    while (!d.popups.empty())       // the last opened (a submenu) first
+        d.popups.pop_back();
     // the last opened first (a floating panel's window before its owner), one at a time: what one destroys may close others
     while (!d.opened.empty()) {
         std::unique_ptr<Window> closed = std::move(d.opened.back());
@@ -499,6 +745,7 @@ int Application::run(int frames) {
         platform::Event event;
         while (!d.quitting && d.platform->pollEvent(event))
             d.handle(event);
+        d.checkFocus();
         d.quittingSoon();
         d.closeWindows();
         if (d.quitting || d.opened.empty())
@@ -545,11 +792,15 @@ void Application::setTheme(const Theme& theme) {
     impl_->context->theme = theme;
     for (const auto& w : impl_->opened)
         w->root_.styleChanged();
+    for (const auto& w : impl_->popups)
+        w->root_.styleChanged();
 }
 
 void Application::setLanguage(const std::string& language) {
     impl_->translator->setLanguage(language);
     for (const auto& w : impl_->opened)
+        w->languageChanged();
+    for (const auto& w : impl_->popups)
         w->languageChanged();
 }
 

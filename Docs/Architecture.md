@@ -416,6 +416,34 @@ Shift or tilted, and Left and Right; in right to left the first column is at the
 million rows of a hundred columns (or a hundred million of a thousand), some 190 widgets show it; painting and scrolling
 down or across take less than half a millisecond, a jump to anywhere 3 ms.
 
+**Popups are windows of their own** (`UiHost::openPopup`, `PopupRequest`), as native menus are, so that a menu of a
+small floating panel may go past the panel's edges: SDL's popup windows (`SDL_CreatePopupWindow`: Wayland's xdg_popup
+too), placed by the window of the widget they open from, from an anchor (below it, or beside it for a submenu), on the
+part of the screen windows may cover: above the anchor when there is more room there, at the other side when there is
+none, and a submenu of a submenu on the side its menu went. A popup is as big as its content measures; the host keeps its
+root until it closes: by its host's `closeWindow`, a click outside it (in a window of the application: that click does
+nothing else), the application losing the focus, or its window resized or closing (its widgets are told by
+`onWindowClosing`). The keys and the text typed in a window with a menu open go to its topmost menu, whatever the system
+does with the keyboard. Popups are not among the application's windows (docking does not see them). A host without popups
+(an engine's) opens none.
+
+`showContextMenu` / `showMenu` (`Widgets/Menu.hpp`) open a menu of `MenuItem`s: a text, a handler, a shortcut shown at its
+end, a check mark, a submenu, separators, disabled items. The mouse chooses by going over an item (a submenu opens) and
+triggers by letting go over it; the keys choose (Up, Down, Home, End, past separators and disabled items), go in and out
+of submenus (Right and Left, mirrored in right to left), trigger (Enter, Space) and close (Escape). A `ComboBox` is a text
+chosen from such a menu under it, the current one checked; Up and Down change it without opening it. Still to come:
+tooltips (they need timers: a delay before they show).
+
+A modal popup (`PopupRequest::modal`) is a dialog: while it is open, the other windows of the application take no input
+(their mouse does nothing but close the dialog's own popups, their keys and typed text are the dialog's, they do not
+close), and the window it opened from shows dimmed (`UiRoot::setOverlay`, the theme's scrim). Only its host's
+`closeWindow` closes it, or its window closing: not a click outside, not the application losing the focus. A popup's text
+is typed in the window it came from (which keeps the system's keyboard) and routed to it, so a field works in any popup.
+`showDialog` (`Widgets/Dialog.hpp`) opens a `Dialog` in the middle of the window: a title, content of any widgets, a row
+of buttons at its end (the default one in the accent color); a button closes it and says which it was, Enter is the
+default button (a field without its own Enter handler leaves Enter to it), Escape closes it without a choice; the focus
+starts on its first field. `showMessage` is a dialog of a wrapped text.
+
 **A canvas is a surface without edges with widgets on it** (`Widgets/Canvas.hpp`): the ground of a node editor, a
 diagram, a level map. A widget may give its children coordinates of their own (`childrenTransform`: a uniform scale and a
 translation, `paint::Transform`); they are then painted, found under the mouse and mapped to the root
@@ -672,7 +700,7 @@ The `GLW_USE_SYSTEM_SDL3` option uses an installed SDL3 instead of the pinned re
 | M3 | Widget core: tree, events, focus, layout, a UI root independent of the platform, window chrome as widgets (with the native extras), live resize | Done, apart from the native extras of the chrome and what is listed in [Widgets](#widgets) |
 | M4 | Basic widgets (label, button, line edit, scroll area, splitter), styles, `LocalizedText` and catalogs, right-to-left layouts | Done, apart from plural rules and the formatting of numbers and dates (see [Localization](#localization-and-right-to-left)) |
 | M5 | Docking: major and panel tabs, windows merging and splitting by their tabs, both modes, layout persistence | Done: docking in a window, major tabs and saved layouts (M5a), across windows in the full mode (M5b), global panels, saved workspaces and Wayland's restricted mode (M5c). Wayland's drag-and-drop between windows, and keeping restored windows on the screens there are, later; the restricted mode not yet run on Wayland |
-| M6 | Validation: a node canvas and a code editor (FlowGraph), a chart widget with custom commands, an engine embedding example | In progress: the node canvas (`Canvas`, `node_editor`) |
+| M6 | Validation: a node canvas and a code editor (FlowGraph), a chart widget with custom commands, an engine embedding example | In progress: the node canvas (`Canvas`, `node_editor`), menus and popups |
 
 ## Open questions
 

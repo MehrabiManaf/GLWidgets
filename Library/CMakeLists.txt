@@ -31,6 +31,8 @@ add_library(GLWidgets ${GLW_LIB_TYPE}
     Source/Widgets/Button.cpp
     Source/Widgets/Canvas.cpp
     Source/Widgets/CheckBox.cpp
+    Source/Widgets/ComboBox.cpp
+    Source/Widgets/Dialog.cpp
     Source/Widgets/Docking.cpp
     Source/Widgets/ItemModel.cpp
     Source/Widgets/Json.cpp
@@ -38,6 +40,7 @@ add_library(GLWidgets ${GLW_LIB_TYPE}
     Source/Widgets/Layout.cpp
     Source/Widgets/LineEdit.cpp
     Source/Widgets/ListView.cpp
+    Source/Widgets/Menu.cpp
     Source/Widgets/Localization.cpp
     Source/Widgets/MajorTabs.cpp
     Source/Widgets/Panel.cpp
