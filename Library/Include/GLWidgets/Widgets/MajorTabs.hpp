@@ -9,7 +9,8 @@
 // dropped on another window's strip, it goes there. Dragging the only tab of a window drags the window, and dropping it on
 // another window's strip merges them (it is seen through while it moves, the strip under it showing where its tab would
 // go). Where a tab would open a window, an outline shows it. A window left without tabs closes. The new windows' MajorTabs have the same
-// handlers, which are given the MajorTabs they are for.
+// handlers, which are given the MajorTabs they are for. When the MajorTabs is the center of a window's dock area (of its
+// global panels, Docking.hpp), a new window gets one of the same group around its MajorTabs.
 //
 //   auto tabs = std::make_unique<glw::MajorTabs>();
 //   tabs->addTab(glw::tr("Script"), std::move(dockArea));

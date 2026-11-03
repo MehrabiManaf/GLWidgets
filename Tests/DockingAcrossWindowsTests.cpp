@@ -149,6 +149,10 @@ struct Screen final : DockingHost {
         if (Win* w = find(root))
             w->closing = true;
     }
+    bool closing(const UiRoot& root) const override {
+        const Win* w = find(root);
+        return !w || closing(*w);
+    }
     void setWindowVisible(const UiRoot& root, bool visible) override {
         if (Win* w = find(root))
             w->visible = visible;
@@ -541,4 +545,125 @@ TEST(floatButtonFloatsAndDocksBack) {
     screen.release(floating, back);
     screen.closeWindows();
     CHECK(screen.windows.size() == 1 && t.area->tabsOf("palette")->area() == t.area);
+}
+
+namespace {
+
+DockPanel globalPanel(const std::string& id) {
+    DockPanel p = panel(id);
+    p.scope = DockScope::Global;
+    return p;
+}
+
+// A window as an editor has it: its major tabs (a script each, with its own panels) in the middle of an area of global
+// panels: files at its start, the log at its bottom.
+struct Editor {
+    DockArea* global = nullptr;
+    MajorTabs* documents = nullptr;
+    DockArea* script = nullptr;         // the first script's area
+    Screen::Win* window = nullptr;
+
+    Editor(Screen& screen, Point position) {
+        auto tabs = std::make_unique<MajorTabs>();
+        documents = tabs.get();
+        for (const char* name : {"one", "two"}) {
+            auto area = std::make_unique<DockArea>();
+            DockTabs& graph = area->addPanel(panel(std::string("graph ") + name));
+            area->addPanel(panel(std::string("palette ") + name), &graph, DockSide::Start, 0.3f);
+            if (!script)
+                script = area.get();
+            documents->addTab(name, std::move(area));
+        }
+        documents->setActive(0);
+        auto strip = documents->makeStrip();
+        auto outer = std::make_unique<DockArea>(DockScope::Global);
+        global = outer.get();
+        outer->setCenter(std::move(tabs));
+        outer->addPanel(globalPanel("files"), nullptr, DockSide::Start, 0.2f);
+        outer->addPanel(globalPanel("log"), nullptr, DockSide::Bottom, 0.25f);
+        window = &screen.open(std::move(outer), position, {1000, 700}, std::move(strip));
+    }
+};
+
+} // namespace
+
+TEST(globalPanelsDockAroundTheMajorTabs) {
+    Screen screen;
+    Editor e(screen, {0, 0});
+    // the global area: its panels around its center; the scripts' panels are theirs, not its
+    CHECK(e.global->center() == e.documents);
+    CHECK((e.global->panelIds() == std::vector<std::string>{"files", "log"}) || (e.global->panelIds() == std::vector<std::string>{"log", "files"}));
+    CHECK(e.script->panelIds().size() == 2);
+    CHECK(e.global->tabsOf("files")->mapToRoot({}).x < e.documents->mapToRoot({}).x);
+    CHECK(e.global->tabsOf("log")->mapToRoot({}).y > e.documents->mapToRoot({}).y);
+    const std::string saved = e.global->saveLayout();
+    CHECK(saved.find("\"center\":true") != std::string::npos);
+
+    // a script's panel dragged over a global stack: no place for it there; it stays floating, in its own group
+    DockTabs& files = *e.global->tabsOf("files");
+    const Point overFiles = files.mapToRoot(files.guide(DockSide::Center).center());
+    screen.drag(*e.window, panelTab(screen, *e.script, "palette one"), overFiles);
+    CHECK(e.script->tabsOf("palette one")->area()->floating() && e.global->tabsOf("palette one") == nullptr);
+    CHECK(e.global->panelIds().size() == 2);
+
+    // a global panel over the major tabs: on the center's End guide, it docks at their end; its stack goes beside them
+    const Point end = e.documents->mapToRoot(DockArea::guide(*e.documents, DockSide::End).center());
+    screen.drag(*e.window, panelTab(screen, *e.global, "files"), end);
+    screen.layout();
+    DockTabs* moved = e.global->tabsOf("files");
+    CHECK(moved && moved->area() == e.global && moved->mapToRoot({}).x > e.documents->mapToRoot({}).x);
+    // and the major tabs show the script's panels still, the global ones whichever is shown
+    e.documents->setActive(1);
+    CHECK(e.global->tabsOf("files")->visibleInTree() && !e.script->visibleInTree());
+}
+
+TEST(globalPanelsGoToAnotherWindowWhenTheirsCloses) {
+    Screen screen;
+    Editor e(screen, {0, 0});
+    // a script's tab torn off: its window gets a global area of the same group around its major tabs
+    screen.drag(*e.window, majorTab(screen, *e.documents, 1), {600, 1200});
+    CHECK(screen.windows.size() == 2);
+    Screen::Win& second = *screen.windows.front();
+    auto* frame = dynamic_cast<WindowFrame*>(second.root->content());
+    auto* area = frame ? dynamic_cast<DockArea*>(frame->content()) : nullptr;
+    CHECK(area && area->scope() == DockScope::Global && dynamic_cast<MajorTabs*>(area->center()));
+    CHECK(area->panelIds().size() == 2);        // the group's: the first window's global panels
+
+    // the log dragged there, onto the side of its major tabs
+    screen.layout();
+    const Point side = area->center()->mapToRoot(DockArea::guide(*area->center(), DockSide::Bottom).center()) + second.position;
+    screen.drag(*e.window, panelTab(screen, *e.global, "log"), side);
+    CHECK(e.global->tabsOf("log")->area() == area);
+
+    // the first window closes: its global panels go to the second
+    e.window->host.closeWindow();
+    screen.closeWindows();
+    CHECK(screen.windows.size() == 1);
+    CHECK(area->tabsOf("files") && area->tabsOf("files")->area() == area && area->tabsOf("log")->area() == area);
+}
+
+TEST(aWindowsAreaWithItsCenterIsSavedAndRestored) {
+    UiRoot root(tests::testContext());
+    root.setSize({800, 600});
+    auto outer = std::make_unique<DockArea>(DockScope::Global);
+    DockArea& area = *outer;
+    auto middle = std::make_unique<Widget>();
+    Widget* center = middle.get();
+    area.setCenter(std::move(middle));
+    area.addPanel(globalPanel("files"), nullptr, DockSide::Start, 0.2f);
+    area.addPanel(globalPanel("log"), nullptr, DockSide::Bottom, 0.3f);
+    root.setContent(std::move(outer));
+    root.layout();
+    const std::string saved = area.saveLayout();
+    // another arrangement, then the saved one again: the center where it was
+    CHECK(area.restoreLayout(R"({"split":"horizontal","panes":[{"share":1,"center":true},{"share":1,"tabs":["files","log"]}]})"));
+    root.layout();
+    CHECK(area.tabsOf("files") == area.tabsOf("log") && area.center() == center);
+    CHECK(area.restoreLayout(saved));
+    root.layout();
+    CHECK(area.saveLayout() == saved && area.center() == center);
+    // a layout without the center: it is put first, the layout beside it
+    CHECK(area.restoreLayout(R"({"tabs":["files","log"]})"));
+    root.layout();
+    CHECK(area.center() == center && center->root() == &root && center->mapToRoot({}).x < area.tabsOf("files")->mapToRoot({}).x);
 }

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 // Docking, as a script editor would have it: the scripts are major tabs in the title bar (+ adds one, dragging a tab moves
 // it along, its × closes it); each has its panels (graph, palette, inspector, output, search) docked around its graph.
+// Around the scripts are the application's panels, the same whichever script is shown: its files, and its log.
 // Drag a panel's tab onto another stack's tabs, or onto the middle of the guides the stack shows, to join them; onto one of
 // the guides around it to split the stack; drag the line between two stacks to share their room.
 //
@@ -48,6 +49,9 @@ constexpr const char* persianCatalog = R"({
       "یک تب را روی تب‌های پشته‌ای دیگر، یا روی راهنمای وسطی که آن پشته نشان می‌دهد، بکشید تا به آن بپیوندد؛ روی یکی از راهنماهای اطراف آن بکشید تا پشته را تقسیم کند. خط میان دو پشته را بکشید تا جایشان را جابه‌جا کنید. + در نوار عنوان یک اسکریپت می‌افزاید.",
     "Drag a tab out of its tab bar to float it, and a floating window by its tab or its title onto a guide to dock it. Drag a script's tab out of the title bar to open it in a window of its own.":
       "یک تب را از نوار تب‌هایش بیرون بکشید تا شناور شود، و یک پنجره‌ی شناور را با تب یا عنوانش روی یک راهنما بکشید تا داک شود. تب یک اسکریپت را از نوار عنوان بیرون بکشید تا در پنجره‌ای جدا باز شود.",
+    "Files": "فایل‌ها",
+    "Log": "گزارش",
+    "Opened {file}.": "{file} باز شد.",
     "Name": "نام",
     "Pure": "خالص",
     "Comment": "توضیح",
@@ -117,6 +121,26 @@ struct Studio {
         return area;
     }
 
+    // The application's panels, around the scripts: whichever is shown, in any window.
+    static void addGlobalPanels(glw::DockArea& area) {
+        ui::Children files;
+        for (const char* name : {"main.flow", "player.flow", "enemy.flow", "inventory.flow", "dialogue.flow", "save.flow"})
+            files.push_back(ui::Label({.text = name}));
+        area.addPanel({.id = "files",
+                       .title = tr("Files"),
+                       .content = ui::ScrollArea({}, ui::VStack({.spacing = 6}, std::move(files)).padding(glw::Insets::all(12))),
+                       .scope = glw::DockScope::Global},
+                      nullptr, glw::DockSide::Start, 0.16f);
+        ui::Children lines;
+        for (const char* name : {"main.flow", "player.flow", "enemy.flow"})
+            lines.push_back(ui::Label({.text = tr("Opened {file}.").arg("file", name), .muted = true}));
+        area.addPanel({.id = "log",
+                       .title = tr("Log"),
+                       .content = ui::ScrollArea({}, ui::VStack({.spacing = 4}, std::move(lines)).padding(glw::Insets::all(10))),
+                       .scope = glw::DockScope::Global},
+                      nullptr, glw::DockSide::Bottom, 0.2f);
+    }
+
     // In `into`: the first window's tabs, or those of a window a script was dragged out to.
     void addScript(glw::MajorTabs& into) {
         ++scripts;
@@ -149,8 +173,12 @@ int main(int argc, char** argv) {
         tabs->setActive(0);
         tabs->setOnNewTab([&studio](glw::MajorTabs& into) { studio.addScript(into); });
 
-        glw::Window& window = app.openWindow({.title = tr("Docking"), .size = {1280, 800}}, std::move(tabs));
-        window.frame()->titleBar().setCenter(studio.documents->makeStrip());
+        // the window: the scripts in the middle of the application's panels; their tabs in its title bar
+        auto window = std::make_unique<glw::DockArea>(glw::DockScope::Global);
+        window->setCenter(std::move(tabs));
+        Studio::addGlobalPanels(*window);
+        glw::Window& shown = app.openWindow({.title = tr("Docking"), .size = {1280, 800}}, std::move(window));
+        shown.frame()->titleBar().setCenter(studio.documents->makeStrip());
         return app.run(frames);
     } catch (const std::exception& e) {
         std::fprintf(stderr, "docking_demo: %s\n", e.what());

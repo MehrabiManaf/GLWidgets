@@ -232,6 +232,11 @@ struct Application::Impl final : DockingHost {
             w->close();
     }
 
+    bool closing(const UiRoot& root) const override {
+        const Window* w = find(root);
+        return !w || w->closing_;
+    }
+
     void setWindowVisible(const UiRoot& root, bool visible) override {
         Window* w = find(root);
         if (!w || w->closing_ || w->window_->visible() == visible)

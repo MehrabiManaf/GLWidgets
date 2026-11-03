@@ -364,8 +364,8 @@ corners and snap layouts).
 
 ## Docking
 
-*In a window and across windows: done (`Widgets/Docking.hpp`, `Widgets/MajorTabs.hpp`, `Widgets/DockingHost.hpp`), in
-the full mode. Global panels, saving windows, and Wayland's mode: planned (M5c).*
+*In a window and across windows, with global panels: done (`Widgets/Docking.hpp`, `Widgets/MajorTabs.hpp`,
+`Widgets/DockingHost.hpp`), in the full mode. Saving windows, and Wayland's mode: planned (M5c).*
 
 Two kinds of tabs, as in Slate:
 
@@ -376,8 +376,8 @@ Two kinds of tabs, as in Slate:
 - **Panel tabs** are tools: a node palette, a property inspector, an output log. They dock inside the content area of a
   major tab, in a tree of splits and tab stacks. Dragged out, a panel tab floats in a panel window: a window with a dock
   area of its own, where more panel tabs can be docked. It has no title bar apart from its tabs: the tab bars along its
-  top drag it where they have no tab, and the window buttons are at their end, as in Unreal Engine. A panel tab never goes into a major tab strip,
-  and a major tab never goes into a dock area.
+  top drag it where they have no tab, and the window buttons are at their end, as in Unreal Engine. A panel tab never
+  goes into a major tab strip, and a major tab never goes into a dock area.
 
 **Every panel says who owns it.** A panel tab type declares its scope:
 
@@ -389,6 +389,16 @@ Two kinds of tabs, as in Slate:
   dock there, or float, and stay whichever major tab is active.
 
 A panel never moves into a dock area of the other scope, so what owns it never changes while it is dragged.
+
+How it is done: `DockPanel::scope` and `DockArea`'s scope say it, and an area takes panels of its scope only. A window's
+global area has a **center**, its `MajorTabs` (`setCenter`): a node of its tree that is not a panel, never moved nor
+closed, which panels dock around (a tab dragged over it shows its four side guides). Areas that panels move between are
+one **group**: a major tab's area and its floating windows' areas; for Global, every window's area and theirs
+(`makeSibling` makes one more, and a major tab torn off into a new window gives it one around its `MajorTabs`). Looking
+for where a dragged tab would go, the stacks of other groups are passed over: a script's panel over a global stack goes
+nowhere, a global panel over the scripts' panels finds the center they are in. A group's floating windows are above one
+of its areas' windows (its home); when that window closes they go above another, and its global panels go into another
+window's area. Saved layouts name the center where it is (`{"center": true}`).
 
 **The widgets are the layout.** A `DockArea` holds one node: a `DockTabs` (a stack of panels: their tabs, and the content
 of the one shown) or a `DockSplit` (a `Splitter` of nodes). The tree is saved as JSON and restored, with panels known by
@@ -567,7 +577,7 @@ The `GLW_USE_SYSTEM_SDL3` option uses an installed SDL3 instead of the pinned re
 | M2 | Text: HarfBuzz and FreeType, glyph atlas, bidi, line breaking, text layout with cursor and selection | Done, apart from system fonts and visual cursor movement (see [Text](#text)) |
 | M3 | Widget core: tree, events, focus, layout, a UI root independent of the platform, window chrome as widgets (with the native extras), live resize | Done, apart from the native extras of the chrome and what is listed in [Widgets](#widgets) |
 | M4 | Basic widgets (label, button, line edit, scroll area, splitter), styles, `LocalizedText` and catalogs, right-to-left layouts | Done, apart from plural rules and the formatting of numbers and dates (see [Localization](#localization-and-right-to-left)) |
-| M5 | Docking: major and panel tabs, windows merging and splitting by their tabs, both modes, layout persistence | In progress: docking in a window, major tabs and saved layouts (M5a), and across windows in the full mode (M5b) done; global panels, saving windows and Wayland's mode next (M5c) |
+| M5 | Docking: major and panel tabs, windows merging and splitting by their tabs, both modes, layout persistence | In progress: docking in a window, major tabs and saved layouts (M5a), across windows in the full mode (M5b), and global panels done; saving windows and Wayland's mode next (M5c) |
 | M6 | Validation: a node canvas and a code editor (FlowGraph), a chart widget with custom commands, an engine embedding example | |
 
 ## Open questions

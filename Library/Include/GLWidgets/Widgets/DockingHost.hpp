@@ -50,6 +50,8 @@ public:
     virtual UiRoot& openWindow(NewWindow window) = 0;
     // After the event being handled.
     virtual void closeWindow(const UiRoot& root) = 0;
+    // Its window closes (closeWindow was called; while windows are told they close).
+    virtual bool closing(const UiRoot& root) const = 0;
     virtual void setWindowVisible(const UiRoot& root, bool visible) = 0;
     // A tool window goes above `owner`'s now (none: on its own).
     virtual void setWindowOwner(const UiRoot& root, const UiRoot* owner) = 0;

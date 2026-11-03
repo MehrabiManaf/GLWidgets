@@ -3,6 +3,7 @@
 #include <GLWidgets/Widgets/MajorTabs.hpp>
 
 #include <GLWidgets/Paint/Painter.hpp>
+#include <GLWidgets/Widgets/Docking.hpp>
 #include <GLWidgets/Widgets/DockingHost.hpp>
 #include <GLWidgets/Widgets/Label.hpp>
 #include <GLWidgets/Widgets/Layout.hpp>
@@ -539,7 +540,20 @@ void MajorTabStrip::endDrag(Point point) {
         LocalizedText title = tabs->title(from);
         torn->insertTab(0, title, tabs->removeTab(from), closable);
         std::unique_ptr<MajorTabStrip> strip = torn->makeStrip();
-        host->openWindow({.title = std::move(title), .content = std::move(torn), .titleCenter = std::move(strip), .position = position, .size = size, .owner = nullptr});
+        // the center of a window's area (of its global panels): the new window gets one of the same group around them
+        std::unique_ptr<Widget> content = std::move(torn);
+        for (Widget* w = tabs->parent(); w; w = w->parent()) {
+            if (auto* area = dynamic_cast<DockArea*>(w); area && area->center() == tabs) {
+                content = area->makeSibling(std::move(content));
+                break;
+            }
+        }
+        host->openWindow({.title = std::move(title),
+                          .content = std::move(content),
+                          .titleCenter = std::move(strip),
+                          .position = position,
+                          .size = size,
+                          .owner = nullptr});
     });
 }
 
