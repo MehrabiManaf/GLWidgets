@@ -11,6 +11,7 @@
 #include <GLWidgets/Widgets/Layout.hpp>
 #include <GLWidgets/Widgets/ListView.hpp>
 #include <GLWidgets/Widgets/ScrollArea.hpp>
+#include <GLWidgets/Widgets/TableView.hpp>
 #include <GLWidgets/Widgets/TreeView.hpp>
 #include <GLWidgets/Widgets/UiRoot.hpp>
 
@@ -169,6 +170,62 @@ void nodesInATreeView(glw::UiContext& ui) {
                 tree.list().children().size());
 }
 
+// A table of rows x columns, made when asked: no memory per cell.
+class Cells final : public glw::TableModel {
+public:
+    Cells(std::size_t rows, std::size_t columns) : rows_(rows), columns_(columns) {}
+    std::size_t rowCount() const override { return rows_; }
+    std::size_t columnCount() const override { return columns_; }
+    glw::LocalizedText header(std::size_t column) const override { return glw::LocalizedText("Column " + std::to_string(column)); }
+
+private:
+    std::size_t rows_, columns_;
+};
+
+std::size_t widgetsIn(const glw::Widget& widget) {
+    std::size_t count = 1;
+    for (const auto& child : widget.children())
+        count += widgetsIn(*child);
+    return count;
+}
+
+void cellsInATableView(glw::UiContext& ui, std::size_t rows, std::size_t columns) {
+    glw::UiRoot root(ui);
+    root.setSize({800, 600});
+    const double build = once([&] {
+        auto made = std::make_unique<glw::TableView>();
+        made->setModel(std::make_shared<Cells>(rows, columns));
+        made->setDelegate(std::make_unique<glw::TableTextDelegate>([](std::size_t r, std::size_t c) {
+            return glw::LocalizedText(std::to_string(r) + ", " + std::to_string(c));
+        }));
+        root.setContent(std::move(made));
+    });
+    auto& table = static_cast<glw::TableView&>(*root.content());
+    glw::paint::DrawList drawn;
+    const double layout = once([&] { root.layout(); });
+    const double paint = best(5, [&] { root.paint(drawn); });
+    double down = 0, across = 0;
+    const double scroll = best(5, [&] {
+        down += 120;
+        table.list().setOffset(down);
+        root.paint(drawn);
+    });
+    const double scrollAcross = best(5, [&] {
+        across += 90;
+        table.setHorizontalOffset(across);
+        root.paint(drawn);
+    });
+    const double jump = best(5, [&] {
+        down += 1e6;
+        across += 1500;
+        table.list().setOffset(down);
+        table.setHorizontalOffset(across);
+        root.paint(drawn);
+    });
+    std::printf("%9zu | %7zu | %8.2f | %8.2f | %8.2f | %8.2f | %8.2f | %8.2f | %8zu\n", rows, columns, build, layout, paint, scroll,
+                scrollAcross, jump, widgetsIn(table));
+}
+
 } // namespace
 
 int main(int argc, char** argv) {
@@ -201,5 +258,10 @@ int main(int argc, char** argv) {
     std::printf("\nA tree view, all expanded, milliseconds\n");
     std::printf("    nodes | expand all |    paint |   scroll |   toggle |  widgets\n");
     nodesInATreeView(ui);
+
+    std::printf("\nA table view (a widget for each cell that shows), milliseconds\n");
+    std::printf("     rows | columns |    build |   layout |    paint |   scroll |   across |     jump |  widgets\n");
+    cellsInATableView(ui, 1'000'000, 100);
+    cellsInATableView(ui, 100'000'000, 1000);
     return 0;
 }

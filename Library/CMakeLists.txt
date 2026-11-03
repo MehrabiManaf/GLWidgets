@@ -44,6 +44,7 @@ add_library(GLWidgets ${GLW_LIB_TYPE}
     Source/Widgets/ScrollArea.cpp
     Source/Widgets/Splitter.cpp
     Source/Widgets/Theme.cpp
+    Source/Widgets/TableView.cpp
     Source/Widgets/TreeView.cpp
     Source/Widgets/UiRoot.cpp
     Source/Widgets/Widget.cpp

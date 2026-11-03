@@ -123,4 +123,45 @@ private:
     std::vector<TreeModelObserver*> observers_;
 };
 
+// ---- tables ----
+
+// What a view of a table model is told, after the model changed.
+class GLW_EXPORT TableModelObserver {
+public:
+    virtual ~TableModelObserver();
+    virtual void rowsInserted(std::size_t first, std::size_t count) = 0;
+    virtual void rowsRemoved(std::size_t first, std::size_t count) = 0;
+    // The cells of the `count` rows at `first` are others, or show otherwise.
+    virtual void rowsChanged(std::size_t first, std::size_t count) = 0;
+    // The columns: how many, their headers.
+    virtual void columnsChanged() = 0;
+    virtual void modelReset() = 0;
+};
+
+// Rows of cells, in columns with headers (TableView).
+class GLW_EXPORT TableModel {
+public:
+    virtual ~TableModel();
+    TableModel() = default;
+    TableModel(const TableModel&) = delete;
+    TableModel& operator=(const TableModel&) = delete;
+
+    virtual std::size_t rowCount() const = 0;
+    virtual std::size_t columnCount() const = 0;
+    virtual LocalizedText header(std::size_t column) const { return {}; }
+
+    void addObserver(TableModelObserver& observer);
+    void removeObserver(TableModelObserver& observer);
+
+protected:
+    void notifyRowsInserted(std::size_t first, std::size_t count);
+    void notifyRowsRemoved(std::size_t first, std::size_t count);
+    void notifyRowsChanged(std::size_t first, std::size_t count);
+    void notifyColumnsChanged();
+    void notifyReset();
+
+private:
+    std::vector<TableModelObserver*> observers_;
+};
+
 } // namespace glw

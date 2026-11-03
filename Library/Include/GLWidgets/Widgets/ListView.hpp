@@ -88,6 +88,8 @@ public:
     std::optional<std::size_t> itemAt(Point point) const;
     // Where the item is (its coordinates), while it shows.
     std::optional<Rect> itemRect(std::size_t index) const;
+    // Where its rows show (its coordinates): it less its scroll bar.
+    Rect viewport() const { return viewport_; }
 
     void setOnCurrentChanged(std::function<void(std::optional<std::size_t>)> handler) { onCurrentChanged_ = std::move(handler); }
     // A double click or Enter on an item.

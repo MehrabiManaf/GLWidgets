@@ -102,4 +102,44 @@ void TreeModel::notifyReset() {
         o->modelReset();
 }
 
+// ---- tables ----
+
+TableModelObserver::~TableModelObserver() = default;
+
+TableModel::~TableModel() = default;
+
+void TableModel::addObserver(TableModelObserver& observer) {
+    if (std::find(observers_.begin(), observers_.end(), &observer) == observers_.end())
+        observers_.push_back(&observer);
+}
+
+void TableModel::removeObserver(TableModelObserver& observer) {
+    std::erase(observers_, &observer);
+}
+
+void TableModel::notifyRowsInserted(std::size_t first, std::size_t count) {
+    for (TableModelObserver* o : std::vector(observers_))
+        o->rowsInserted(first, count);
+}
+
+void TableModel::notifyRowsRemoved(std::size_t first, std::size_t count) {
+    for (TableModelObserver* o : std::vector(observers_))
+        o->rowsRemoved(first, count);
+}
+
+void TableModel::notifyRowsChanged(std::size_t first, std::size_t count) {
+    for (TableModelObserver* o : std::vector(observers_))
+        o->rowsChanged(first, count);
+}
+
+void TableModel::notifyColumnsChanged() {
+    for (TableModelObserver* o : std::vector(observers_))
+        o->columnsChanged();
+}
+
+void TableModel::notifyReset() {
+    for (TableModelObserver* o : std::vector(observers_))
+        o->modelReset();
+}
+
 } // namespace glw

@@ -144,7 +144,10 @@ void Widget::setAlignment(Alignment horizontal, Alignment vertical) {
 void Widget::setLayoutDirection(LayoutDirection direction) {
     if (direction != direction_) {
         direction_ = direction;
+        // everything in it, mirrored: laid out again, not only what changed
         invalidateLayout();
+        if (UiRoot* r = root())
+            r->invalidateLayout();
     }
 }
 

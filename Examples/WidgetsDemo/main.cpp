@@ -12,6 +12,7 @@
 #include <GLWidgets/Widgets/Application.hpp>
 #include <GLWidgets/Widgets/Declarative.hpp>
 #include <GLWidgets/Widgets/ListView.hpp>
+#include <GLWidgets/Widgets/TableView.hpp>
 
 #include <algorithm>
 #include <cstdio>
@@ -49,7 +50,10 @@ constexpr const char* persianCatalog = R"({
     "Drag the line between the two sides.": "خط میان دو طرف را بکشید.",
     "A million items, and only those that show are widgets. Drag the line between the two sides.":
       "یک میلیون مورد، و فقط آن‌هایی که دیده می‌شوند ویجت‌اند. خط میان دو طرف را بکشید.",
-    "Close it with its button, Alt+F4, or the one above.": "با دکمه‌اش، Alt+F4 یا دکمه‌ی بالا ببندیدش."
+    "Close it with its button, Alt+F4, or the one above.": "با دکمه‌اش، Alt+F4 یا دکمه‌ی بالا ببندیدش.",
+    "A million rows of fifty columns. Drag a header's edge to resize its column; Shift and the wheel scroll across.":
+      "یک میلیون سطر در پنجاه ستون. لبه‌ی سرستونی را بکشید تا ستونش اندازه شود؛ Shift و چرخ ماوس به پهلو می‌برند.",
+    "Column {n}": "ستون {n}"
   }
 })";
 
@@ -57,6 +61,14 @@ constexpr const char* persianCatalog = R"({
 class Million final : public glw::ListModel {
 public:
     std::size_t count() const override { return 1'000'000; }
+};
+
+// A million rows of fifty columns, made when they show.
+class Records final : public glw::TableModel {
+public:
+    std::size_t rowCount() const override { return 1'000'000; }
+    std::size_t columnCount() const override { return 50; }
+    glw::LocalizedText header(std::size_t column) const override { return tr("Column {n}").arg("n", std::to_string(column + 1)); }
 };
 
 // The window's interface, and what its handlers change: bound pointers live as long as the handlers that use them, so they
@@ -70,12 +82,35 @@ struct Page {
     glw::Widget* cards = nullptr;
     bool light = false;
 
-    // The form on one side, a list of a million items on the other, a handle between them; each side scrolls.
+    // The form on one side; on the other a list of a million items over a table of a million rows; handles between them.
     std::unique_ptr<glw::Widget> build() {
         std::unique_ptr<glw::Widget> items = list();
-        items->setStretch(2);
-        items->setMinimumSize({160, 0});
-        return ui::Splitter({}, ui::ScrollArea({}, form()).stretch(3).minimumSize({280, 0}), std::move(items));
+        items->setStretch(1);
+        items->setMinimumSize({0, 120});
+        std::unique_ptr<glw::Widget> rows = table();
+        rows->setStretch(1);
+        rows->setMinimumSize({0, 120});
+        return ui::Splitter({}, ui::ScrollArea({}, form()).stretch(3).minimumSize({280, 0}),
+                            ui::Splitter({.orientation = glw::Orientation::Vertical}, std::move(items), std::move(rows))
+                                .stretch(2)
+                                .minimumSize({160, 0}));
+    }
+
+    std::unique_ptr<glw::Widget> table() {
+        auto view = std::make_unique<glw::TableView>();
+        view->setModel(std::make_shared<Records>());
+        view->setDelegate(std::make_unique<glw::TableTextDelegate>([](std::size_t row, std::size_t column) {
+            return glw::LocalizedText(std::to_string(row + 1) + " · " + std::to_string(column + 1));
+        }));
+        view->setColumnWidth(0, 100);
+        view->setStretch(1);
+        return ui::VStack({.spacing = 8},
+                          ui::Label({.text = tr("A million rows of fifty columns. Drag a header's edge to resize its column; Shift and the "
+                                                "wheel scroll across."),
+                                     .muted = true,
+                                     .wrap = true}),
+                          std::move(view))
+            .padding(glw::Insets::all(16));
     }
 
     std::unique_ptr<glw::Widget> list() {

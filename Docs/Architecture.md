@@ -374,8 +374,8 @@ measures it (Release, by hand): with 100 000 labels in a scroll area, painting w
 wheel from 104 to 2.9 ms. What stays proportional to the number of widgets (a stack walks its children when one changes,
 and every widget is made and measured once) is for virtualized views of models, for data of any size.
 
-**Item views show models of any size** (`Widgets/ItemModel.hpp`, `Widgets/ListView.hpp`, `Widgets/TreeView.hpp`; a
-table view planned on the same ground). A model says how many items it has and tells its views what changed, by ranges (inserted, removed,
+**Item views show models of any size** (`Widgets/ItemModel.hpp`, `Widgets/ListView.hpp`, `Widgets/TreeView.hpp`,
+`Widgets/TableView.hpp`). A model says how many items it has and tells its views what changed, by ranges (inserted, removed,
 changed, reset); what an item is stays the model's own, and a delegate that knows the model makes a row's widget
 (`makeRow`) and shows an item in it (`bindRow`): nothing goes through a value of any type, as Qt's `QVariant` would. Only
 the rows that show are widgets, used again for other items as the view scrolls (the view scrolls itself: no content of
@@ -396,8 +396,21 @@ it; a node expanded stays so when its parent is collapsed and expanded again. Th
 expands, collapses and activates. With a thousand folders of a thousand files, all of them expanded (a million rows),
 painting and scrolling take less than a tenth of a millisecond, and a folder collapsed or expanded above them 1.5 ms.
 
+A `TableView` is a ListView of the rows of a `TableModel` (rows and columns, with headers; it tells what changed by
+ranges of rows, and when its columns change), under a header that stays as they scroll. Each row is a strip of the cells
+of the columns that show, and so is the header: only those cells are widgets, in both directions, put aside and used
+again (by a row for another column) as the table scrolls down or across. A delegate makes a cell's widget for a kind
+(`cellKind(column)`: cells of one kind show any column of it, so a column of check boxes beside columns of texts is
+reused as such) and shows a cell in it (`bindCell(widget, row, column)`); `TableTextDelegate` shows texts. Columns are
+as wide as set (the theme's until then), where each starts summed once when one changes; the last takes the room the
+others leave. Dragging a header's edge resizes its column (the edge lit in the accent color), a click on a header is
+told (to sort by it, say: sorting is the model's), and the table scrolls across with its own bar, the wheel turned with
+Shift or tilted, and Left and Right; in right to left the first column is at the right and scrolling goes left. With a
+million rows of a hundred columns (or a hundred million of a thousand), some 190 widgets show it; painting and scrolling
+down or across take less than half a millisecond, a jump to anywhere 3 ms.
+
 Still to come in the widget core: a blinking caret and animations (they need timers), mouse cursors (the resize cursor
-over a splitter's handle), and the native extras of the chrome (Windows 11 shadow, rounded corners and snap layouts).
+over a splitter's handle and a table header's edge), and the native extras of the chrome (Windows 11 shadow, rounded corners and snap layouts).
 
 ## Docking
 

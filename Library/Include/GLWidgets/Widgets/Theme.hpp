@@ -118,10 +118,13 @@ struct ItemViewStyle {
     Color indicator;                // the bar at its start
     Color focusRing;
     Color expander;                 // a tree's arrow, by a node with children
+    Color headerText;               // a table's column headers
+    Color headerLine;               // under them, and between them
     float rowHeight = 28;
     float cornerRadius = 4;
     float inset = 3;                // rows drawn this much in from the view's sides
     float indent = 16;              // a tree's, for each level
+    float columnWidth = 140;        // a table's, until it is set
 };
 
 struct SplitterStyle {

@@ -91,6 +91,8 @@ Theme Theme::fromPalette(const Palette& p) {
     t.itemView.indicator = p.accent;
     t.itemView.focusRing = {p.text.r, p.text.g, p.text.b, 0.55f};
     t.itemView.expander = p.mutedText;
+    t.itemView.headerText = p.mutedText;
+    t.itemView.headerLine = Color{p.text.r, p.text.g, p.text.b, 0.10f};
 
     t.splitter.handle = p.border;
     t.splitter.active = p.accent;
