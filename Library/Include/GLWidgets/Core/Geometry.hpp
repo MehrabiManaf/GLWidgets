@@ -40,6 +40,8 @@ struct Rect {
     bool empty() const { return width <= 0 || height <= 0; }
     bool contains(Point p) const { return p.x >= x && p.y >= y && p.x < right() && p.y < bottom(); }
 
+    // Whether they overlap (by more than an edge).
+    bool intersects(const Rect& o) const { return x < o.right() && o.x < right() && y < o.bottom() && o.y < bottom(); }
     // Grown by `d` on every side (shrunk when negative).
     Rect inflated(float d) const { return {x - d, y - d, width + 2 * d, height + 2 * d}; }
     // The part of both; empty (zero size) when they do not overlap.

@@ -133,20 +133,26 @@ void UiRoot::paint(paint::DrawList& list) {
     paint::Painter painter(list, {0, 0, size_.width, size_.height}, scale_);
     PaintContext context{painter, context_};
     if (content_)
-        paintTree(*content_, context);
+        paintTree(*content_, context, {0, 0, size_.width, size_.height});
     needsPaint_ = false;
 }
 
-void UiRoot::paintTree(Widget& widget, PaintContext& context) {
-    if (!widget.visible_)
+void UiRoot::paintTree(Widget& widget, PaintContext& context, const Rect& visible) {
+    // what paints a little out of its bounds (a focus ring, a shadow) is painted while that may show
+    constexpr float overhang = 24;
+    if (!widget.visible_ || !widget.bounds_.inflated(overhang).intersects(visible))
         return;
     paint::Painter& painter = context.painter;
     painter.pushTransform({1, {widget.bounds_.x, widget.bounds_.y}});
     widget.paint(context);
-    if (widget.clipsChildren_)
+    // what shows of it, in its coordinates: for its children
+    Rect inside{visible.x - widget.bounds_.x, visible.y - widget.bounds_.y, visible.width, visible.height};
+    if (widget.clipsChildren_) {
         painter.pushClip(widget.childrenClip());
+        inside = inside.intersected(widget.childrenClip());
+    }
     for (const auto& child : widget.children_)
-        paintTree(*child, context);
+        paintTree(*child, context, inside);
     if (widget.clipsChildren_)
         painter.popClip();
     widget.paintOver(context);

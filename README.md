@@ -45,6 +45,8 @@ Then, in `build/<preset>/bin`:
   each scrolling; buttons switch to Persian (the window is mirrored) and to the light theme. `--language fa` and
   `--light` start it so.
 - `hello_window` opens two windows drawn by one GPU device.
+- `glw_benchmarks` times the widget layer with many widgets (laid out, painted, scrolled, a text changed), without a
+  window: run it from a Release build to compare a change against what was.
 - `paint_demo` opens a borderless window with its own title bar, tabs and window buttons, and shows what the painter
   draws: a chart, shapes, a node canvas (the mouse wheel zooms it), text in Persian and English (drag to select).
 - `glw_tests` runs the tests (`ctest --preset <preset>`).

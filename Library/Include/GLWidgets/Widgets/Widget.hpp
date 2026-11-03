@@ -9,6 +9,10 @@
 // margin not) and arrange (the rectangle it gets, in its parent's coordinates). A Layout object (Layout.hpp) decides how
 // children are placed; without one they are all placed over the widget's content.
 //
+// Only what changed is laid out again: invalidateLayout marks a widget and its ancestors; the others keep their measure
+// (for the same space) and, given a rectangle of the same size, are only moved: what is in them stays where it is in them.
+// Painting skips what is out of sight (out of the window, or of a scroll area's view).
+//
 // Directions: margin and padding have start and end sides, and alignments Start and End: left and right in left to right,
 // right and left in right to left. A widget's layout direction is its parent's unless it is set, so a whole interface is
 // mirrored by setting it once at the root.
@@ -178,7 +182,8 @@ public:
     // maximum sizes. Kept as desiredSize(), and not measured again for the same space until the layout is invalidated.
     Size measure(Size available);
     Size desiredSize() const { return desiredSize_; }
-    // Gives it `rect` (in the parent's coordinates) and arranges its content.
+    // Gives it `rect` (in the parent's coordinates) and arranges its content: only moved, when it is the size it was and
+    // nothing in it changed.
     void arrange(const Rect& rect);
 
     // Something changed that its size or the place of what it shows depends on / that it shows.
@@ -252,6 +257,8 @@ protected:
 
     // The rectangle of its content in its own coordinates: its bounds at 0, 0 without padding.
     Rect contentRect() const;
+    // Its content arranged again in the bounds it has (what arrangeContent depends on changed, its size did not).
+    void rearrange();
     const UiContext* context() const;                   // the root's, when it is shown
     // What `text` shows in the language of its root (its source text when it is not shown).
     std::string translate(const LocalizedText& text) const;
@@ -271,6 +278,9 @@ private:
     Size desiredSize_;
     Size measuredFor_;                                  // the space desiredSize_ was measured for
     std::uint64_t measuredGeneration_ = 0;              // in its root's layout generation (0: not kept)
+    std::uint64_t arrangedGeneration_ = 0;
+    bool measureDirty_ = true;                          // it, or something in it, changed since it was measured
+    bool arrangeDirty_ = true;                          // ... since it was arranged
     Insets margin_;
     Insets padding_;
     Size minimumSize_;

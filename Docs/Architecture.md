@@ -364,9 +364,19 @@ Containers:
   proportions. Side by side panes start on the start side.
 - **`CheckBox`** is a box and its text, toggled by a click or Space. The box is on the start side.
 
-Still to come in the widget core: per-widget invalidation, a blinking caret and animations (they need timers), mouse
-cursors (the resize cursor over a splitter's handle), and the native extras of the chrome (Windows 11 shadow, rounded
-corners and snap layouts).
+**Only what changed is laid out, only what shows is painted.** `invalidateLayout` marks a widget and its ancestors, not
+the rest: the others keep their measure (for the same space), and one given a rectangle of the same size is only moved,
+what is in it staying where it is in it (`rearrange` arranges a widget again in place, when what its arrangement depends
+on changed and its size did not). So scrolling moves the content without arranging anything in it. Painting skips a
+widget out of what shows (the window, a clipping ancestor such as a scroll area's view), and everything in it; a little
+around each widget is counted as its own, for what paints out of its bounds (focus rings, shadows). `glw_benchmarks`
+measures it (Release, by hand): with 100 000 labels in a scroll area, painting went from 90 to 2.7 ms and a step of the
+wheel from 104 to 2.9 ms. What stays proportional to the number of widgets (a stack walks its children when one changes,
+and every widget is made and measured once) is for virtualized views of models, for data of any size (planned: list,
+tree and table views).
+
+Still to come in the widget core: a blinking caret and animations (they need timers), mouse cursors (the resize cursor
+over a splitter's handle), and the native extras of the chrome (Windows 11 shadow, rounded corners and snap layouts).
 
 ## Docking
 

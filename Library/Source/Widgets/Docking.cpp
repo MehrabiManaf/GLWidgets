@@ -289,7 +289,7 @@ private:
     void scrollTo(float offset) {
         reveal_.reset();        // scrolled by the user: where the user says
         offset_ = std::clamp(offset, 0.0f, maxOffset());
-        arrange(bounds());      // the tabs move: nothing measured again
+        rearrange();            // the tabs move: nothing measured again
         invalidatePaint();
     }
 
@@ -697,7 +697,7 @@ void DockTabs::setTitleArea(bool title, float reserve, bool left) {
     title_ = title;     // its area drags the window from there itself: docking as it goes
     reserve_ = reserve;
     reserveLeft_ = left;
-    arrange(bounds());      // in its area's arrangement: the bar again, nothing measured again
+    rearrange();            // in its area's arrangement: the bar again, nothing measured again
 }
 
 Rect DockTabs::guide(DockSide side) const {

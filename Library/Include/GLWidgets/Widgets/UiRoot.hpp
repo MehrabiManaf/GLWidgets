@@ -108,9 +108,11 @@ public:
     void languageChanged();
     // Its window is about to close: every widget is told, while the tree is whole.
     void windowClosing();
+    // Everything laid out again: what every measure depends on changed (the theme, the language, the direction).
     void invalidateLayout();
     void invalidatePaint() { needsPaint_ = true; }
-    // Changes with every invalidateLayout: a widget's measure for the same space in the same generation is kept.
+    // Changes with every invalidateLayout (of the root): a widget's measure for the same space, in the same generation and
+    // not invalidated since (Widget::invalidateLayout), is kept.
     std::uint64_t layoutGeneration() const { return layoutGeneration_; }
     void layout();
     // Records the whole tree into `list` (which it clears first).
@@ -119,6 +121,11 @@ public:
 private:
     friend class Widget;
     void forget(Widget& subtree);       // a subtree leaves: no pointer into it may stay
+    // A widget's layout changed (it marked itself and its ancestors): laid out at the next frame.
+    void requestLayout() {
+        needsLayout_ = true;
+        needsPaint_ = true;
+    }
     std::vector<Widget*> pathTo(Widget* target) const;
     // Preview from the root down to `target`, then from it up: the widget that handled it, if one did.
     Widget* route(Widget* target, MouseEvent& event, Point point);
@@ -127,7 +134,8 @@ private:
     void updateHover(Widget* target);
     void mouseMoved(Point point);
     void mouseButton(const platform::MouseButtonChanged& e);
-    static void paintTree(Widget& widget, PaintContext& context);
+    // `visible`: what of the widget's parent shows (its coordinates); a widget out of it is not painted, nor anything in it.
+    static void paintTree(Widget& widget, PaintContext& context, const Rect& visible);
     static Widget* hit(Widget& widget, Point point);     // `point` in the widget's parent's coordinates
 
     const UiContext& context_;

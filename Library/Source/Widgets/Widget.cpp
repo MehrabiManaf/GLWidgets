@@ -58,6 +58,7 @@ void Widget::setRootOfTree(UiRoot* root) {
 }
 
 void Widget::notifyRootChanged() {
+    measureDirty_ = arrangeDirty_ = true;       // what it measured with was another root's
     onRootChanged();
     for (const auto& child : children_)
         child->notifyRootChanged();
@@ -160,10 +161,11 @@ Size Widget::measure(Size available) {
     if (!visible_)
         return desiredSize_ = {};
     const UiRoot* r = root();
-    if (r && measuredGeneration_ == r->layoutGeneration() && measuredFor_ == available)
+    if (r && !measureDirty_ && measuredGeneration_ == r->layoutGeneration() && measuredFor_ == available)
         return desiredSize_;
     measuredFor_ = available;
     measuredGeneration_ = r ? r->layoutGeneration() : 0;
+    measureDirty_ = false;
     const Size inner{std::max(0.0f, available.width - padding_.horizontal()), std::max(0.0f, available.height - padding_.vertical())};
     const Size content = measureContent(inner);
     const Size size{content.width + padding_.horizontal(), content.height + padding_.vertical()};
@@ -173,7 +175,20 @@ Size Widget::measure(Size available) {
 }
 
 void Widget::arrange(const Rect& rect) {
+    const bool sameSize = rect.width == bounds_.width && rect.height == bounds_.height;
     bounds_ = rect;
+    // the same size, nothing changed in it: moved (or not at all); what is in it stays where it is in it
+    const UiRoot* r = root();
+    const std::uint64_t generation = r ? r->layoutGeneration() : 0;
+    if (sameSize && !arrangeDirty_ && arrangedGeneration_ == generation && generation != 0)
+        return;
+    arrangeDirty_ = false;
+    arrangedGeneration_ = generation;
+    arrangeContent(contentRect());
+}
+
+void Widget::rearrange() {
+    arrangeDirty_ = false;
     arrangeContent(contentRect());
 }
 
@@ -205,8 +220,14 @@ void Widget::arrangeContent(const Rect& content) {
 }
 
 void Widget::invalidateLayout() {
-    if (UiRoot* r = root())
-        r->invalidateLayout();
+    // it and its ancestors (every one: one that was hidden may have kept its mark), not the rest
+    Widget* top = this;
+    for (Widget* w = this; w; w = w->parent_) {
+        w->measureDirty_ = w->arrangeDirty_ = true;
+        top = w;
+    }
+    if (top->uiRoot_)
+        top->uiRoot_->requestLayout();
 }
 
 void Widget::invalidatePaint() {

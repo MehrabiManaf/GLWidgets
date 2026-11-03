@@ -9,6 +9,7 @@
 #include <GLWidgets/Widgets/Button.hpp>
 #include <GLWidgets/Widgets/Label.hpp>
 #include <GLWidgets/Widgets/Layout.hpp>
+#include <GLWidgets/Widgets/ScrollArea.hpp>
 #include <GLWidgets/Widgets/UiRoot.hpp>
 #include <GLWidgets/Widgets/WindowFrame.hpp>
 
@@ -252,7 +253,7 @@ TEST(labelsMeasureTheirText) {
     root.setSize({120, 400});
     auto content = stack(Orientation::Vertical);
     Label& line = content->add(std::make_unique<Label>("Hello"));
-    Label& wrapped = content->add(std::make_unique<Label>("سلام دنیا، این متن باید در چند خط شکسته شود"));
+    Label& wrapped = content->add(std::make_unique<Label>("ط³ظ„ط§ظ… ط¯ظ†غŒط§طŒ ط§غŒظ† ظ…طھظ† ط¨ط§غŒط¯ ط¯ط± ع†ظ†ط¯ ط®ط· ط´ع©ط³طھظ‡ ط´ظˆط¯"));
     wrapped.setWrap(true);
     root.setContent(std::move(content));
     root.layout();
@@ -269,4 +270,53 @@ TEST(paintRecordsTheTree) {
     root.paint(list);
     CHECK(!list.empty());
     CHECK(!root.needsPaint() && !root.needsLayout());
+}
+
+namespace {
+
+// Counts its arrangements and its paintings; as large as it is told.
+struct Counted final : Widget {
+    Size wanted{100, 20};
+    int arranged = 0;
+    int painted = 0;
+
+protected:
+    Size measureContent(Size) override { return wanted; }
+    void arrangeContent(const Rect&) override { ++arranged; }
+    void paint(PaintContext&) override { ++painted; }
+};
+
+} // namespace
+
+TEST(onlyWhatChangedIsLaidOutAndOnlyWhatShowsIsPainted) {
+    UiRoot root(tests::testContext());
+    root.setSize({400, 300});
+    auto list = std::make_unique<Widget>();
+    list->setLayout(std::make_unique<StackLayout>(Orientation::Vertical));
+    std::vector<Counted*> items;
+    for (int i = 0; i < 100; ++i)
+        items.push_back(&list->add(std::make_unique<Counted>()));
+    auto scroll = std::make_unique<ScrollArea>();
+    ScrollArea& area = *scroll;
+    scroll->setContent(std::move(list));
+    root.setContent(std::move(scroll));
+    root.layout();
+    CHECK(items[0]->arranged == 1 && items[99]->arranged == 1);
+
+    // the first one grows: it is arranged again; the others only move down
+    items[0]->wanted = {100, 40};
+    items[0]->invalidateLayout();
+    root.layout();
+    CHECK(items[0]->arranged == 2 && items[1]->arranged == 1 && items[99]->arranged == 1);
+    CHECK(near(items[1]->bounds().y, 40));
+
+    // scrolled: nothing in the content is arranged again
+    area.setOffset({0, 500});
+    root.layout();
+    CHECK(items[30]->arranged == 1 && items[0]->arranged == 2);
+
+    // painted: those that show (and a few around, for what paints out of its bounds), not the others
+    paint::DrawList list2;
+    root.paint(list2);
+    CHECK(items[30]->painted == 1 && items[0]->painted == 0 && items[99]->painted == 0);
 }
