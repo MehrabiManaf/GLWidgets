@@ -69,16 +69,24 @@ void CheckBox::paint(PaintContext& context) {
     const CheckBoxStyle& s = style();
     const VisualState v = state();
     paint::Painter& p = context.painter;
-    if (checked_) {
-        p.fillRoundedRect(box_, s.cornerRadius, s.checkedBackground.resolve(v));
+    const Duration fast = context.ui.theme.motion.fast;
+    fill_.to(scheduler(), checked_ ? s.checkedBackground.resolve(v) : s.background.resolve(v), fast);
+    if (!markShown_) {          // the first paint: as it is
+        mark_.set(checked_ ? 1.0f : 0.0f);
+        markShown_ = true;
+    } else {
+        mark_.animateTo(scheduler(), checked_ ? 1.0f : 0.0f, fast);
+    }
+    p.fillRoundedRect(box_, s.cornerRadius, fill_.value());
+    // its border while unchecked, fading as the box fills
+    const Color border = s.border.resolve(v);
+    p.strokeRoundedRect(box_, s.cornerRadius, 1, Color{border.r, border.g, border.b, border.a * (1 - mark_.value())});
+    if (mark_.value() > 0) {
         // the mark: two strokes, as a hand would draw it
         const Point points[] = {{box_.x + box_.width * 0.24f, box_.y + box_.height * 0.53f},
                                 {box_.x + box_.width * 0.43f, box_.y + box_.height * 0.71f},
                                 {box_.x + box_.width * 0.77f, box_.y + box_.height * 0.31f}};
-        p.drawPolyline(points, 2, s.check);
-    } else {
-        p.fillRoundedRect(box_, s.cornerRadius, s.background.resolve(v));
-        p.strokeRoundedRect(box_, s.cornerRadius, 1, s.border.resolve(v));
+        p.drawPolyline(points, 2, Color{s.check.r, s.check.g, s.check.b, s.check.a * mark_.value()});
     }
     // the text paints after this, in the color of the state
     label_->setColor(v.disabled ? std::optional<Color>(context.ui.theme.palette.disabledText) : std::nullopt);

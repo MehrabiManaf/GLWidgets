@@ -98,6 +98,18 @@ Rect Widget::contentRect() const {
     return padding_.deflate({0, 0, bounds_.width, bounds_.height}, rightToLeft());
 }
 
+void Widget::setToolTip(LocalizedText text) {
+    if (text.source.empty())
+        toolTip_.reset();
+    else
+        toolTip_ = std::make_unique<LocalizedText>(std::move(text));
+}
+
+Scheduler* Widget::scheduler() const {
+    const UiContext* ui = context();
+    return ui ? ui->scheduler : nullptr;
+}
+
 const UiContext* Widget::context() const {
     const UiRoot* r = root();
     return r ? &r->context() : nullptr;

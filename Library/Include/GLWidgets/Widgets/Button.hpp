@@ -4,6 +4,7 @@
 // A push button with a label: clicked by the mouse (pressed and released on it), or by Enter or Space when it has the
 // focus. It looks as its ButtonStyle says: the theme's, or its own.
 #include <GLWidgets/Export.hpp>
+#include <GLWidgets/Widgets/Animation.hpp>
 #include <GLWidgets/Widgets/Label.hpp>
 #include <GLWidgets/Widgets/Localization.hpp>
 #include <GLWidgets/Widgets/Theme.hpp>
@@ -55,6 +56,9 @@ private:
     std::function<void()> onClick_;
     std::optional<ButtonStyle> style_;
     bool pressed_ = false;
+    // what it shows eases to its state's colors
+    ColorTransition background_{[this] { invalidatePaint(); }};
+    ColorTransition border_{[this] { invalidatePaint(); }};
 };
 
 } // namespace glw

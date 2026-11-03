@@ -170,7 +170,25 @@ Point LineEdit::textOrigin() {
     return {content_.x - scroll_, y};
 }
 
+void LineEdit::restartBlink() {
+    caretShown_ = true;
+    blinks_ = 0;
+    Scheduler* s = scheduler();
+    if (!s || !hasFocus()) {
+        blink_.stop();
+        return;
+    }
+    // half a second each way (the system's), and still after twenty: nothing drawn for a caret no one moves
+    blink_.start(*s, std::chrono::milliseconds(530), [this] {
+        caretShown_ = !caretShown_;
+        invalidatePaint();
+        if (++blinks_ >= 20 && caretShown_)
+            blink_.stop();
+    }, true);
+}
+
 void LineEdit::scrollToCaret() {
+    restartBlink();
     const text::TextLayout* layout = textLayout();
     if (!layout)
         return;
@@ -403,6 +421,7 @@ void LineEdit::onText(TextEvent& event) {
 }
 
 void LineEdit::onFocusChanged(bool focused) {
+    restartBlink();
     if (UiHost* host = hostOf(*this)) {
         if (focused) {
             host->startTextInput();
@@ -466,7 +485,7 @@ void LineEdit::paint(PaintContext& context) {
         for (const Rect& c : layout->selectionRects(caret_, caret_ + composition_.size()))
             p.drawLine({origin.x + c.x, origin.y + c.bottom() - 2}, {origin.x + c.right(), origin.y + c.bottom() - 2}, 1, textColor);
     }
-    if (hasFocus()) {
+    if (hasFocus() && caretShown_) {
         const text::TextLayout::Caret caret = layout->caret(shownOffset(caret_) + codePointBytes(composition_, compositionCursor_));
         p.fillRect({origin.x + caret.top.x - 0.75f, origin.y + caret.top.y, 1.5f, caret.height}, s.caret);
     }

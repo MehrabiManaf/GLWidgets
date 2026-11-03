@@ -4,6 +4,7 @@
 // One of a few texts, chosen from a menu under it (Menu.hpp): a click, Enter, Space or Alt+Down opens it, the current
 // text checked; Up and Down choose the one before or after without opening it.
 #include <GLWidgets/Export.hpp>
+#include <GLWidgets/Widgets/Animation.hpp>
 #include <GLWidgets/Widgets/Localization.hpp>
 #include <GLWidgets/Widgets/Theme.hpp>
 #include <GLWidgets/Widgets/Widget.hpp>
@@ -57,6 +58,7 @@ private:
     Label* label_ = nullptr;
     bool open_ = false;
     bool pressed_ = false;
+    ColorTransition background_{[this] { invalidatePaint(); }};
 };
 
 } // namespace glw

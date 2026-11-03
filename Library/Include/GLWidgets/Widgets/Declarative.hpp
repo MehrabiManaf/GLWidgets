@@ -62,6 +62,7 @@ public:
     explicit Element(std::unique_ptr<W> widget) : widget_(std::move(widget)) {}
 
     Element stretch(float stretch) && { return apply([&](W& w) { w.setStretch(stretch); }); }
+    Element toolTip(LocalizedText text) && { return apply([&](W& w) { w.setToolTip(std::move(text)); }); }
     Element margin(Insets margin) && { return apply([&](W& w) { w.setMargin(margin); }); }
     Element padding(Insets padding) && { return apply([&](W& w) { w.setPadding(padding); }); }
     Element alignment(Alignment horizontal, Alignment vertical) && {

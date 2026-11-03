@@ -13,13 +13,33 @@
 
 namespace glw::tests {
 
-// Shared by every test: a test that changes its language or theme puts them back.
+// The time of the tests' scheduler: it moves only when a test moves it (advance).
+inline TimePoint& testClock() {
+    static TimePoint now{};
+    return now;
+}
+
+// Shared by every test: a test that changes its language or theme puts them back. Its scheduler runs on testClock, its
+// animations off (what eases shows where it goes at once) unless a test turns them on.
 inline UiContext& testContext() {
     static text::FontLibrary fonts;
     static text::GlyphAtlas atlas(1, 256);
     static Translator translator;
-    static UiContext ui{fonts, atlas, translator, Theme::dark()};
+    static Scheduler scheduler([] { return testClock(); });
+    static const bool still = (scheduler.setAnimationsEnabled(false), true);
+    static UiContext ui{fonts, atlas, translator, Theme::dark(), nullptr, &scheduler};
+    (void)still;
     return ui;
+}
+
+inline Scheduler& testScheduler() {
+    return *testContext().scheduler;
+}
+
+// The test's time moved on by `by`: the timers due fire, the animations step.
+inline void advance(Duration by) {
+    testClock() += by;
+    testScheduler().tick();
 }
 
 inline Translator& testTranslator() {
@@ -62,9 +82,10 @@ struct FakePopup {
     Rect anchor;
     PopupPlacement placement;
     bool modal;
+    bool tooltip;
 
     FakePopup(const UiContext& context, FakeHost& from, PopupRequest request)
-        : root(context, &host), anchor(request.anchor), placement(request.placement), modal(request.modal) {
+        : root(context, &host), anchor(request.anchor), placement(request.placement), modal(request.modal), tooltip(request.tooltip) {
         host.top = from.top;
         host.own = &root;
         host.openedFrom = &from;

@@ -27,6 +27,7 @@ add_library(GLWidgets ${GLW_LIB_TYPE}
     Source/Text/Font.cpp
     Source/Text/GlyphAtlas.cpp
     Source/Text/TextLayout.cpp
+    Source/Widgets/Animation.cpp
     Source/Widgets/Application.cpp
     Source/Widgets/Button.cpp
     Source/Widgets/Canvas.cpp

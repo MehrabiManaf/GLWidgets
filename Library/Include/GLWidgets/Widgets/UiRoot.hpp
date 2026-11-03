@@ -9,6 +9,7 @@
 #include <GLWidgets/Paint/DrawList.hpp>
 #include <GLWidgets/Platform/Event.hpp>
 #include <GLWidgets/Platform/Window.hpp>
+#include <GLWidgets/Widgets/Animation.hpp>
 #include <GLWidgets/Widgets/Localization.hpp>
 #include <GLWidgets/Widgets/Theme.hpp>
 #include <GLWidgets/Widgets/Widget.hpp>
@@ -36,6 +37,7 @@ struct UiContext {
     const Translator& translator;
     Theme theme;
     DockingHost* docking = nullptr;         // the windows, for docking across them; none: in its window only
+    Scheduler* scheduler = nullptr;         // timers and animations; none: things happen at once, no tooltips
 };
 
 class UiRoot;
@@ -165,6 +167,10 @@ private:
     void routeKey(KeyEvent& event);
     void routeText(TextEvent& event);
     void updateHover(Widget* target);
+    // The tooltip of what is under the mouse: shown after a delay, gone when the mouse leaves it or does something.
+    void updateToolTip();
+    void showToolTip();
+    void hideToolTip(bool suppress);
     void mouseMoved(Point point);
     void mouseButton(const platform::MouseButtonChanged& e);
     // `visible`: what of the widget's parent shows (its coordinates); a widget out of it is not painted, nor anything in it.
@@ -190,6 +196,12 @@ private:
     platform::KeyModifiers modifiers_ = platform::KeyModifiers::None;
     int dispatching_ = 0;
     std::vector<std::function<void()>> deferred_;
+
+    Widget* tipFor_ = nullptr;          // the widget whose tooltip shows, or waits to
+    UiRoot* tip_ = nullptr;             // the tooltip's popup
+    Timer tipTimer_;
+    bool tipSuppressed_ = false;        // the mouse did something over it: not again until it leaves
+    std::optional<TimePoint> tipClosed_;
 };
 
 } // namespace glw

@@ -11,6 +11,7 @@
 #include <GLWidgets/Export.hpp>
 #include <GLWidgets/Widgets/Widget.hpp>
 
+#include <chrono>
 #include <optional>
 
 namespace glw {
@@ -187,6 +188,23 @@ struct MenuStyle {
     float minimumWidth = 160;
 };
 
+// How long things take to change (Fluent's durations): a hover or a press, what opens, what moves far.
+struct MotionStyle {
+    std::chrono::milliseconds fast{83};
+    std::chrono::milliseconds normal{167};
+    std::chrono::milliseconds slow{250};
+};
+
+struct ToolTipStyle {
+    Color background;
+    Color border;
+    Color text;
+    float maximumWidth = 320;               // its text wraps past it
+    std::chrono::milliseconds delay{500};   // the mouse still over a widget before its tooltip shows
+    // ... when another tooltip closed a moment ago: going from one to the next is quick
+    std::chrono::milliseconds reshowDelay{80};
+};
+
 struct DialogStyle {
     Color background;
     Color border;
@@ -245,6 +263,8 @@ struct Theme {
     CardStyle card;
     CanvasStyle canvas;
     MenuStyle menu;
+    ToolTipStyle toolTip;
+    MotionStyle motion;
     DialogStyle dialog;
     TitleBarStyle titleBar;
     WindowButtonStyle windowButton;

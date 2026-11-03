@@ -11,6 +11,7 @@
 //
 // onChanged is called when the user changes the text (not by setText); onSubmit when they press Enter.
 #include <GLWidgets/Export.hpp>
+#include <GLWidgets/Widgets/Animation.hpp>
 #include <GLWidgets/Text/TextLayout.hpp>
 #include <GLWidgets/Widgets/Localization.hpp>
 #include <GLWidgets/Widgets/Theme.hpp>
@@ -100,6 +101,11 @@ private:
     std::optional<text::TextLayout> placeholderLayout_;
     Rect content_;
     float scroll_ = 0;                                      // dips of a long text scrolled out on the left
+    // The caret shown again and blinking from now (it moved, the field got the focus); it rests, shown, after a while.
+    void restartBlink();
+    Timer blink_;
+    bool caretShown_ = true;
+    int blinks_ = 0;
 };
 
 } // namespace glw

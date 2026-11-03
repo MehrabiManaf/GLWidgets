@@ -77,7 +77,10 @@ constexpr const char* persianCatalog = R"({
     "Script name": "نام اسکریپت",
     "{name} made.": "«{name}» ساخته شد.",
     "Close the window?": "پنجره بسته شود؟",
-    "What is not saved is lost.": "آنچه ذخیره نشده از دست می‌رود."
+    "What is not saved is lost.": "آنچه ذخیره نشده از دست می‌رود.",
+    "Every widget, in the other theme's colors": "همه‌ی ویجت‌ها، با رنگ‌های پوسته‌ی دیگر",
+    "Asks first": "اول می‌پرسد",
+    "A modal dialog: the window waits for it": "یک گفتگوی مودال: پنجره منتظرش می‌ماند"
   }
 })";
 
@@ -168,12 +171,15 @@ struct Page {
                    ui::HStack({.spacing = 10},
                               // in the other language: the button says which one it goes to
                               ui::Button({.text = tr("فارسی"), .onClick = [this] { switchLanguage(); }}),
-                              ui::Button({.text = tr("Light theme"), .onClick = [this] { switchTheme(); }}).bind(themeButton),
-                              ui::Button({.text = tr("Close"), .onClick = [this] { confirmClose(); }}))
+                              ui::Button({.text = tr("Light theme"), .onClick = [this] { switchTheme(); }})
+                                  .bind(themeButton)
+                                  .toolTip(tr("Every widget, in the other theme's colors")),
+                              ui::Button({.text = tr("Close"), .onClick = [this] { confirmClose(); }}).toolTip(tr("Asks first")))
                        .bind(buttons),
                    ui::HStack({.spacing = 10},
                               ui::Button({.text = tr("Menu"), .onClick = [this] { showDemoMenu(); }}).bind(menuButton),
-                              ui::Button({.text = tr("Dialog…"), .onClick = [this] { showDemoDialog(); }}),
+                              ui::Button({.text = tr("Dialog…"), .onClick = [this] { showDemoDialog(); }})
+                                  .toolTip(tr("A modal dialog: the window waits for it")),
                               ui::Label({.text = tr("Size")}).alignment(glw::Alignment::Start, glw::Alignment::Center),
                               ui::ComboBox({.items = {tr("Small"), tr("Medium"), tr("Large")},
                                             .current = 1,

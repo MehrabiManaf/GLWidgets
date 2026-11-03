@@ -90,7 +90,8 @@ void ComboBox::paint(PaintContext& context) {
     const VisualState v{.hovered = hovered(), .pressed = open_ || pressed_, .focused = hasFocus(), .disabled = !enabledInTree()};
     paint::Painter& p = context.painter;
     const Rect r{0, 0, size().width, size().height};
-    p.fillRoundedRect(r, s.cornerRadius, s.background.resolve(v));
+    background_.to(scheduler(), s.background.resolve(v), context.ui.theme.motion.fast);
+    p.fillRoundedRect(r, s.cornerRadius, background_.value());
     if (s.borderWidth > 0)
         p.strokeRoundedRect(r, s.cornerRadius, s.borderWidth, s.border.resolve(v));
     label_->setColor(s.text.resolve(v));

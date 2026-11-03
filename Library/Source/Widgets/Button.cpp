@@ -101,9 +101,12 @@ void Button::paint(PaintContext& context) {
     const ButtonStyle& s = style();
     const VisualState v = state();
     const Rect r{0, 0, size().width, size().height};
-    context.painter.fillRoundedRect(r, s.cornerRadius, s.background.resolve(v));
+    const Duration fast = context.ui.theme.motion.fast;
+    background_.to(scheduler(), s.background.resolve(v), fast);
+    border_.to(scheduler(), s.border.resolve(v), fast);
+    context.painter.fillRoundedRect(r, s.cornerRadius, background_.value());
     if (s.borderWidth > 0)
-        context.painter.strokeRoundedRect(r, s.cornerRadius, s.borderWidth, s.border.resolve(v));
+        context.painter.strokeRoundedRect(r, s.cornerRadius, s.borderWidth, border_.value());
     // the label paints after this, in the color of the state
     label_->setColor(s.text.resolve(v));
 }

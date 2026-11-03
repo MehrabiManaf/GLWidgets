@@ -85,6 +85,11 @@ struct Application::Impl final : DockingHost {
     std::unique_ptr<text::GlyphAtlas> atlas;
     std::unique_ptr<Translator> translator;
     std::unique_ptr<UiContext> context;
+    Scheduler scheduler;                                // before the windows: their timers go first
+    // GLW_LOG_FRAMES: the frames drawn, each second that had some (what is idle draws none)
+    bool logFrames = false;
+    int framesLogged = 0;
+    TimePoint logSince;
     std::vector<std::unique_ptr<Window>> opened;       // last: closed before what they draw with
     std::vector<Window*> order;                         // the windows from the one in front (focused last) back
     std::unique_ptr<Window> preview;                    // showWindowPreview's, made the first time; not one of `opened`
@@ -159,7 +164,7 @@ struct Application::Impl final : DockingHost {
                 kept = w == p.get();
             if (!kept && !p->closing_ && !this->kept(p.get())) {
                 p->closing_ = true;
-                closed = true;
+                closed = closed || !p->tooltip_;       // a tooltip going does not take the click
             }
         }
         return closed;
@@ -318,6 +323,17 @@ struct Application::Impl final : DockingHost {
         commands->submit();
         inFrame = false;
         return all;
+    }
+
+    void frameDrawn(std::size_t windows) {
+        ++framesLogged;
+        const TimePoint now = scheduler.now();
+        if (now - logSince >= std::chrono::seconds(1)) {
+            std::fprintf(stderr, "GLWidgets: %d frames in %.1f s (%zu windows in the last)\n", framesLogged,
+                         std::chrono::duration<double>(now - logSince).count(), windows);
+            framesLogged = 0;
+            logSince = now;
+        }
     }
 
     void waitForSurfaces() {
@@ -700,7 +716,16 @@ Application::Application() : impl_(std::make_unique<Impl>(*this)) {
     d.fonts = std::make_unique<text::FontLibrary>();
     d.atlas = std::make_unique<text::GlyphAtlas>(d.renderer->addTexture());
     d.translator = std::make_unique<Translator>();
-    d.context = std::make_unique<UiContext>(UiContext{*d.fonts, *d.atlas, *d.translator, Theme::dark(), &d});
+    d.context = std::make_unique<UiContext>(UiContext{*d.fonts, *d.atlas, *d.translator, Theme::dark(), &d, &d.scheduler});
+#ifdef _MSC_VER
+#pragma warning(push)
+#pragma warning(disable : 4996)     // getenv: read, not kept
+#endif
+    d.logFrames = std::getenv("GLW_LOG_FRAMES") != nullptr;
+#ifdef _MSC_VER
+#pragma warning(pop)
+#endif
+    d.logSince = d.scheduler.now();
     d.platform->setExposeHandler([&d](platform::WindowId id) { d.exposed(id); });
 }
 
@@ -732,10 +757,20 @@ int Application::run(int frames) {
     int drawn = 0, attempts = 0;
     while (!d.quitting && !d.opened.empty()) {
         if (frames < 0) {
-            if (d.windowsToDraw(false).empty())
-                d.platform->waitForEvents();
-            else if (retry)
+            // nothing to draw: asleep until an event comes or a timer is due (an animation that runs where nothing is
+            // drawn waits a refresh's worth, not a busy loop)
+            if (d.windowsToDraw(false).empty()) {
+                std::optional<std::chrono::milliseconds> wait;
+                if (d.scheduler.animating()) {
+                    wait = std::chrono::milliseconds(16);
+                } else if (const std::optional<TimePoint> next = d.scheduler.nextDeadline()) {
+                    const auto left = std::chrono::ceil<std::chrono::milliseconds>(*next - d.scheduler.now());
+                    wait = std::max(left, std::chrono::milliseconds(0));
+                }
+                d.platform->waitForEvents(wait);
+            } else if (retry) {
                 d.platform->waitForEvents(std::chrono::milliseconds(16));
+            }
         }
         retry = false;
         // the windows' next images free (the frame before shown, at the display's refresh) before the input is read: what
@@ -746,6 +781,8 @@ int Application::run(int frames) {
         while (!d.quitting && d.platform->pollEvent(event))
             d.handle(event);
         d.checkFocus();
+        // the timers due and the animations' steps: what they change is drawn in this frame
+        d.scheduler.tick();
         d.quittingSoon();
         d.closeWindows();
         if (d.quitting || d.opened.empty())
@@ -755,6 +792,8 @@ int Application::run(int frames) {
         if (which.empty())
             continue;
         retry = !d.draw(which);
+        if (d.logFrames)
+            d.frameDrawn(which.size());
 
         // the smoke test counts the frames that reached the windows, and fails when they do not
         if (frames >= 0) {

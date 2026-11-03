@@ -53,6 +53,7 @@ namespace glw {
 class Layout;
 class UiRoot;
 struct UiContext;
+class Scheduler;
 
 inline constexpr float unbounded = std::numeric_limits<float>::infinity();
 
@@ -218,6 +219,10 @@ public:
     void setWindowArea(platform::HitArea area) { windowArea_ = area; }
     platform::HitArea windowArea() const { return windowArea_; }
 
+    // What shows by the mouse when it stays over it a moment (UiRoot shows it, the theme's toolTip); none by default.
+    void setToolTip(LocalizedText text);
+    const LocalizedText* toolTip() const { return toolTip_.get(); }
+
     bool hasFocus() const;
     void focus();
     bool hovered() const { return hovered_; }           // the mouse is over it or one of its children
@@ -270,6 +275,8 @@ protected:
     // Its content arranged again in the bounds it has (what arrangeContent depends on changed, its size did not).
     void rearrange();
     const UiContext* context() const;                   // the root's, when it is shown
+    // The context's timers and animations, when it is shown (none: things happen at once).
+    Scheduler* scheduler() const;
     // What `text` shows in the language of its root (its source text when it is not shown).
     std::string translate(const LocalizedText& text) const;
 
@@ -307,6 +314,7 @@ private:
     bool hitTestVisible_ = true;
     bool clipsChildren_ = false;
     bool hovered_ = false;
+    std::unique_ptr<LocalizedText> toolTip_;            // most widgets have none: a pointer's worth
 };
 
 } // namespace glw

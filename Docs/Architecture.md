@@ -431,8 +431,10 @@ does with the keyboard. Popups are not among the application's windows (docking 
 end, a check mark, a submenu, separators, disabled items. The mouse chooses by going over an item (a submenu opens) and
 triggers by letting go over it; the keys choose (Up, Down, Home, End, past separators and disabled items), go in and out
 of submenus (Right and Left, mirrored in right to left), trigger (Enter, Space) and close (Escape). A `ComboBox` is a text
-chosen from such a menu under it, the current one checked; Up and Down change it without opening it. Still to come:
-tooltips (they need timers: a delay before they show).
+chosen from such a menu under it, the current one checked; Up and Down change it without opening it. A widget's
+tooltip (`Widget::setToolTip`) is a popup that takes no input, under the mouse's pointer, shown by the root after the
+mouse stayed over the widget half a second (80 ms when another closed a moment ago: along a toolbar), gone when the
+mouse leaves the widget, presses, scrolls or a key is pressed, and not again until it leaves.
 
 A modal popup (`PopupRequest::modal`) is a dialog: while it is open, the other windows of the application take no input
 (their mouse does nothing but close the dialog's own popups, their keys and typed text are the dialog's, they do not
@@ -460,7 +462,22 @@ three labels, painting, panning and a step of the wheel take less than half a mi
 view, zoomed out (text smaller than a pixel is left out); the first layout, shaping 30,000 texts, 0.3 s.
 `Examples/NodeEditor` is a node editor on it (nodes with pins and fields, links, selection, comments).
 
-Still to come in the widget core: a blinking caret and animations (they need timers), mouse cursors (the resize cursor
+**Nothing is drawn for time alone** (`Widgets/Animation.hpp`). One `Scheduler`, shared by every root of an application
+(`UiContext::scheduler`), runs the timers (`Timer`: a tooltip's delay, a caret's blink) and the animations (`Animation`:
+a number eased to a target over a time; `ColorTransition`: a color). The application sleeps until an event comes or the
+next timer is due (`nextDeadline`); only while an animation runs does it draw, at each refresh of the display (vsync paces
+it), and then only the windows whose widgets an animation changed: each step calls the animation's `onStep`, where a
+widget invalidates its paint. When the last animation ends, the frames stop. A widget does not say when its state
+changes, only what it shows now: `ColorTransition::to(color)` in `paint` eases from what it showed to that color (at
+once the first time). Buttons, check boxes (their box filling, their mark fading in) and combo boxes ease to their
+states' colors for the theme's `motion.fast` (83 ms, Fluent's); a field's caret blinks half a second each way and rests,
+shown, after twenty, so a field no one types in draws nothing. Animations can be turned off (`setAnimationsEnabled`:
+reduced motion; the tests); the tests run on a clock of their own. An engine driving its own roots calls `tick()` before
+it paints and waits as `nextDeadline` says. Measured with `GLW_LOG_FRAMES` (the frames drawn, each second that had some):
+an idle window draws none; a hover draws about five frames (83 ms at 60 Hz) and its tooltip one; a caret two a second for
+ten seconds, then none.
+
+Still to come in the widget core: mouse cursors (the resize cursor
 over a splitter's handle and a table header's edge), and the native extras of the chrome (Windows 11 shadow, rounded corners and snap layouts).
 
 ## Docking

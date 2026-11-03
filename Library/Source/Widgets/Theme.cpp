@@ -124,6 +124,9 @@ Theme Theme::fromPalette(const Palette& p) {
     t.menu.mark = p.text;
     t.menu.separator = Color{p.text.r, p.text.g, p.text.b, 0.10f};
     t.menu.cornerRadius = t.cornerRadius;
+    t.toolTip.background = p.surface;
+    t.toolTip.border = Color{p.text.r, p.text.g, p.text.b, 0.14f};
+    t.toolTip.text = p.text;
     t.dialog.background = p.layer;
     t.dialog.border = Color{p.text.r, p.text.g, p.text.b, 0.14f};
     t.dialog.scrim = Color{0, 0, 0, 0.40f};

@@ -4,6 +4,7 @@
 // A box that is checked or not, with its text: toggled by a click on either, or by Space when it has the focus. The box is
 // on the start side (the right in right to left).
 #include <GLWidgets/Export.hpp>
+#include <GLWidgets/Widgets/Animation.hpp>
 #include <GLWidgets/Widgets/Label.hpp>
 #include <GLWidgets/Widgets/Localization.hpp>
 #include <GLWidgets/Widgets/Theme.hpp>
@@ -56,6 +57,10 @@ private:
     std::optional<CheckBoxStyle> style_;
     Rect box_;
     bool pressed_ = false;
+    // the box eases to its state's color, the mark fades in and out
+    ColorTransition fill_{[this] { invalidatePaint(); }};
+    Animation mark_{[this] { invalidatePaint(); }};
+    bool markShown_ = false;
 };
 
 } // namespace glw

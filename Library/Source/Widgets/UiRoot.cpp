@@ -4,6 +4,7 @@
 
 #include <GLWidgets/Core/Assert.hpp>
 #include <GLWidgets/Paint/Painter.hpp>
+#include <GLWidgets/Widgets/Label.hpp>
 #include <GLWidgets/Widgets/Layout.hpp>
 
 #include <algorithm>
@@ -33,9 +34,92 @@ bool isInside(const Widget* widget, const Widget& subtree) {
 
 UiHost::~UiHost() = default;
 
+namespace {
+
+// A tooltip's popup: its text, wrapped past the theme's width. It tells its root when it goes.
+class ToolTipView final : public Widget {
+public:
+    ToolTipView(LocalizedText text, std::function<void()> gone) : gone_(std::move(gone)) {
+        setPadding({8, 5, 8, 6});
+        label_ = &add(std::make_unique<Label>(Label::Props{.text = std::move(text), .fontSize = 12, .wrap = true}));
+    }
+    void detach() { gone_ = nullptr; }
+
+protected:
+    Size measureContent(Size available) override {
+        const UiContext* ui = context();
+        available.width = std::min(available.width, (ui ? ui->theme.toolTip.maximumWidth : 320.0f) - padding().horizontal());
+        return Widget::measureContent(available);
+    }
+    void paint(PaintContext& context) override {
+        const ToolTipStyle& s = context.ui.theme.toolTip;
+        const Rect all{0, 0, size().width, size().height};
+        context.painter.fillRect(all, s.background);
+        context.painter.strokeRoundedRect(all, 0, 1, s.border);
+        label_->setColor(s.text);
+    }
+    void onWindowClosing() override {
+        if (gone_)
+            std::exchange(gone_, nullptr)();
+    }
+
+private:
+    Label* label_ = nullptr;
+    std::function<void()> gone_;
+};
+
+} // namespace
+
 UiRoot::UiRoot(const UiContext& context, UiHost* host) : context_(context), host_(host) {}
 
-UiRoot::~UiRoot() = default;
+UiRoot::~UiRoot() {
+    hideToolTip(false);
+}
+
+// ---- tooltips ----
+
+void UiRoot::updateToolTip() {
+    // the deepest widget under the mouse with one
+    Widget* with = nullptr;
+    for (auto it = hovered_.rbegin(); it != hovered_.rend() && !with; ++it) {
+        if ((*it)->toolTip())
+            with = *it;
+    }
+    if (with == tipFor_)
+        return;
+    hideToolTip(false);
+    tipFor_ = with;
+    tipSuppressed_ = false;
+    Scheduler* scheduler = context_.scheduler;
+    if (!with || !scheduler || !host_ || capture_)
+        return;
+    // soon after another closed, quickly: the mouse goes along a toolbar
+    const ToolTipStyle& s = context_.theme.toolTip;
+    const bool soon = tipClosed_ && scheduler->now() - *tipClosed_ < std::chrono::milliseconds(600);
+    tipTimer_.start(*scheduler, soon ? Duration(s.reshowDelay) : Duration(s.delay), [this] { showToolTip(); });
+}
+
+void UiRoot::showToolTip() {
+    if (!tipFor_ || tip_ || tipSuppressed_ || !host_ || !tipFor_->toolTip())
+        return;
+    // under the mouse's pointer
+    tip_ = host_->openPopup({.content = std::make_unique<ToolTipView>(*tipFor_->toolTip(), [this] { tip_ = nullptr; }),
+                             .anchor = {mouse_.x, mouse_.y, 1, 22},
+                             .tooltip = true});
+}
+
+void UiRoot::hideToolTip(bool suppress) {
+    tipTimer_.stop();
+    if (suppress)
+        tipSuppressed_ = true;
+    if (UiRoot* tip = std::exchange(tip_, nullptr)) {
+        static_cast<ToolTipView*>(tip->content())->detach();
+        if (tip->host())
+            tip->host()->closeWindow();
+        if (context_.scheduler)
+            tipClosed_ = context_.scheduler->now();
+    }
+}
 
 // ---- content ----
 
@@ -248,11 +332,14 @@ void UiRoot::dispatch(const platform::Event& event) {
                    [&](const platform::MouseMoved& e) { mouseMoved(e.position); },
                    [&](const platform::MouseButtonChanged& e) { mouseButton(e); },
                    [&](const platform::MouseWheelScrolled& e) {
+                       hideToolTip(true);
                        MouseEvent wheel{MouseEventType::Wheel, {}, platform::MouseButton::Left, 0, e.delta, modifiers_};
                        route(capture_ ? capture_ : widgetAt(e.position), wheel, e.position);
                    },
                    [&](const platform::KeyChanged& e) {
                        modifiers_ = e.modifiers;
+                       if (e.pressed)
+                           hideToolTip(true);
                        KeyEvent key{e.key, e.modifiers, e.pressed, e.repeat};
                        routeKey(key);
                        // Tab moves the focus when the focused widget does not take it
@@ -329,6 +416,8 @@ void UiRoot::mouseMoved(Point point) {
 
 void UiRoot::mouseButton(const platform::MouseButtonChanged& e) {
     mouse_ = e.position;
+    if (e.pressed)
+        hideToolTip(true);
     MouseEvent event{e.pressed ? MouseEventType::Press : MouseEventType::Release, {}, e.button, e.clicks, {}, modifiers_};
     if (e.pressed) {
         ++buttonsDown_;
@@ -383,6 +472,7 @@ void UiRoot::updateHover(Widget* target) {
         }
     }
     hovered_ = std::move(path);
+    updateToolTip();
 }
 
 // ---- focus ----
@@ -426,6 +516,10 @@ void UiRoot::focusNext(bool backwards) {
 }
 
 void UiRoot::forget(Widget& subtree) {
+    if (isInside(tipFor_, subtree)) {
+        hideToolTip(false);
+        tipFor_ = nullptr;
+    }
     if (isInside(focus_, subtree)) {
         Widget* previous = std::exchange(focus_, nullptr);
         previous->onFocusChanged(false);
