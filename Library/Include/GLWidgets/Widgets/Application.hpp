@@ -102,6 +102,10 @@ private:
     bool popupAtStart_ = false;                         // a popup beside its anchor: at the anchor's start side
     bool closing_ = false;
     bool told_ = false;                                 // its root was told it closes
+    // a popup coming in: faded in, its content sliding `slide_` dips to its place
+    void entering();
+    Animation entrance_{[this] { entering(); }};
+    Point slide_;
 };
 
 class GLW_EXPORT Application {
@@ -129,7 +133,9 @@ public:
 
     const UiContext& context() const;
     // The theme of every window, which shows it at once.
-    void setTheme(const Theme& theme);
+    // Eased there (the theme's slow motion): through the themes of the palettes between the one shown and its own, then
+    // itself. At once when `animated` is false, with animations off, or before a window opens.
+    void setTheme(const Theme& theme, bool animated = true);
     // The language every window shows its texts in (its catalog loaded in translator()), which shows them at once; a
     // language written right to left mirrors the windows.
     void setLanguage(const std::string& language);

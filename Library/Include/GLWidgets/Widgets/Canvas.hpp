@@ -11,6 +11,7 @@
 // between the grid and the items, or over the items, in the canvas's coordinates (the links of a node editor, a
 // selection rectangle): paintUnderItems, paintOverItems.
 #include <GLWidgets/Export.hpp>
+#include <GLWidgets/Widgets/Animation.hpp>
 #include <GLWidgets/Widgets/Theme.hpp>
 #include <GLWidgets/Widgets/Widget.hpp>
 
@@ -54,8 +55,10 @@ public:
     // ---- the view ----
 
     float zoom() const { return zoom_; }
-    // `anchor` (its own coordinates) stays where it is: the mouse when the wheel zooms. The middle of it by default.
+    // `anchor` (its own coordinates) stays where it is: the mouse when the wheel zooms. The middle of it by default. At
+    // once, or eased there (what the wheel does: turned again on the way, it goes further).
     void setZoom(float zoom, std::optional<Point> anchor = std::nullopt);
+    void zoomSmoothly(float zoom, std::optional<Point> anchor = std::nullopt);
     void setZoomRange(float minimum, float maximum);
     float minimumZoom() const { return minimumZoom_; }
     float maximumZoom() const { return maximumZoom_; }
@@ -64,10 +67,11 @@ public:
     void setOrigin(Point origin);
     // Panned so that the canvas's `point` is at its middle.
     void centerOn(Point point);
-    // Zoomed (not past 1) and panned so that `area` of the canvas shows whole, `margin` dips around it.
-    void frame(const Rect& area, float margin = 32);
+    // Zoomed (not past 1) and panned so that `area` of the canvas shows whole, `margin` dips around it: eased there
+    // (the theme's slow motion), at once when `animated` is false or before it has a size.
+    void frame(const Rect& area, float margin = 32, bool animated = true);
     // All its items (when they are laid out, if they are not yet).
-    void frameItems(float margin = 32);
+    void frameItems(float margin = 32, bool animated = true);
 
     // Between the canvas's coordinates and its own.
     Point toCanvas(Point local) const { return viewTransform().unmap(local); }
@@ -100,6 +104,17 @@ protected:
 
 private:
     void viewChanged();
+    // The view eased from (zoom, the canvas's point at a point of it) to another: the zoom in proportion (as its logarithm),
+    // the canvas's point moving to the other, the point of it staying.
+    void moveView(float zoom, Point canvasPoint, Point at, Duration duration);
+    void viewStepped();
+    struct ViewMove {
+        float fromZoom = 1, toZoom = 1;
+        Point fromPoint, toPoint;           // of the canvas
+        Point at;                           // its own: where the canvas's point shows
+    };
+    ViewMove move_;
+    Animation viewMotion_{[this] { viewStepped(); }};
 
     std::unordered_map<const Widget*, Point> positions_;
     float zoom_ = 1;

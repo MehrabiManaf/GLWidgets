@@ -165,7 +165,9 @@ Point LineEdit::textOrigin() {
     if (!layout)
         return {content_.x, content_.y};
     const Size size = layout->size();
-    const float y = content_.y + (content_.height - size.height) / 2 + layout->opticalOffset();
+    // its line's height in the middle: the caret and the selection, which span it (its letters are moved by its optical
+    // offset where they are drawn)
+    const float y = content_.y + (content_.height - size.height) / 2;
     // a text that fits is at the start side; a longer one is scrolled
     if (size.width <= content_.width)
         return {rightToLeft() ? content_.right() - size.width : content_.x, y};
@@ -484,11 +486,13 @@ void LineEdit::paint(PaintContext& context) {
             p.fillRect({origin.x + sel.x, origin.y + sel.y, sel.width, sel.height}, s.selection);
     }
     const Color textColor = state.disabled ? context.ui.theme.palette.disabledText : s.text;
-    context.drawText(*layout, origin, textColor);
+    // the letters centered by themselves (TextLayout::opticalOffset), the caret and the selection by the line's height
+    const Point letters{origin.x, origin.y + layout->opticalOffset()};
+    context.drawText(*layout, letters, textColor);
     // the composition, not typed yet: underlined
     if (!composition_.empty()) {
         for (const Rect& c : layout->selectionRects(caret_, caret_ + composition_.size()))
-            p.drawLine({origin.x + c.x, origin.y + c.bottom() - 2}, {origin.x + c.right(), origin.y + c.bottom() - 2}, 1, textColor);
+            p.drawLine({letters.x + c.x, letters.y + c.bottom() - 2}, {letters.x + c.right(), letters.y + c.bottom() - 2}, 1, textColor);
     }
     if (hasFocus() && caretShown_) {
         const text::TextLayout::Caret caret = layout->caret(shownOffset(caret_) + codePointBytes(composition_, compositionCursor_));

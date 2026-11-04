@@ -94,7 +94,33 @@ void Canvas::setZoomRange(float minimum, float maximum) {
     setZoom(zoom_);
 }
 
+void Canvas::zoomSmoothly(float zoom, std::optional<Point> anchor) {
+    zoom = std::clamp(zoom, minimumZoom_, maximumZoom_);
+    if (zoom == (viewMotion_.running() ? move_.toZoom : zoom_))
+        return;
+    const Point at = anchor.value_or(Point{size().width / 2, size().height / 2});
+    const UiContext* ui = context();
+    moveView(zoom, toCanvas(at), at, ui ? Duration(ui->theme.motion.scroll) : Duration::zero());
+}
+
+void Canvas::moveView(float zoom, Point canvasPoint, Point at, Duration duration) {
+    move_ = {zoom_, zoom, toCanvas(at), canvasPoint, at};
+    viewMotion_.set(0);
+    viewMotion_.animateTo(scheduler(), 1, duration, Easing::OutCubic);
+    viewStepped();
+}
+
+void Canvas::viewStepped() {
+    const float t = viewMotion_.value();
+    const float zoom = std::exp(std::log(move_.fromZoom) + (std::log(move_.toZoom) - std::log(move_.fromZoom)) * t);
+    const Point point = move_.fromPoint + (move_.toPoint - move_.fromPoint) * t;
+    zoom_ = zoom;
+    origin_ = move_.at - point * zoom;
+    viewChanged();
+}
+
 void Canvas::setZoom(float zoom, std::optional<Point> anchor) {
+    viewMotion_.set(1);         // what was on its way stops
     zoom = std::clamp(zoom, minimumZoom_, maximumZoom_);
     if (zoom == zoom_)
         return;
@@ -107,6 +133,7 @@ void Canvas::setZoom(float zoom, std::optional<Point> anchor) {
 }
 
 void Canvas::setOrigin(Point origin) {
+    viewMotion_.set(1);
     if (origin.x == origin_.x && origin.y == origin_.y)
         return;
     origin_ = origin;
@@ -117,7 +144,7 @@ void Canvas::centerOn(Point point) {
     setOrigin(Point{size().width / 2, size().height / 2} - point * zoom_);
 }
 
-void Canvas::frame(const Rect& area, float margin) {
+void Canvas::frame(const Rect& area, float margin, bool animated) {
     if (area.empty())
         return;
     if (size().width <= 0 || size().height <= 0) {
@@ -125,17 +152,26 @@ void Canvas::frame(const Rect& area, float margin) {
         return;
     }
     const float width = std::max(1.0f, size().width - 2 * margin), height = std::max(1.0f, size().height - 2 * margin);
-    zoom_ = std::clamp(std::min({width / area.width, height / area.height, 1.0f}), minimumZoom_, maximumZoom_);
-    origin_ = Point{size().width / 2, size().height / 2} - area.center() * zoom_;
+    const float zoom = std::clamp(std::min({width / area.width, height / area.height, 1.0f}), minimumZoom_, maximumZoom_);
+    const Point middle{size().width / 2, size().height / 2};
+    const UiContext* ui = context();
+    if (animated && ui) {
+        // the middle of it going to the middle of the area
+        moveView(zoom, area.center(), middle, ui->theme.motion.slow);
+        return;
+    }
+    viewMotion_.set(1);
+    zoom_ = zoom;
+    origin_ = middle - area.center() * zoom_;
     viewChanged();
 }
 
-void Canvas::frameItems(float margin) {
+void Canvas::frameItems(float margin, bool animated) {
     if (size().width <= 0 || size().height <= 0) {
         pendingItemsFrame_ = margin;
         return;
     }
-    frame(itemsBounds(), margin);
+    frame(itemsBounds(), margin, animated);
 }
 
 Rect Canvas::visibleArea() const {
@@ -170,9 +206,9 @@ void Canvas::arrangeContent(const Rect&) {
     }
     if (size().width > 0 && size().height > 0) {
         if (pendingFrame_)
-            frame(*std::exchange(pendingFrame_, std::nullopt), 0);
+            frame(*std::exchange(pendingFrame_, std::nullopt), 0, false);     // what it shows first: at once
         if (pendingItemsFrame_)
-            frame(itemsBounds(), *std::exchange(pendingItemsFrame_, std::nullopt));
+            frame(itemsBounds(), *std::exchange(pendingItemsFrame_, std::nullopt), false);
     }
 }
 
@@ -236,7 +272,7 @@ void Canvas::onMouse(MouseEvent& event) {
     switch (event.type) {
     case MouseEventType::Wheel:
         if (event.wheelDelta.y != 0) {
-            setZoom(zoom_ * std::pow(wheelZoom, event.wheelDelta.y), event.position);
+            zoomSmoothly((viewMotion_.running() ? move_.toZoom : zoom_) * std::pow(wheelZoom, event.wheelDelta.y), event.position);
             event.handled = true;
         }
         break;

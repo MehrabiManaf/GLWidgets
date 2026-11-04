@@ -154,8 +154,10 @@ void Animation::stopRunning() {
 // ---- colors ----
 
 void ColorTransition::to(Scheduler* scheduler, Color color, Duration duration) {
-    if (!set_) {
+    const std::uint64_t generation = scheduler ? scheduler->styleGeneration() : 0;
+    if (!set_ || generation != styleGeneration_) {
         set_ = true;
+        styleGeneration_ = generation;
         from_ = to_ = color;
         progress_.set(1);
         return;
@@ -170,6 +172,30 @@ void ColorTransition::to(Scheduler* scheduler, Color color, Duration duration) {
 
 Color ColorTransition::value() const {
     return lerp(from_, to_, progress_.value());
+}
+
+// ---- scrolling ----
+
+SmoothScroll::SmoothScroll(std::function<void(double)> show)
+    : progress_([this] { show_(from_ + (to_ - from_) * static_cast<double>(progress_.value())); }), show_(std::move(show)) {
+    progress_.set(1);
+}
+
+double SmoothScroll::boosted(double step) {
+    const bool sameWay = (step > 0) == (lastStep_ > 0) && lastStep_ != 0;
+    boost_ = running() && sameWay ? std::min(boost_ * boostGrowth, maximumBoost) : 1.0;
+    lastStep_ = step;
+    return step * boost_;
+}
+
+void SmoothScroll::scrollTo(Scheduler* scheduler, double shown, double target, Duration duration) {
+    from_ = shown;
+    to_ = target;
+    progress_.set(0);
+    // decelerating: it answers at once, and settles
+    progress_.animateTo(scheduler, 1, duration, Easing::OutCubic);
+    if (!progress_.running())
+        show_(to_);
 }
 
 } // namespace glw

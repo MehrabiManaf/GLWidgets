@@ -89,6 +89,10 @@ struct Application::Impl final : DockingHost {
     std::unique_ptr<Translator> translator;
     std::unique_ptr<UiContext> context;
     Scheduler scheduler;                                // before the windows: their timers go first
+    // a theme eased to: the themes of the palettes between the one shown and its own, then it
+    std::optional<Theme> themeTarget;
+    Palette themeFrom;
+    Animation themeFade{[this] { themeStepped(); }};
     // GLW_LOG_FRAMES: the frames drawn, each second that had some (what is idle draws none)
     bool logFrames = false;
     int framesLogged = 0;
@@ -105,6 +109,46 @@ struct Application::Impl final : DockingHost {
     bool inFrame = false;
 
     explicit Impl(Application& app) : app(app) {}
+
+    // `theme` shown by every window
+    void applyTheme(const Theme& theme) {
+        context->theme = theme;
+        for (const auto& w : opened)
+            w->root_.styleChanged();
+        for (const auto& w : popups)
+            w->root_.styleChanged();
+    }
+
+    void themeStepped() {
+        if (!themeTarget)
+            return;
+        if (!themeFade.running()) {
+            applyTheme(*std::exchange(themeTarget, std::nullopt));
+            return;
+        }
+        const float t = themeFade.value();
+        const Palette& to = themeTarget->palette;
+        const auto mixed = [t](Color a, Color b) { return lerp(a, b, t); };
+        const Palette between{
+            .window = mixed(themeFrom.window, to.window),
+            .layer = mixed(themeFrom.layer, to.layer),
+            .surface = mixed(themeFrom.surface, to.surface),
+            .base = mixed(themeFrom.base, to.base),
+            .titleBar = mixed(themeFrom.titleBar, to.titleBar),
+            .text = mixed(themeFrom.text, to.text),
+            .mutedText = mixed(themeFrom.mutedText, to.mutedText),
+            .disabledText = mixed(themeFrom.disabledText, to.disabledText),
+            .accent = mixed(themeFrom.accent, to.accent),
+            .onAccent = mixed(themeFrom.onAccent, to.onAccent),
+            .border = mixed(themeFrom.border, to.border),
+            .outline = mixed(themeFrom.outline, to.outline),
+            .hover = mixed(themeFrom.hover, to.hover),
+            .pressed = mixed(themeFrom.pressed, to.pressed),
+            .selection = mixed(themeFrom.selection, to.selection),
+            .closeHover = mixed(themeFrom.closeHover, to.closeHover),
+        };
+        applyTheme(Theme::fromPalette(between));
+    }
 
     Window* find(platform::WindowId id) const {
         for (const auto& w : opened) {
@@ -619,7 +663,30 @@ Window::Window(Application& app, PopupRequest request, Window& parent)
     surface_ = impl.device->createSurface(*window_);
     root_.setSize(window_->size());
     root_.setScale(window_->scale());
+    // it comes in: faded in, sliding a little out of its anchor (down from what it opens under, up when it went above,
+    // across from a menu beside it, up into the middle for a dialog); a tooltip only fades
+    const UiContext& ui = *impl.context;
+    if (ui.scheduler && ui.scheduler->animationsEnabled()) {
+        constexpr float distance = 6;
+        if (request.tooltip)
+            slide_ = {};
+        else if (request.placement == PopupPlacement::Below)
+            slide_ = {0, at.y >= request.anchor.y ? -distance : distance};
+        else if (request.placement == PopupPlacement::After)
+            slide_ = {at.x >= request.anchor.x ? -distance : distance, 0};
+        else
+            slide_ = {0, distance * 1.5f};
+        entrance_.set(0);
+        entrance_.animateTo(ui.scheduler, 1, ui.theme.motion.normal, Easing::OutCubic);
+        entering();
+    }
     window_->show(!request.tooltip);
+}
+
+void Window::entering() {
+    const float shown = entrance_.value();
+    window_->setOpacity(shown);
+    root_.setContentShift(slide_ * (1 - shown));
 }
 
 UiRoot* Window::openPopup(PopupRequest request) {
@@ -879,12 +946,20 @@ const UiContext& Application::context() const {
     return *impl_->context;
 }
 
-void Application::setTheme(const Theme& theme) {
-    impl_->context->theme = theme;
-    for (const auto& w : impl_->opened)
-        w->root_.styleChanged();
-    for (const auto& w : impl_->popups)
-        w->root_.styleChanged();
+void Application::setTheme(const Theme& theme, bool animated) {
+    Impl& impl = *impl_;
+    if (!animated || !impl.scheduler.animationsEnabled() || impl.opened.empty()) {
+        impl.themeFade.set(1);
+        impl.themeTarget.reset();
+        impl.applyTheme(theme);
+        return;
+    }
+    // from what shows now (a fade on its way, from where it is)
+    impl.themeFrom = impl.context->theme.palette;
+    impl.themeTarget = theme;
+    impl.themeFade.set(0);
+    impl.themeFade.animateTo(&impl.scheduler, 1, impl.context->theme.motion.slow, Easing::InOutCubic);
+    impl.themeStepped();
 }
 
 void Application::setLanguage(const std::string& language) {

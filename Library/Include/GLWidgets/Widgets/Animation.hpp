@@ -15,6 +15,7 @@
 #include <GLWidgets/Export.hpp>
 
 #include <chrono>
+#include <cstdint>
 #include <functional>
 #include <optional>
 #include <vector>
@@ -47,6 +48,11 @@ public:
     void setAnimationsEnabled(bool enabled) { animationsEnabled_ = enabled; }
     bool animationsEnabled() const { return animationsEnabled_; }
 
+    // The theme changed (UiRoot::styleChanged): the colors of states go to the new ones at once, not eased (a theme being
+    // eased to changes at every step itself).
+    void styleChanged() { ++styleGeneration_; }
+    std::uint64_t styleGeneration() const { return styleGeneration_; }
+
 private:
     friend class Timer;
     friend class Animation;
@@ -55,6 +61,7 @@ private:
     std::vector<Timer*> timers_;            // those started
     std::vector<Animation*> animations_;    // those running
     bool animationsEnabled_ = true;
+    std::uint64_t styleGeneration_ = 0;
 };
 
 // Calls a function once a delay has passed, or every time it has, until stopped. Stopped when destroyed: a widget keeps
@@ -123,13 +130,45 @@ private:
     Easing easing_ = Easing::OutCubic;
 };
 
+// A scroll offset easing to where it is sent: a turn of the wheel, a page, an area brought into view. Sent on while it
+// moves (the wheel turned again), it goes from where it shows to the new place. `show` sets the offset shown at each step,
+// and at once with animations off; the widget clamps it. Offsets are doubles: a list of a hundred million rows is longer
+// than a float counts dips exactly.
+class GLW_EXPORT SmoothScroll {
+public:
+    explicit SmoothScroll(std::function<void(double)> show);
+
+    // From `shown` (where it is now) to `target`, over `duration`.
+    void scrollTo(Scheduler* scheduler, double shown, double target, Duration duration);
+    // Where it is going; where it is (`shown`) when it does not move.
+    double target(double shown) const { return running() ? to_ : shown; }
+    bool running() const { return progress_.running(); }
+    // Where it shows now, it stays (a drag of the thumb takes over).
+    void stop() { progress_.set(1); }
+
+    // A step of the wheel, larger as the wheel turns faster: turned again the same way before the last step got there,
+    // it is `boostGrowth` times the last one, up to `maximumBoost` times a step; a pause or the other way, a step again.
+    double boosted(double step);
+    static constexpr double boostGrowth = 1.3;
+    static constexpr double maximumBoost = 6;
+
+private:
+    Animation progress_;                    // from 0 (from_) to 1 (to_), eased
+    double from_ = 0;
+    double to_ = 0;
+    double boost_ = 1;
+    double lastStep_ = 0;
+    std::function<void(double)> show_;
+};
+
 // A color easing to the one asked for.
 class GLW_EXPORT ColorTransition {
 public:
     explicit ColorTransition(std::function<void()> onStep = {}) : progress_(std::move(onStep)) {}
 
     void setOnStep(std::function<void()> onStep) { progress_.setOnStep(std::move(onStep)); }
-    // Toward `color` from what it shows now (nothing when it goes there already); the first time, at once.
+    // Toward `color` from what it shows now (nothing when it goes there already); the first time, and after the theme
+    // changed, at once.
     void to(Scheduler* scheduler, Color color, Duration duration);
     Color value() const;
     bool running() const { return progress_.running(); }
@@ -139,6 +178,7 @@ private:
     Color from_;
     Color to_;
     bool set_ = false;
+    std::uint64_t styleGeneration_ = 0;     // the scheduler's when it was last set
 };
 
 } // namespace glw

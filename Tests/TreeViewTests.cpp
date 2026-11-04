@@ -103,6 +103,40 @@ struct Treed {
 
 } // namespace
 
+// The top of the row widget showing `index`, in the list's coordinates.
+float rowTop(const TreeView& tree, std::size_t index) {
+    const Widget* row = tree.list().rowWidget(index);
+    return row ? row->bounds().y : -1;
+}
+
+TEST(aNodesChildrenComeOutFromUnderItAndGoBack) {
+    tests::testScheduler().setAnimationsEnabled(true);
+    Treed t;
+    const float h = tests::testContext().theme.itemView.rowHeight;
+    CHECK(rowTop(*t.tree, 1) == h);                                 // b, under a
+    // opened: its two children come out from under it, b going down with them (the theme's normal motion, 167 ms)
+    t.tree->setExpanded({t.a}, true);
+    t.root.layout();
+    CHECK(t.shown() == "a .a1 .a2 b");
+    CHECK(rowTop(*t.tree, 3) < 1.5f * h);                           // b: still near where it was
+    tests::advance(std::chrono::milliseconds(60));
+    t.root.layout();
+    const float midway = rowTop(*t.tree, 3);
+    CHECK(midway > 1.5f * h && midway < 3 * h);
+    tests::advance(std::chrono::milliseconds(200));
+    t.root.layout();
+    CHECK(rowTop(*t.tree, 3) == 3 * h && !tests::testScheduler().animating());
+    // closed: they go back under it, b coming up; what they showed shows meanwhile
+    t.tree->setExpanded({t.a}, false);
+    t.root.layout();
+    CHECK(t.shown() == "a b");
+    CHECK(rowTop(*t.tree, 1) > 2.5f * h);
+    tests::advance(std::chrono::milliseconds(300));
+    t.root.layout();
+    CHECK(rowTop(*t.tree, 1) == h && !tests::testScheduler().animating());
+    tests::testScheduler().setAnimationsEnabled(false);
+}
+
 TEST(aTreeExpandsAndCollapses) {
     Treed t;
     CHECK(t.shown() == "a b");

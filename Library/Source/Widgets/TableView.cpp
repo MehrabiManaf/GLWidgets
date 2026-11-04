@@ -3,6 +3,7 @@
 #include <GLWidgets/Widgets/TableView.hpp>
 
 #include <GLWidgets/Paint/Painter.hpp>
+#include <GLWidgets/Widgets/Bevel.hpp>
 #include <GLWidgets/Widgets/Label.hpp>
 #include <GLWidgets/Widgets/Layout.hpp>
 #include <GLWidgets/Widgets/UiRoot.hpp>
@@ -343,6 +344,26 @@ double TableView::maximumHorizontalOffset() const {
 }
 
 void TableView::setHorizontalOffset(double offset) {
+    smoothAcross_.stop();
+    showAcross(offset);
+}
+
+void TableView::scrollAcrossSmoothly(double offset) {
+    // to the nearest column's edge (or the end): the column at the start shows whole
+    const double limit = maximumHorizontalOffset();
+    offset = std::clamp(offset, 0.0, limit);
+    if (offset < limit - 0.5 && lefts_.size() > 1) {
+        const auto after = std::upper_bound(lefts_.begin(), lefts_.end() - 1, offset);
+        const double right = after != lefts_.end() - 1 ? *after : limit, left = *(after - 1);
+        offset = std::min(limit, offset - left < right - offset ? left : right);
+    }
+    if (offset == smoothAcross_.target(horizontalOffset_))
+        return;
+    const UiContext* ui = context();
+    smoothAcross_.scrollTo(scheduler(), horizontalOffset_, offset, ui ? Duration(ui->theme.motion.scroll) : Duration::zero());
+}
+
+void TableView::showAcross(double offset) {
     offset = std::clamp(offset, 0.0, maximumHorizontalOffset());
     if (offset == horizontalOffset_)
         return;
@@ -444,9 +465,9 @@ void TableView::paintOver(PaintContext& context) {
         return;
     const ScrollBarStyle& s = context.ui.theme.scrollBar;
     context.painter.fillRect(barTrack(), s.track);
-    const Rect thumb = barThumb().inflated(-2);
     const VisualState state{.hovered = barHovered_ || thumbGrab_, .pressed = thumbGrab_.has_value()};
-    context.painter.fillRoundedRect(thumb, std::min(thumb.width, thumb.height) / 2, s.thumb.resolve(state));
+    barWide_.animateTo(scheduler(), state.hovered ? 1.0f : 0.0f, context.ui.theme.motion.fast);
+    paintScrollThumb(context.painter, barThumb(), false, true, barWide_.value(), s.thumb.resolve(state));
 }
 
 // ---- events ----
@@ -496,9 +517,9 @@ void TableView::onPreviewMouse(MouseEvent& event) {
         const float across = shift ? -event.wheelDelta.y : (rightToLeft() ? -event.wheelDelta.x : event.wheelDelta.x);
         if (across == 0 || (!shift && std::abs(event.wheelDelta.x) < std::abs(event.wheelDelta.y)))
             return;
-        const double before = horizontalOffset_;
-        setHorizontalOffset(horizontalOffset_ + across * wheelStep);
-        event.handled = horizontalOffset_ != before;
+        const double before = smoothAcross_.target(horizontalOffset_);
+        scrollAcrossSmoothly(before + smoothAcross_.boosted(across * wheelStep));
+        event.handled = smoothAcross_.target(horizontalOffset_) != before;
         break;
     }
     case MouseEventType::Move: {

@@ -19,6 +19,7 @@
 #include <functional>
 #include <memory>
 #include <optional>
+#include <unordered_map>
 #include <unordered_set>
 #include <vector>
 
@@ -107,12 +108,17 @@ private:
     void expandAt(std::size_t index);
     void collapseAt(std::size_t index);
     void toggle(std::size_t index);
+    // A node's arrow: from 0 (collapsed) to 1 (expanded), turning while it opens or closes. Kept by node, not by row:
+    // the rows are bound again (others show the node) as the entries change.
+    float turnOf(TreeNode node, bool expanded) const;
+    void turn(TreeNode node, bool expanded);
 
     std::shared_ptr<TreeModel> model_;
     std::unique_ptr<TreeDelegate> delegate_;
     std::shared_ptr<Rows> rows_;
     ListView* list_ = nullptr;
     std::unordered_set<std::uint64_t> expanded_;
+    std::unordered_map<std::uint64_t, std::unique_ptr<Animation>> turning_;    // the arrows turning, by node
     std::function<void(std::optional<TreeNode>)> onCurrentChanged_;
     std::function<void(TreeNode)> onActivated_;
 };

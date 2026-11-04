@@ -72,6 +72,31 @@ TEST(wheelScrollsAndStops) {
     CHECK(near(s.area->offset().y, 152));
 }
 
+TEST(theWheelScrollsEasedAndFurtherWhenTurnedAgain) {
+    tests::testScheduler().setAnimationsEnabled(true);
+    Scrolled s;
+    const auto wheel = [&](float y) { s.root.dispatch(platform::MouseWheelScrolled{1, {0, y}, {50, 50}}); };
+    // a step: going there over the theme's scroll motion (150 ms), fast at first
+    wheel(-1);
+    CHECK(near(s.area->offset().y, 0) && tests::testScheduler().animating());
+    tests::advance(std::chrono::milliseconds(50));
+    const float early = s.area->offset().y;
+    CHECK(early > 24 && early < 48);
+    // turned again on the way: further than where it went, by a larger step (the wheel turns faster)
+    wheel(-1);
+    tests::advance(std::chrono::milliseconds(300));
+    CHECK(near(s.area->offset().y, 48 + 48 * 1.3f) && !tests::testScheduler().animating());
+    // after a pause: a step again
+    wheel(1);
+    tests::advance(std::chrono::milliseconds(300));
+    CHECK(near(s.area->offset().y, 48 * 1.3f));
+    // the thumb dragged, or the offset set: at once, what was on its way stopped
+    wheel(-1);
+    s.area->setOffset({0, 10});
+    CHECK(near(s.area->offset().y, 10) && !tests::testScheduler().animating());
+    tests::testScheduler().setAnimationsEnabled(false);
+}
+
 TEST(draggingTheThumb) {
     Scrolled s;
     const float bar = tests::testContext().theme.scrollBar.width;

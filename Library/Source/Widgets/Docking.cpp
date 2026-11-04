@@ -14,6 +14,7 @@
 #include <GLWidgets/Widgets/WindowFrame.hpp>
 
 #include <algorithm>
+#include <unordered_map>
 #include <cmath>
 #include <cstdio>
 #include <map>
@@ -52,6 +53,9 @@ public:
         label_ = &add(std::make_unique<Label>(Label::Props{.text = title, .elide = true}));
         label_->setAlignment(Alignment::Start, Alignment::Center);
     }
+
+    // The panel it is the tab of: what the row knows it by when the tabs are made again.
+    const std::string& panelId() const { return owner_.panelId(index_); }
 
     void setActive(bool active) {
         active_ = active;
@@ -205,7 +209,10 @@ private:
 // that the tab shown is in view.
 class TabRow final : public Widget {
 public:
-    TabRow() { setClipsChildren(true); }
+    TabRow() {
+        setClipsChildren(true);
+        slide_.set(1);
+    }
 
     // The tab at `index` comes into view when it is next arranged.
     void reveal(std::size_t index) {
@@ -244,13 +251,43 @@ protected:
         }
         reveal_.reset();
         offset_ = std::clamp(offset_, 0.0f, maxOffset());
+        // where each tab starts, from the bar's start (not scrolled); a tab that was elsewhere (one before it closed, it was
+        // moved) slides there from where it showed (the theme's normal motion)
+        std::vector<float> starts(widths.size());
+        std::vector<std::string> ids(widths.size());
+        bool moved = false;
+        float sum = 0;
+        for (std::size_t i = 0; i < widths.size(); ++i) {
+            starts[i] = sum;
+            sum += widths[i];
+            ids[i] = static_cast<const DockTab&>(*children()[i]).panelId();
+            if (const auto it = targets_.find(ids[i]); it != targets_.end() && it->second != starts[i])
+                moved = true;
+        }
+        if (moved) {
+            shifts_.assign(widths.size(), 0.0f);
+            for (std::size_t i = 0; i < widths.size(); ++i) {
+                if (const auto it = shown_.find(ids[i]); it != shown_.end())
+                    shifts_[i] = it->second - starts[i];
+            }
+            const UiContext* ui = context();
+            slide_.set(0);
+            slide_.animateTo(scheduler(), 1, ui ? Duration(ui->theme.motion.normal) : Duration::zero(), Easing::OutCubic);
+        } else if (shifts_.size() != widths.size()) {
+            shifts_.assign(widths.size(), 0.0f);
+        }
+        targets_.clear();
+        shown_.clear();
+        const float left = 1 - slide_.value();      // of the way still to go
         // from the start side, less what is scrolled
         const bool rtl = rightToLeft();
-        float at = -offset_;
         for (std::size_t i = 0; i < widths.size(); ++i) {
+            const float start = starts[i] + shifts_[i] * left;
+            const float at = start - offset_;
             const float x = rtl ? content.right() - at - widths[i] : content.x + at;
             children()[i]->arrange({x, content.y, widths[i], content.height});
-            at += widths[i];
+            targets_[ids[i]] = starts[i];
+            shown_[ids[i]] = start;
         }
     }
 
@@ -335,6 +372,11 @@ private:
     std::optional<std::size_t> reveal_;
     std::optional<float> grab_; // the thumb dragged: where it was pressed
     float grabOffset_ = 0;
+    // the tabs sliding to their places: where each starts, and showed, by its panel's id; how far each still is
+    std::unordered_map<std::string, float> targets_;
+    std::unordered_map<std::string, float> shown_;
+    std::vector<float> shifts_;
+    Animation slide_{[this] { rearrange(); }};
 };
 
 // A button after a stack's tabs: an icon, a background while the mouse is over it; clicked, its handler after the event.
@@ -1559,10 +1601,32 @@ void DockArea::endDrag(Point point, bool drop) {
 void DockArea::paintOver(PaintContext& context) {
     const DockStyle& s = context.ui.theme.dock;
     paint::Painter& p = context.painter;
+    // where a drop would go: moving there from where it showed (the mouse went to another guide), faded in where there was
+    // none, out when there is none any more
+    const Duration fast = context.ui.theme.motion.fast;
     if (indicator_) {
-        const Rect r = indicator_->inflated(-4);
-        p.fillRoundedRect(r, 6, s.dropZone);
-        p.strokeRoundedRect(r, 6, 1.5f, s.activeLine);
+        if (*indicator_ != indicatorTo_) {
+            const float shown = indicatorMove_.value();
+            const Rect now{indicatorFrom_.x + (indicatorTo_.x - indicatorFrom_.x) * shown, indicatorFrom_.y + (indicatorTo_.y - indicatorFrom_.y) * shown,
+                           indicatorFrom_.width + (indicatorTo_.width - indicatorFrom_.width) * shown,
+                           indicatorFrom_.height + (indicatorTo_.height - indicatorFrom_.height) * shown};
+            indicatorFrom_ = indicatorShown_.value() > 0 ? now : *indicator_;
+            indicatorTo_ = *indicator_;
+            indicatorMove_.set(0);
+            indicatorMove_.animateTo(scheduler(), 1, context.ui.theme.motion.normal, Easing::OutCubic);
+        }
+        indicatorShown_.animateTo(scheduler(), 1, fast);
+    } else {
+        indicatorShown_.animateTo(scheduler(), 0, fast);
+    }
+    if (const float alpha = indicatorShown_.value(); alpha > 0) {
+        const float t = indicatorMove_.value();
+        const Rect r = Rect{indicatorFrom_.x + (indicatorTo_.x - indicatorFrom_.x) * t, indicatorFrom_.y + (indicatorTo_.y - indicatorFrom_.y) * t,
+                            indicatorFrom_.width + (indicatorTo_.width - indicatorFrom_.width) * t,
+                            indicatorFrom_.height + (indicatorTo_.height - indicatorFrom_.height) * t}
+                           .inflated(-4);
+        p.fillRoundedRect(r, 6, withAlpha(s.dropZone, s.dropZone.a * alpha));
+        p.strokeRoundedRect(r, 6, 1.5f, withAlpha(s.activeLine, s.activeLine.a * alpha));
     }
     if (!guides_)
         return;

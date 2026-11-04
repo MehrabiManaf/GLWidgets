@@ -316,6 +316,11 @@ private:
     std::optional<Point> titlePress_;       // the root's: a title pressed, not dragged yet
     DockTabs* pressedStack_ = nullptr;      // its stack, when it is a stack's (none: a floating window's)
     std::optional<Rect> indicator_;         // where a tab dragged (from this area or another) would go
+    // ... as it shows: moving from one place to the next, fading in and out
+    Rect indicatorFrom_;
+    Rect indicatorTo_;
+    Animation indicatorMove_{[this] { invalidatePaint(); }};
+    Animation indicatorShown_{[this] { invalidatePaint(); }};
     struct Guides {
         Widget* node = nullptr;             // the stack (or the center) under the mouse
         std::optional<DockSide> hovered;

@@ -79,9 +79,11 @@ public:
     std::pair<std::size_t, std::size_t> shownColumns() const;
 
     // ---- across ----
-    // Dips scrolled from the start side (the left, or the right in right to left), and how far it goes.
+    // Dips scrolled from the start side (the left, or the right in right to left), and how far it goes. Set at once, or
+    // eased there (the wheel).
     double horizontalOffset() const { return horizontalOffset_; }
     void setHorizontalOffset(double offset);
+    void scrollAcrossSmoothly(double offset);
     double maximumHorizontalOffset() const;
     // Scrolled across so that the column shows (as little as it takes).
     void scrollToColumn(std::size_t column);
@@ -162,6 +164,9 @@ private:
     bool stretchLast_ = true;
     bool headerVisible_ = true;
     double horizontalOffset_ = 0;
+    void showAcross(double offset);
+    Animation barWide_{[this] { invalidatePaint(); }};          // its bar's thumb: thin (0) or wide (1)
+    SmoothScroll smoothAcross_{[this](double offset) { showAcross(offset); }};
 
     Rect area_;                             // its content rectangle
     bool showBar_ = false;                  // across

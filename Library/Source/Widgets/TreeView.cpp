@@ -8,6 +8,7 @@
 #include <GLWidgets/Widgets/UiRoot.hpp>
 
 #include <algorithm>
+#include <cmath>
 
 namespace glw {
 
@@ -26,18 +27,20 @@ const ItemViewStyle& itemStyle(const Widget& widget) {
 // A row of a tree: its indent, its arrow (by a node with children), the delegate's widget after them.
 class TreeRow final : public Widget {
 public:
-    TreeRow(std::unique_ptr<Widget> content, std::function<void(std::size_t)> toggle) : toggle_(std::move(toggle)) {
+    TreeRow(std::unique_ptr<Widget> content, std::function<void(std::size_t)> toggle, std::function<float(TreeNode, bool)> turn)
+        : toggle_(std::move(toggle)), turn_(std::move(turn)) {
         content_ = &addChild(std::move(content));
     }
 
     Widget& content() const { return *content_; }
 
-    void show(std::size_t index, std::uint32_t depth, bool expandable, bool expanded) {
+    void show(std::size_t index, TreeNode node, std::uint32_t depth, bool expandable, bool expanded) {
         index_ = index;
         if (depth != depth_) {
             depth_ = depth;
             invalidateLayout();
         }
+        node_ = node;
         expandable_ = expandable;
         expanded_ = expanded;
         invalidatePaint();
@@ -59,19 +62,18 @@ protected:
     void paint(PaintContext& context) override {
         if (!expandable_)
             return;
-        // a chevron: toward the end side when collapsed, down when expanded
+        // a chevron: toward the end side when collapsed, down when expanded, turning between
         const Rect a = arrow();
         const Point c = a.center();
         const bool rtl = rightToLeft();
         const float d = rtl ? -1.0f : 1.0f;
         const Color color = itemStyle(*this).expander;
-        if (expanded_) {
-            const Point points[] = {{c.x - 4, c.y - 2}, {c.x, c.y + 2}, {c.x + 4, c.y - 2}};
-            context.painter.drawPolyline(points, 1.4f, color);
-        } else {
-            const Point points[] = {{c.x - 2 * d, c.y - 4}, {c.x + 2 * d, c.y}, {c.x - 2 * d, c.y + 4}};
-            context.painter.drawPolyline(points, 1.4f, color);
-        }
+        const float angle = turn_(node_, expanded_) * 1.5707964f * d;
+        const float cs = std::cos(angle), sn = std::sin(angle);
+        Point points[] = {{-2 * d, -4}, {2 * d, 0}, {-2 * d, 4}};
+        for (Point& q : points)
+            q = {c.x + q.x * cs - q.y * sn, c.y + q.x * sn + q.y * cs};
+        context.painter.drawPolyline(points, 1.4f, color);
     }
 
     void onMouse(MouseEvent& event) override {
@@ -97,6 +99,8 @@ private:
     std::uint32_t depth_ = 0;
     bool expandable_ = false;
     bool expanded_ = false;
+    TreeNode node_;
+    std::function<float(TreeNode, bool)> turn_;         // how far its node's arrow has turned, from 0 to 1
 };
 
 } // namespace
@@ -134,13 +138,14 @@ public:
 
     std::unique_ptr<Widget> makeRow() override {
         std::unique_ptr<Widget> content = tree_.delegate_ ? tree_.delegate_->makeRow() : std::make_unique<Widget>();
-        return std::make_unique<TreeRow>(std::move(content), [tree = &tree_](std::size_t index) { tree->toggle(index); });
+        return std::make_unique<TreeRow>(std::move(content), [tree = &tree_](std::size_t index) { tree->toggle(index); },
+                                         [tree = &tree_](TreeNode node, bool expanded) { return tree->turnOf(node, expanded); });
     }
 
     void bindRow(Widget& row, std::size_t index) override {
         auto& treeRow = static_cast<TreeRow&>(row);
         const Entry& entry = tree_.rows_->entries[index];
-        treeRow.show(index, entry.depth, entry.expandable, entry.expanded);
+        treeRow.show(index, entry.node, entry.depth, entry.expandable, entry.expanded);
         if (tree_.delegate_)
             tree_.delegate_->bindRow(treeRow.content(), entry.node);
     }
@@ -155,6 +160,7 @@ TreeView::TreeView() : rows_(std::make_shared<Rows>()) {
     list_ = &add(std::make_unique<ListView>());
     list_->setModel(rows_);
     list_->setDelegate(std::make_unique<RowDelegate>(*this));
+    list_->setAnimatesChanges(true);        // a node's children come out from under it, and go back
     list_->setOnCurrentChanged([this](std::optional<std::size_t> index) {
         if (onCurrentChanged_)
             onCurrentChanged_(index ? std::optional<TreeNode>(rows_->entries[*index].node) : std::nullopt);
@@ -265,10 +271,31 @@ std::optional<std::size_t> TreeView::childPosition(std::optional<TreeNode> paren
     return at;
 }
 
+float TreeView::turnOf(TreeNode node, bool expanded) const {
+    if (const auto it = turning_.find(node.id); it != turning_.end() && it->second->running())
+        return it->second->value();
+    return expanded ? 1.0f : 0.0f;
+}
+
+void TreeView::turn(TreeNode node, bool expanded) {
+    // from where it shows (turning back on the way), over the theme's normal motion, as a collapsible panel's arrow
+    const float from = turnOf(node, !expanded);
+    std::erase_if(turning_, [](const auto& entry) { return !entry.second->running(); });
+    auto& animation = turning_[node.id];
+    if (!animation)
+        animation = std::make_unique<Animation>([this] { invalidatePaint(); });
+    animation->set(from);
+    const UiContext* ui = context();
+    animation->animateTo(scheduler(), expanded ? 1.0f : 0.0f, ui ? Duration(ui->theme.motion.normal) : Duration::zero(), Easing::OutCubic);
+    if (!animation->running())
+        turning_.erase(node.id);
+}
+
 void TreeView::expandAt(std::size_t index) {
     Entry& entry = rows_->entries[index];
     if (!entry.expandable || entry.expanded)
         return;
+    turn(entry.node, true);
     entry.expanded = true;
     expanded_.insert(entry.node.id);
     std::vector<Entry> children;
@@ -283,6 +310,7 @@ void TreeView::collapseAt(std::size_t index) {
     Entry& entry = rows_->entries[index];
     if (!entry.expanded)
         return;
+    turn(entry.node, false);
     entry.expanded = false;
     expanded_.erase(entry.node.id);
     const std::size_t end = subtreeEnd(index);

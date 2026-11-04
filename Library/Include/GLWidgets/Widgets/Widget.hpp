@@ -275,6 +275,9 @@ protected:
     // Where its children are cut when it clips them (its own coordinates): all of it by default, a scroll area's viewport.
     // Outside of it, its children are neither painted nor under the mouse.
     virtual Rect childrenClip() const { return {0, 0, bounds_.width, bounds_.height}; }
+    // Where one of its children is cut besides (its children's coordinates), neither painted nor under the mouse out of
+    // it: rows of a list being revealed. None by default.
+    virtual std::optional<Rect> childClip(const Widget& child) const { return std::nullopt; }
     // Its children's coordinates to its own (they are painted, under the mouse and mapped through it): none by default, a
     // canvas's zoom and pan.
     virtual paint::Transform childrenTransform() const { return {}; }

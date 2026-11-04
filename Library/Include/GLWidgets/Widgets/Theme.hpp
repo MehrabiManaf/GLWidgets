@@ -276,6 +276,8 @@ struct MotionStyle {
     std::chrono::milliseconds fast{83};
     std::chrono::milliseconds normal{167};
     std::chrono::milliseconds slow{250};
+    std::chrono::milliseconds scroll{180};      // a turn of the wheel, a page: eased to where it goes (a faster wheel
+                                                // goes further: SmoothScroll::boosted)
 };
 
 struct ToolTipStyle {

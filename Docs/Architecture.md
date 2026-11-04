@@ -415,7 +415,9 @@ whether it has any before they are counted, so a folder is read when it is expan
 it; a node expanded stays so when its parent is collapsed and expanded again. The view draws each row's indent and arrow
 (a chevron, mirrored in right to left), the delegate the rest; Right and Left go in and out, a double click or Enter
 expands, collapses and activates. With a thousand folders of a thousand files, all of them expanded (a million rows),
-painting and scrolling take less than a tenth of a millisecond, and a folder collapsed or expanded above them 1.5 ms.
+painting and scrolling take less than a tenth of a millisecond, and a folder collapsed or expanded above them 1.5 ms;
+eased (its children coming out from under it, the million rows after them moving), each of its twelve frames takes
+0.07 ms on average, the first, which binds the rows that come, 0.4 ms (`glw_benchmarks`).
 
 A `TableView` is a ListView of the rows of a `TableModel` (rows and columns, with headers; it tells what changed by
 ranges of rows, and when its columns change), under a header that stays as they scroll. Each row is a strip of the cells
@@ -534,6 +536,33 @@ arrow turning with it; so the widgets under it move with it, laid out again at e
 is hidden (not painted, not under the mouse, not in the order of the focus); the focus in it goes to the header as it
 closes. A click on the header, Enter or Space toggle it, Right and Left open and close it (mirrored in right to left);
 buttons at the header's end trigger actions (a + that adds an item). `ui::CollapsiblePanel` takes its content as children.
+
+**What moves, moves eased**, from where it shows, and is drawn only while it does:
+- **Scrolling** (`SmoothScroll`): the wheel, a page, a press on a bar's track and an area brought into view ease the
+  offset there (the theme's `motion.scroll`, 180 ms, decelerating), in scroll areas, lists, trees, tables (across too)
+  and text editors; turned again on the way, the wheel goes further from where it was going, by a step 1.3 times the
+  last, up to 6 times a step (`SmoothScroll::boosted`): turned fast, it flies; a pause or the other way, a step again.
+  In lists, trees and tables it goes to the nearest row's top (across, a column's edge; in a text editor, a line's),
+  or the end, so that what is at the top shows whole; a thumb let go goes there too. A thumb dragged, an offset set,
+  and what follows the caret are at once.
+- **A tree's nodes open and close eased** (`ListView::setAnimatesChanges`): the rows inserted among those that show come
+  out from under the row before them, cut to what of them shows (`Widget::childClip`), the rows after them going down
+  with them; rows removed go back under it showing what they showed, the rows after them coming up. At most a view's
+  height moves: a thousand children come in as fast as ten.
+- **Popups come in**: faded in (the window's opacity) and their content sliding 6 dips out of their anchor (down from
+  what a menu opens under, up when it went above, across from a submenu's item, up into the middle for a dialog; a
+  tooltip only fades), over `motion.normal`. They close at once.
+- **Scroll bars** are thin by their outer edge, and widen while the mouse is over them or their thumb is dragged
+  (`paintScrollThumb`).
+- **A tree's arrows** turn as their node opens or closes, as a collapsible panel's (kept by node: the rows showing
+  them are bound again as the entries change); **a stack's tabs** slide to their places when one before them
+  closes or one is moved; **where a dragged tab would go** moves from guide to guide and fades in and out.
+- **A canvas** zooms at the mouse eased (the point under it staying), and is framed (F) eased: the zoom in proportion,
+  the middle moving to the area's.
+- **The theme** (`Application::setTheme`) eases through the themes of the palettes between the one shown and the new
+  one (`motion.slow`), then is the new one; the colors of states do not ease after it (`Scheduler::styleChanged`).
+- **A text editor's caret** glides to where it goes (`motion.fast`).
+- In the node editor, links fade in as they are made and out as they go, and the pins a dragged link could end on glow.
 
 **The pointer's shape** (`platform::Cursor`, the system's own shapes) is what the widget under the mouse says
 (`Widget::setCursor`, or `cursorAt` for a widget whose parts differ), or its nearest ancestor that says one, the arrow

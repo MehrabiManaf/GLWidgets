@@ -140,6 +140,7 @@ private:
     bool input_;
     bool linked_ = false;
     Widget* editor_ = nullptr;
+    glw::Animation glow_{[this] { invalidatePaint(); }};    // lit while a link dragged could end on it
 };
 
 // ---- a node ----
@@ -285,7 +286,7 @@ public:
             unlinkIf([&](const Link& l) { return l.in == &in; });
         else
             unlinkIf([&](const Link& l) { return l.out == &out; });
-        links_.push_back({&out, &in});
+        links_.push_back({&out, &in, appearing()});
         out.setLinked(true);
         in.setLinked(true);
         changed();
@@ -405,6 +406,15 @@ public:
         return w ? local + Point{w->bounds().x, w->bounds().y} : local;
     }
 
+    // While a link is dragged: whether it could end on `pin` (an output and an input of one type, on two nodes).
+    bool linkFits(const PinRow& pin) const {
+        if (!linkFrom_ || &pin == linkFrom_)
+            return false;
+        const PinRow& out = pin.input() ? *linkFrom_ : pin;
+        const PinRow& in = pin.input() ? pin : *linkFrom_;
+        return !out.input() && in.input() && &out.node() != &in.node() && out.type() == in.type();
+    }
+
     void setOnChanged(std::function<void()> handler) { onChanged_ = std::move(handler); }
     std::size_t nodeCount() const { return nodes_.size(); }
     std::size_t linkCount() const { return links_.size(); }
@@ -414,7 +424,12 @@ protected:
     void paintUnderItems(PaintContext& context) override {
         const Rect shown = visibleArea();
         for (const Link& l : links_)
-            drawLink(context.painter, inCanvas(*l.out, l.out->connector()), inCanvas(*l.in, l.in->connector()), l.out->type(), shown, 1);
+            drawLink(context.painter, inCanvas(*l.out, l.out->connector()), inCanvas(*l.in, l.in->connector()), l.out->type(), shown,
+                     l.shown ? l.shown->value() : 1);
+        // those gone, fading where they were
+        std::erase_if(fading_, [](const Fading& f) { return !f.shown->running(); });
+        for (const Fading& f : fading_)
+            drawLink(context.painter, f.from, f.to, f.type, shown, f.shown->value());
     }
 
     void paintOverItems(PaintContext& context) override {
@@ -498,7 +513,22 @@ private:
     struct Link {
         PinRow* out;
         PinRow* in;
+        std::unique_ptr<glw::Animation> shown;      // from 0 to 1 as it comes (the theme's normal motion)
     };
+    // a link gone, fading out where it was (its pins may be gone too)
+    struct Fading {
+        Point from;
+        Point to;
+        Type type;
+        std::unique_ptr<glw::Animation> shown;
+    };
+
+    std::unique_ptr<glw::Animation> appearing() {
+        auto a = std::make_unique<glw::Animation>([this] { invalidatePaint(); });
+        a->set(0);
+        a->animateTo(scheduler(), 1, context() ? Duration(context()->theme.motion.normal) : Duration::zero());
+        return a;
+    }
 
     template <class F>
     void unlinkIf(F&& gone) {
@@ -508,6 +538,12 @@ private:
                 return false;
             touched.push_back(l.out);
             touched.push_back(l.in);
+            // faded out where it was
+            auto fade = std::make_unique<glw::Animation>([this] { invalidatePaint(); });
+            fade->set(l.shown ? l.shown->value() : 1.0f);
+            fade->animateTo(scheduler(), 0, context() ? Duration(context()->theme.motion.normal) : Duration::zero());
+            if (fade->running())
+                fading_.push_back({inCanvas(*l.out, l.out->connector()), inCanvas(*l.in, l.in->connector()), l.out->type(), std::move(fade)});
             return true;
         });
         for (PinRow* pin : touched) {
@@ -544,6 +580,7 @@ private:
 
     std::vector<NodeView*> nodes_;
     std::vector<Link> links_;
+    std::vector<Fading> fading_;
     std::vector<std::pair<Widget*, Point>> moving_;
     Point moveFrom_;
     PinRow* linkFrom_ = nullptr;
@@ -585,6 +622,10 @@ void PinRow::paint(PaintContext& context) {
     const Point c = connector();
     const Color color = typeColor(spec_.type);
     const bool lit = hovered();
+    // where the link dragged could go: a soft glow of its color, eased in and out
+    glow_.animateTo(scheduler(), graph_.linkFits(*this) ? 1.0f : 0.0f, context.ui.theme.motion.normal);
+    if (const float g = glow_.value(); g > 0)
+        p.drawShadow({c.x - 7, c.y - 7, 14, 14}, 7, 4, {color.r, color.g, color.b, 0.6f * g});
     if (spec_.type == Type::Exec) {
         // an arrow toward where execution goes
         const float d = rightToLeft() ? -1.0f : 1.0f;

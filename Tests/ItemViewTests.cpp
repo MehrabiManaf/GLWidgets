@@ -208,3 +208,51 @@ TEST(aStringListShowsItsTexts) {
     root.layout();
     CHECK(shown(list, 1) == "Second" && shown(list, 3) == "Four");
 }
+
+TEST(aListScrollsToARowsTop) {
+    UiRoot root(tests::testContext());
+    std::vector<LocalizedText> items;
+    for (int i = 0; i < 100; ++i)
+        items.emplace_back("item " + std::to_string(i));
+    auto model = std::make_shared<StringListModel>(std::move(items));
+    auto made = std::make_unique<ListView>();
+    ListView& list = *made;
+    list.setModel(model);
+    root.setSize({200, 130});
+    root.setContent(std::move(made));
+    root.layout();
+    const double h = tests::testContext().theme.itemView.rowHeight;
+    // sent between two rows: to the nearer row's top, so that the row at the top shows whole
+    list.scrollSmoothly(h * 2.3);
+    CHECK(list.offset() == h * 2);
+    list.scrollSmoothly(h * 4.6);
+    CHECK(list.offset() == h * 5);
+    // the end: where it ends, though not a row's top
+    list.scrollSmoothly(1e9);
+    CHECK(list.offset() == list.maximumOffset());
+    // set: where it is set
+    list.setOffset(h * 1.5);
+    CHECK(list.offset() == h * 1.5);
+}
+
+TEST(aFasterWheelScrollsFurtherUpToALimit) {
+    SmoothScroll smooth([](double) {});
+    Scheduler& scheduler = tests::testScheduler();
+    scheduler.setAnimationsEnabled(true);
+    // a step at rest: a step
+    CHECK(smooth.boosted(100) == 100);
+    smooth.scrollTo(&scheduler, 0, 100, std::chrono::milliseconds(180));
+    // again, on the way: larger each time, up to the most it goes
+    double step = 0;
+    for (int i = 0; i < 20; ++i) {
+        step = smooth.boosted(100);
+        smooth.scrollTo(&scheduler, 0, 1000, std::chrono::milliseconds(180));
+    }
+    CHECK(step == 100 * SmoothScroll::maximumBoost);
+    // the other way: a step again
+    CHECK(smooth.boosted(-100) == -100);
+    // a pause (it got there): a step again
+    tests::advance(std::chrono::milliseconds(300));
+    CHECK(smooth.boosted(-100) == -100);
+    scheduler.setAnimationsEnabled(false);
+}

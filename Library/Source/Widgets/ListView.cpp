@@ -5,6 +5,7 @@
 #include "Widgets/RowHeights.hpp"
 
 #include <GLWidgets/Paint/Painter.hpp>
+#include <GLWidgets/Widgets/Bevel.hpp>
 #include <GLWidgets/Widgets/Label.hpp>
 #include <GLWidgets/Widgets/Layout.hpp>
 #include <GLWidgets/Widgets/UiRoot.hpp>
@@ -127,6 +128,29 @@ double ListView::maximumOffset() const {
 }
 
 void ListView::setOffset(double offset) {
+    smooth_.stop();
+    show(offset);
+}
+
+double ListView::snapped(double offset) const {
+    const double limit = maximumOffset();
+    offset = std::clamp(offset, 0.0, limit);
+    if (offset >= limit - 0.5 || heights_->count() == 0)
+        return offset;
+    const std::size_t at = heights_->indexAt(offset);
+    const double top = heights_->top(at), bottom = top + heights_->height(at);
+    return std::min(limit, offset - top < bottom - offset ? top : bottom);
+}
+
+void ListView::scrollSmoothly(double offset) {
+    offset = snapped(offset);
+    if (offset == smooth_.target(offset_))
+        return;
+    const UiContext* ui = context();
+    smooth_.scrollTo(scheduler(), offset_, offset, ui ? Duration(ui->theme.motion.scroll) : Duration::zero());
+}
+
+void ListView::show(double offset) {
     offset = std::clamp(offset, 0.0, maximumOffset());
     if (offset == offset_)
         return;
@@ -171,7 +195,7 @@ std::optional<std::size_t> ListView::itemAt(Point point) const {
 std::optional<Rect> ListView::itemRect(std::size_t index) const {
     if (index >= heights_->count())
         return std::nullopt;
-    const double y = heights_->top(index) - offset_;
+    const double y = heights_->top(index) - offset_ + shiftOf(index);
     const double h = heights_->height(index);
     if (y + h <= 0 || y >= viewport_.height)
         return std::nullopt;
@@ -211,6 +235,28 @@ void ListView::layRows() {
             spare_.push_back(std::exchange(row.widget, nullptr));
         rebindAll_ = false;
     }
+    // a widget for row `i`: the one that showed it, or one put aside or made, bound to it
+    const auto acquire = [&](std::size_t i) {
+        Widget* widget = nullptr;
+        for (Row& row : before) {
+            if (row.widget && row.index == i) {
+                widget = std::exchange(row.widget, nullptr);
+                break;
+            }
+        }
+        if (!widget) {
+            if (!spare_.empty()) {
+                widget = spare_.back();
+                spare_.pop_back();
+            } else {
+                widget = &addChild(delegate_->makeRow());
+            }
+            delegate_->bindRow(*widget, i);
+            if (!heights_->uniform())
+                heights_->set(i, widget->measure({viewport_.width, unbounded}).height);
+        }
+        return widget;
+    };
     // the rows from the one at the offset down, as long as they show; measured as they are bound, which may move the end
     // (and so the offset, which the row at it keeps, or the end, scrolled to it): chosen again then
     for (int pass = 0; pass < 4 && delegate_ && count > 0 && viewport_.height > 0; ++pass) {
@@ -230,25 +276,7 @@ void ListView::layRows() {
         }
         double y = -within;
         for (std::size_t i = first; i < count && y < viewport_.height; ++i) {
-            Widget* widget = nullptr;
-            for (Row& row : before) {
-                if (row.widget && row.index == i) {
-                    widget = std::exchange(row.widget, nullptr);
-                    break;
-                }
-            }
-            if (!widget) {
-                if (!spare_.empty()) {
-                    widget = spare_.back();
-                    spare_.pop_back();
-                } else {
-                    widget = &addChild(delegate_->makeRow());
-                }
-                delegate_->bindRow(*widget, i);
-                if (!heights_->uniform())
-                    heights_->set(i, widget->measure({viewport_.width, unbounded}).height);
-            }
-            rows_.push_back({widget, i});
+            rows_.push_back({acquire(i), i});
             y += heights_->height(i);
         }
         if (heights_->uniform())
@@ -258,6 +286,18 @@ void ListView::layRows() {
             break;
         offset_ = anchored;
     }
+    // rows coming in: those after them show above their places, the rows there too
+    if (change_ && change_->inserted && delegate_) {
+        for (std::size_t i = change_->first + change_->count; i < count; ++i) {
+            const double y = heights_->top(i) - offset_ + shiftOf(i);
+            if (y >= viewport_.height)
+                break;
+            const bool shown = std::any_of(rows_.begin(), rows_.end(), [&](const Row& row) { return row.index == i; });
+            if (!shown && y + heights_->height(i) > 0)
+                rows_.push_back({acquire(i), i});
+        }
+        std::sort(rows_.begin(), rows_.end(), [](const Row& a, const Row& b) { return a.index < b.index; });
+    }
     // those that showed and do not now: put aside, out of sight
     for (Row& row : before) {
         if (row.widget)
@@ -266,10 +306,75 @@ void ListView::layRows() {
     for (Widget* widget : spare_)
         widget->arrange({viewport_.x, parkedAt, viewport_.width, 0});
     const bool rtl = rightToLeft();
+    revealed_.clear();
     for (const Row& row : rows_) {
-        const float top = viewport_.y + static_cast<float>(heights_->top(row.index) - offset_);
+        const float top = viewport_.y + static_cast<float>(heights_->top(row.index) - offset_ + shiftOf(row.index));
         arrangeInCell(*row.widget, {viewport_.x, top, viewport_.width, static_cast<float>(heights_->height(row.index))}, rtl);
+        if (change_ && change_->inserted && row.index >= change_->first && row.index < change_->first + change_->count)
+            revealed_.push_back(row.widget);
     }
+    // rows going: where they were, cut to what is left of them
+    if (change_ && !change_->inserted) {
+        const double top = heights_->top(std::min(change_->first, count)) - offset_;
+        for (const auto& [widget, below] : change_->leaving) {
+            const Size size = widget->size();
+            widget->arrange({viewport_.x, viewport_.y + static_cast<float>(top + below), viewport_.width, size.height});
+            revealed_.push_back(widget);
+        }
+    }
+}
+
+// ---- rows inserted and removed, eased ----
+
+double ListView::gap() const {
+    if (!change_)
+        return 0;
+    // no more than it takes to fill the view: a thousand rows come in as fast as ten
+    const double height = std::min(change_->height, static_cast<double>(viewport_.height));
+    const double shown = changeMotion_.value();
+    return height * (change_->inserted ? shown : 1 - shown);
+}
+
+double ListView::shiftOf(std::size_t index) const {
+    if (!change_)
+        return 0;
+    if (change_->inserted)
+        return index >= change_->first + change_->count ? gap() - change_->height : 0;
+    return index >= change_->first ? gap() : 0;
+}
+
+Rect ListView::gapRect() const {
+    const std::size_t at = change_ ? std::min(change_->first, heights_->count()) : 0;
+    const double top = (at < heights_->count() ? heights_->top(at) : heights_->total()) - offset_;
+    return {viewport_.x, viewport_.y + static_cast<float>(top), viewport_.width, static_cast<float>(gap())};
+}
+
+std::optional<Rect> ListView::childClip(const Widget& child) const {
+    if (!change_ || std::find(revealed_.begin(), revealed_.end(), &child) == revealed_.end())
+        return std::nullopt;
+    return gapRect();
+}
+
+void ListView::changeStepped() {
+    if (!changeMotion_.running()) {
+        endChange();
+        return;
+    }
+    layRows();
+    invalidatePaint();
+}
+
+void ListView::endChange(bool lay) {
+    if (!change_)
+        return;
+    for (const auto& [widget, below] : change_->leaving)
+        spare_.push_back(widget);
+    change_.reset();
+    revealed_.clear();
+    changeMotion_.set(1);
+    if (lay)
+        layRows();
+    invalidatePaint();
 }
 
 // ---- painting ----
@@ -283,6 +388,18 @@ void ListView::paint(PaintContext& context) {
         const std::optional<Rect> rect = itemRect(row.index);
         if (!rect)
             continue;
+        // a row coming in: cut as it is
+        const bool cut = change_ && change_->inserted && row.index >= change_->first && row.index < change_->first + change_->count;
+        if (cut)
+            p.pushClip(gapRect());
+        struct Uncut {
+            paint::Painter& p;
+            bool cut;
+            ~Uncut() {
+                if (cut)
+                    p.popClip();
+            }
+        } uncut{p, cut};
         const Rect r{rect->x + s.inset, rect->y + 1, rect->width - 2 * s.inset, rect->height - 2};
         const VisualState state{.hovered = hovered_ == row.index, .pressed = pressed_ == row.index && hovered_ == row.index};
         const bool selected = isSelected(row.index);
@@ -317,9 +434,9 @@ void ListView::paintOver(PaintContext& context) {
         return;
     const ScrollBarStyle& s = context.ui.theme.scrollBar;
     context.painter.fillRect(scrollTrack(), s.track);
-    const Rect thumb = scrollThumb().inflated(-2);
     const VisualState state{.hovered = barHovered_ || thumbGrab_, .pressed = thumbGrab_.has_value()};
-    context.painter.fillRoundedRect(thumb, std::min(thumb.width, thumb.height) / 2, s.thumb.resolve(state));
+    barWide_.animateTo(scheduler(), state.hovered ? 1.0f : 0.0f, context.ui.theme.motion.fast);
+    paintScrollThumb(context.painter, scrollThumb(), true, !rightToLeft(), barWide_.value(), s.thumb.resolve(state));
 }
 
 // ---- events ----
@@ -328,9 +445,10 @@ void ListView::onMouse(MouseEvent& event) {
     const bool left = event.button == platform::MouseButton::Left;
     switch (event.type) {
     case MouseEventType::Wheel: {
-        const double before = offset_;
-        setOffset(offset_ - event.wheelDelta.y * wheelRows * style().rowHeight);
-        event.handled = offset_ != before;
+        // from where it is going: turned again, it goes further
+        const double before = smooth_.target(offset_);
+        scrollSmoothly(before + smooth_.boosted(-event.wheelDelta.y * wheelRows * style().rowHeight));
+        event.handled = smooth_.target(offset_) != before;
         break;
     }
     case MouseEventType::Move: {
@@ -362,7 +480,7 @@ void ListView::onMouse(MouseEvent& event) {
             if (thumb.contains(event.position))
                 thumbGrab_ = event.position.y - thumb.y;
             else        // a page toward where it was pressed
-                setOffset(offset_ + (event.position.y < thumb.y ? -1.0 : 1.0) * viewport_.height);
+                scrollSmoothly(smooth_.target(offset_) + (event.position.y < thumb.y ? -1.0 : 1.0) * viewport_.height);
             invalidatePaint();
             return;
         }
@@ -381,6 +499,8 @@ void ListView::onMouse(MouseEvent& event) {
             return;
         if (thumbGrab_ || pressed_)
             event.handled = true;
+        if (thumbGrab_)
+            scrollSmoothly(offset_);    // the rows at the top whole
         thumbGrab_.reset();
         pressed_.reset();
         invalidatePaint();
@@ -443,7 +563,16 @@ void ListView::onStyleChanged() {
 void ListView::itemsInserted(std::size_t first, std::size_t count) {
     // what shows stays where it is: items before it push the offset down as much as they take
     const bool before = !rows_.empty() && first <= rows_.front().index;
+    smooth_.stop();         // what shows is kept in place: not where a scroll was going
+    endChange(false);
+    // among the rows that show: they come out from under the row before them
+    const bool among = animatesChanges_ && !rows_.empty() && first > rows_.front().index && first <= rows_.back().index + 1;
     heights_->insert(first, count);
+    if (among && scheduler() && scheduler()->animationsEnabled() && count > 0) {
+        change_ = Change{first, count, heights_->top(first + count) - heights_->top(first), true, {}};
+        changeMotion_.set(0);
+        changeMotion_.animateTo(scheduler(), 1, context() ? Duration(context()->theme.motion.normal) : Duration::zero(), Easing::OutCubic);
+    }
     if (before)
         offset_ += heights_->top(first + count) - heights_->top(first);
     if (current_ && *current_ >= first)
@@ -456,6 +585,22 @@ void ListView::itemsInserted(std::size_t first, std::size_t count) {
 void ListView::itemsRemoved(std::size_t first, std::size_t count) {
     const bool before = !rows_.empty() && first < rows_.front().index;
     const double removed = heights_->top(first + count) - heights_->top(first);
+    smooth_.stop();
+    endChange(false);
+    // among the rows that show: they go back under the row before them, showing what they showed meanwhile
+    if (animatesChanges_ && !rows_.empty() && first > rows_.front().index && first <= rows_.back().index && count > 0 &&
+        scheduler() && scheduler()->animationsEnabled()) {
+        Change change{first, count, removed, false, {}};
+        std::erase_if(rows_, [&](Row& row) {
+            if (row.index < first || row.index >= first + count)
+                return false;
+            change.leaving.emplace_back(row.widget, heights_->top(row.index) - heights_->top(first));
+            return true;
+        });
+        change_ = std::move(change);
+        changeMotion_.set(0);
+        changeMotion_.animateTo(scheduler(), 1, context() ? Duration(context()->theme.motion.normal) : Duration::zero(), Easing::OutCubic);
+    }
     heights_->remove(first, count);
     if (before)
         offset_ = std::max(0.0, offset_ - removed);
@@ -483,7 +628,9 @@ void ListView::itemsChanged(std::size_t first, std::size_t count) {
 }
 
 void ListView::modelReset() {
+    endChange(false);
     resetHeights();
+    smooth_.stop();
     offset_ = 0;
     current_.reset();
     hovered_.reset();

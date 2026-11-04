@@ -150,6 +150,9 @@ public:
     bool needsPaint() const { return needsPaint_; }
     // A color laid over everything it shows (a window under a dialog, dimmed); none: nothing.
     void setOverlay(std::optional<Color> color);
+    // Its content this far from its place, drawn and under the mouse there: a popup sliding in.
+    void setContentShift(Point shift);
+    Point contentShift() const { return contentShift_; }
     // The theme / the language of the context changed: every widget is told, and the tree laid out again.
     void styleChanged();
     void languageChanged();
@@ -200,6 +203,7 @@ private:
     bool needsLayout_ = true;
     bool needsPaint_ = true;
     std::optional<Color> overlay_;
+    Point contentShift_;
     std::uint64_t layoutGeneration_ = 1;
 
     Widget* focus_ = nullptr;

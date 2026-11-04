@@ -7,6 +7,7 @@
 #include <GLWidgets/Paint/DrawList.hpp>
 #include <GLWidgets/Text/Font.hpp>
 #include <GLWidgets/Text/GlyphAtlas.hpp>
+#include <GLWidgets/Widgets/Animation.hpp>
 #include <GLWidgets/Widgets/Canvas.hpp>
 #include <GLWidgets/Widgets/Label.hpp>
 #include <GLWidgets/Widgets/Layout.hpp>
@@ -169,8 +170,33 @@ void nodesInATreeView(glw::UiContext& ui) {
         tree.setExpanded({1}, open);
         root.paint(drawn);
     });
-    std::printf("%9zu | %10.1f | %8.2f | %8.2f | %8.2f | %8zu\n", tree.shownCount(), expandAll, paint, scroll, toggle,
-                tree.list().children().size());
+    // the same, eased, the folder at the top (its thousand children and the million rows after them moving, its arrow
+    // turning): every frame of it, 16 ms apart
+    tree.list().setOffset(0);
+    root.paint(drawn);
+    glw::TimePoint now = Clock::now();
+    glw::Scheduler scheduler([&now] { return now; });
+    ui.scheduler = &scheduler;
+    double total = 0, worst = 0;
+    int frames = 0;
+    bool first = true;
+    for (int k = 0; k < 6; ++k) {
+        first = !first;
+        tree.setExpanded({0}, first);
+        do {
+            const double frame = once([&] {
+                scheduler.tick();
+                root.paint(drawn);
+            });
+            total += frame;
+            worst = std::max(worst, frame);
+            ++frames;
+            now += std::chrono::milliseconds(16);
+        } while (scheduler.animating());
+    }
+    ui.scheduler = nullptr;
+    std::printf("%9zu | %10.1f | %8.2f | %8.2f | %8.2f | %8.2f | %8.2f | %6d | %8zu\n", tree.shownCount(), expandAll, paint, scroll, toggle,
+                total / frames, worst, frames / 6, tree.list().children().size());
 }
 
 // A table of rows x columns, made when asked: no memory per cell.
@@ -343,7 +369,7 @@ int main(int argc, char** argv) {
     }
 
     std::printf("\nA tree view, all expanded, milliseconds\n");
-    std::printf("    nodes | expand all |    paint |   scroll |   toggle |  widgets\n");
+    std::printf("    nodes | expand all |    paint |   scroll |   toggle |    eased |    worst | frames |  widgets\n");
     nodesInATreeView(ui);
 
     std::printf("\nA table view (a widget for each cell that shows), milliseconds\n");

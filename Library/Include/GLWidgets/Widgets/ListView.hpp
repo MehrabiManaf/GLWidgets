@@ -14,6 +14,7 @@
 //   list->setModel(texts);                  // a StringListModel shows its texts by itself (a TextDelegate)
 //   list->setOnActivated([](std::size_t i) { ... });
 #include <GLWidgets/Export.hpp>
+#include <GLWidgets/Widgets/Animation.hpp>
 #include <GLWidgets/Widgets/ItemModel.hpp>
 #include <GLWidgets/Widgets/Theme.hpp>
 #include <GLWidgets/Widgets/Widget.hpp>
@@ -68,15 +69,22 @@ public:
     void setRowHeight(std::optional<float> height);
     void setSelectionMode(SelectionMode mode);
     SelectionMode selectionMode() const { return selectionMode_; }
+    // Rows inserted where they show come out from under the row before them, those after them moving down with them, and
+    // rows removed go back under it (the theme's normal motion): a tree's nodes opened and closed. Off by default.
+    void setAnimatesChanges(bool animates) { animatesChanges_ = animates; }
 
     std::optional<std::size_t> current() const { return current_; }
     // Scrolled to it, when it is one.
     void setCurrent(std::optional<std::size_t> index);
     bool isSelected(std::size_t index) const { return selectionMode_ == SelectionMode::Single && current_ == index; }
 
-    // Dips scrolled from the top, and how far it goes.
+    // Dips scrolled from the top (where it shows now), and how far it goes.
     double offset() const { return offset_; }
+    // At once.
     void setOffset(double offset);
+    // Eased there (the theme's scroll motion) from where it shows: what the wheel and a page do. Where it goes is a row's
+    // top, the nearest (or the end), so that the rows at the top show whole.
+    void scrollSmoothly(double offset);
     double maximumOffset() const;
     // Scrolled so that the item shows (as little as it takes).
     void scrollTo(std::size_t index);
@@ -103,6 +111,7 @@ protected:
     void paint(PaintContext& context) override;
     void paintOver(PaintContext& context) override;
     Rect childrenClip() const override { return viewport_; }
+    std::optional<Rect> childClip(const Widget& child) const override;
     void onMouse(MouseEvent& event) override;
     void onKey(KeyEvent& event) override;
     void onHoverChanged(bool hovered) override;
@@ -122,6 +131,21 @@ private:
     void modelReset() override;
 
     void resetHeights();
+    void show(double offset);           // the offset shown: clamped, the rows laid again
+    double snapped(double offset) const;    // the nearest row's top, or the end
+    // rows inserted or removed, easing in or out
+    struct Change {
+        std::size_t first = 0;          // inserted: the first of them; removed: the first after them (where they were)
+        std::size_t count = 0;          // inserted: how many
+        double height = 0;              // of all of them
+        bool inserted = true;
+        std::vector<std::pair<Widget*, double>> leaving;   // removed: their widgets, and where they were below the first's top
+    };
+    double gap() const;                 // how much of the change shows: what was inserted growing, what was removed shrinking
+    double shiftOf(std::size_t index) const;    // a row after the change: how far from its place it shows
+    Rect gapRect() const;               // where what was inserted or removed shows (its coordinates)
+    void changeStepped();
+    void endChange(bool lay = true);      // the rows laid again (not in the model's notifications: it has changed)
     // The rows that show for the offset: bound (the widgets of those that showed kept), measured, placed.
     void layRows();
     void activate(std::size_t index);
@@ -135,6 +159,12 @@ private:
     SelectionMode selectionMode_ = SelectionMode::Single;
     std::optional<std::size_t> current_;
     double offset_ = 0;
+    bool animatesChanges_ = false;
+    std::optional<Change> change_;
+    std::vector<Widget*> revealed_;     // the rows cut to the gap now
+    Animation changeMotion_{[this] { changeStepped(); }};
+    Animation barWide_{[this] { invalidatePaint(); }};          // its bar's thumb: thin (0) or wide (1)
+    SmoothScroll smooth_{[this](double offset) { show(offset); }};
 
     Rect area_;                         // its content rectangle, the bar's place in it
     Rect viewport_;                     // where rows show

@@ -3,6 +3,7 @@
 #include <GLWidgets/Widgets/ScrollArea.hpp>
 
 #include <GLWidgets/Paint/Painter.hpp>
+#include <GLWidgets/Widgets/Bevel.hpp>
 #include <GLWidgets/Widgets/Layout.hpp>
 #include <GLWidgets/Widgets/UiRoot.hpp>
 
@@ -27,6 +28,8 @@ void ScrollArea::setContent(std::unique_ptr<Widget> content) {
     if (content_)
         removeChild(*content_);
     content_ = content ? &addChild(std::move(content)) : nullptr;
+    smoothX_.stop();
+    smoothY_.stop();
     offset_ = {};
 }
 
@@ -106,6 +109,12 @@ Point ScrollArea::maximumOffset() const {
 }
 
 void ScrollArea::setOffset(Point offset) {
+    smoothX_.stop();
+    smoothY_.stop();
+    show(offset);
+}
+
+void ScrollArea::show(Point offset) {
     const Point limit = maximumOffset();
     offset = {std::clamp(offset.x, 0.0f, limit.x), std::clamp(offset.y, 0.0f, limit.y)};
     if (offset == offset_)
@@ -116,8 +125,29 @@ void ScrollArea::setOffset(Point offset) {
     invalidatePaint();
 }
 
+Point ScrollArea::going() const {
+    return {static_cast<float>(smoothX_.target(offset_.x)), static_cast<float>(smoothY_.target(offset_.y))};
+}
+
+void ScrollArea::scrollTo(Point offset) {
+    const Point limit = maximumOffset();
+    offset = {std::clamp(offset.x, 0.0f, limit.x), std::clamp(offset.y, 0.0f, limit.y)};
+    const Point to = going();
+    const UiContext* ui = context();
+    const Duration duration = ui ? Duration(ui->theme.motion.scroll) : Duration::zero();
+    if (offset.x != to.x)
+        smoothX_.scrollTo(scheduler(), offset_.x, offset.x, duration);
+    if (offset.y != to.y)
+        smoothY_.scrollTo(scheduler(), offset_.y, offset.y, duration);
+}
+
+void ScrollArea::scrollBy(Point delta) {
+    scrollTo(going() + delta);
+}
+
 void ScrollArea::revealArea(const Rect& area) {
     const bool rtl = rightToLeft();
+    // from where it shows now (where `area` is), eased there
     Point offset = offset_;
     // above the viewport, or longer than it: its top shows; below it: its bottom
     if (area.top() < viewport_.top() || area.height > viewport_.height)
@@ -130,7 +160,8 @@ void ScrollArea::revealArea(const Rect& area) {
         offset.x += sign * (area.right() - viewport_.right());
     else if (area.left() < viewport_.left())
         offset.x -= sign * (viewport_.left() - area.left());
-    setOffset(offset);
+    if (offset != offset_)          // it shows: a scroll on its way is left alone
+        scrollTo(offset);
 }
 
 // ---- the bars ----
@@ -175,17 +206,20 @@ ScrollArea::Part ScrollArea::partAt(Point p) const {
 void ScrollArea::paintOver(PaintContext& context) {
     const ScrollBarStyle& s = style();
     paint::Painter& p = context.painter;
-    const auto draw = [&](const Bar& bar, Part thumb) {
+    const Duration fast = context.ui.theme.motion.fast;
+    // thin until the mouse is over the bar or the thumb is dragged
+    const auto draw = [&](const Bar& bar, Part thumb, Part track, Animation& wide) {
         p.fillRect(bar.track, s.track);
+        const bool over = hoveredPart_ == thumb || hoveredPart_ == track || dragging_ == thumb;
+        wide.animateTo(scheduler(), over ? 1.0f : 0.0f, fast);
         const VisualState state{.hovered = hoveredPart_ == thumb || dragging_ == thumb, .pressed = dragging_ == thumb};
-        const float inset = 2;
-        const Rect t = bar.thumb.inflated(-inset);
-        p.fillRoundedRect(t, std::min(t.width, t.height) / 2, s.thumb.resolve(state));
+        const bool vertical = thumb == Part::VerticalThumb;
+        paintScrollThumb(p, bar.thumb, vertical, !vertical || !rightToLeft(), wide.value(), s.thumb.resolve(state));
     };
     if (const auto bar = verticalBar())
-        draw(*bar, Part::VerticalThumb);
+        draw(*bar, Part::VerticalThumb, Part::VerticalTrack, wideVertical_);
     if (const auto bar = horizontalBar())
-        draw(*bar, Part::HorizontalThumb);
+        draw(*bar, Part::HorizontalThumb, Part::HorizontalTrack, wideHorizontal_);
 }
 
 // ---- events ----
@@ -198,10 +232,15 @@ void ScrollArea::onMouse(MouseEvent& event) {
         Point delta{event.wheelDelta.x * wheelStep * (rightToLeft() ? -1.0f : 1.0f), -event.wheelDelta.y * wheelStep};
         if (across)
             delta = {-event.wheelDelta.y * wheelStep, 0};
-        const Point before = offset_;
+        const Point before = going();
+        // turned again on the way: further
+        if (delta.x != 0)
+            delta.x = static_cast<float>(smoothX_.boosted(delta.x));
+        if (delta.y != 0)
+            delta.y = static_cast<float>(smoothY_.boosted(delta.y));
         scrollBy(delta);
         // what does not move this one may move a scroll area around it
-        event.handled = offset_ != before;
+        event.handled = going() != before;
         break;
     }
     case MouseEventType::Press: {

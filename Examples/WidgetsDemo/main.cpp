@@ -17,6 +17,7 @@
 #include <GLWidgets/Paint/Painter.hpp>
 #include <GLWidgets/Widgets/ToolBar.hpp>
 #include <GLWidgets/Widgets/TableView.hpp>
+#include <GLWidgets/Widgets/TreeView.hpp>
 
 #include <algorithm>
 #include <cstdio>
@@ -92,7 +93,11 @@ constexpr const char* persianCatalog = R"({
     "Its value": "مقدارش",
     "Undo steps": "گام‌های واگرد",
     "Click a header to open or close it; + adds a variable.": "روی سرتیتری کلیک کنید تا باز یا بسته شود؛ + یک متغیر اضافه می‌کند.",
-    "A modal dialog: the window waits for it": "یک گفتگوی مودال: پنجره منتظرش می‌ماند"
+    "A modal dialog: the window waits for it": "یک گفتگوی مودال: پنجره منتظرش می‌ماند",
+    "Folder {n}": "پوشه‌ی {n}",
+    "File {n}": "پرونده‌ی {n}",
+    "A thousand folders of a thousand files, all open: a million rows. Open and close them.":
+      "هزار پوشه با هزار پرونده در هر کدام، همه باز: یک میلیون سطر. بازشان کنید و ببندید."
   }
 })";
 
@@ -110,6 +115,24 @@ public:
     glw::LocalizedText header(std::size_t column) const override { return tr("Column {n}").arg("n", std::to_string(column + 1)); }
 };
 
+// A thousand folders of a thousand files, made when they show: a node's id says which it is.
+class Folders final : public glw::TreeModel {
+public:
+    static constexpr std::uint64_t count = 1000;
+    std::size_t childCount(std::optional<glw::TreeNode> parent) const override {
+        return !parent ? count : parent->id < count ? count : 0;
+    }
+    glw::TreeNode child(std::optional<glw::TreeNode> parent, std::size_t index) const override {
+        return {!parent ? index : count + parent->id * count + index};
+    }
+    bool hasChildren(glw::TreeNode node) const override { return node.id < count; }
+    static glw::LocalizedText name(glw::TreeNode node) {
+        if (node.id < count)
+            return tr("Folder {n}").arg("n", std::to_string(node.id + 1));
+        return tr("File {n}").arg("n", std::to_string((node.id - count) / count + 1) + "." + std::to_string((node.id - count) % count + 1));
+    }
+};
+
 // The window's interface, and what its handlers change: bound pointers live as long as the handlers that use them, so they
 // are members, and the handlers capture `this`.
 struct Page {
@@ -123,16 +146,20 @@ struct Page {
     int variableCount = 0;
     bool light = false;
 
-    // The form on one side; on the other a list of a million items over a table of a million rows; handles between them.
+    // The form on one side; on the other a list of a million items, a tree of a million rows and a table of a million rows;
+    // handles between them.
     std::unique_ptr<glw::Widget> build() {
         std::unique_ptr<glw::Widget> items = list();
         items->setStretch(1);
         items->setMinimumSize({0, 120});
+        std::unique_ptr<glw::Widget> nodes = tree();
+        nodes->setStretch(1);
+        nodes->setMinimumSize({0, 120});
         std::unique_ptr<glw::Widget> rows = table();
         rows->setStretch(1);
         rows->setMinimumSize({0, 120});
         return ui::Splitter({}, ui::ScrollArea({}, form()).stretch(3).minimumSize({280, 0}),
-                            ui::Splitter({.orientation = glw::Orientation::Vertical}, std::move(items), std::move(rows))
+                            ui::Splitter({.orientation = glw::Orientation::Vertical}, std::move(items), std::move(nodes), std::move(rows))
                                 .stretch(2)
                                 .minimumSize({160, 0}));
     }
@@ -148,6 +175,21 @@ struct Page {
         return ui::VStack({.spacing = 8},
                           ui::Label({.text = tr("A million rows of fifty columns. Drag a header's edge to resize its column; Shift and the "
                                                 "wheel scroll across."),
+                                     .muted = true,
+                                     .wrap = true}),
+                          std::move(view))
+            .padding(glw::Insets::all(16));
+    }
+
+    // A million rows, eased as its folders open and close (each pushing the hundreds of thousands after it).
+    std::unique_ptr<glw::Widget> tree() {
+        auto view = std::make_unique<glw::TreeView>();
+        view->setModel(std::make_shared<Folders>());
+        view->setDelegate(std::make_unique<glw::TreeTextDelegate>(&Folders::name));
+        view->expandAll();
+        view->setStretch(1);
+        return ui::VStack({.spacing = 8},
+                          ui::Label({.text = tr("A thousand folders of a thousand files, all open: a million rows. Open and close them."),
                                      .muted = true,
                                      .wrap = true}),
                           std::move(view))
@@ -307,9 +349,10 @@ struct Page {
         app.setLanguage(app.translator().language() == "fa" ? "en" : "fa");
     }
 
-    void switchTheme() {
+    // Eased, by its button; at once at the start (--light).
+    void switchTheme(bool animated = true) {
         light = !light;
-        app.setTheme(light ? glw::Theme::light() : glw::Theme::dark());
+        app.setTheme(light ? glw::Theme::light() : glw::Theme::dark(), animated);
         themeButton->setText(light ? tr("Dark theme") : tr("Light theme"));
     }
 };
@@ -338,7 +381,7 @@ int main(int argc, char** argv) {
         Page page{app};
         page.window = &app.openWindow({.title = tr("Widgets"), .size = {980, 640}}, page.build());
         if (light)
-            page.switchTheme();
+            page.switchTheme(false);
         return app.run(frames);
     } catch (const std::exception& e) {
         std::fprintf(stderr, "widgets_demo: %s\n", e.what());

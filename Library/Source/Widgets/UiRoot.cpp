@@ -192,6 +192,8 @@ void tell(Widget& widget, void (*f)(Widget&)) {
 } // namespace
 
 void UiRoot::styleChanged() {
+    if (context_.scheduler)
+        context_.scheduler->styleChanged();     // the colors of states: the new ones at once
     if (content_)
         tell(*content_, [](Widget& w) { w.onStyleChanged(); });
     invalidateLayout();
@@ -217,9 +219,18 @@ void UiRoot::invalidateLayout() {
 void UiRoot::layout() {
     if (content_ && content_->visible()) {
         content_->measure(size_);
-        arrangeInCell(*content_, {0, 0, size_.width, size_.height}, rightToLeft_);
+        arrangeInCell(*content_, {contentShift_.x, contentShift_.y, size_.width, size_.height}, rightToLeft_);
     }
     needsLayout_ = false;
+    needsPaint_ = true;
+}
+
+void UiRoot::setContentShift(Point shift) {
+    if (shift == contentShift_)
+        return;
+    contentShift_ = shift;
+    // placed again where it is (its measure is kept)
+    needsLayout_ = true;
     needsPaint_ = true;
 }
 
@@ -264,8 +275,15 @@ void UiRoot::paintTree(Widget& widget, PaintContext& context, const Rect& visibl
         painter.pushTransform(transform);
         inside = transform.unmap(inside);
     }
-    for (const auto& child : widget.children_)
-        paintTree(*child, context, inside);
+    for (const auto& child : widget.children_) {
+        if (const std::optional<Rect> cut = widget.childClip(*child)) {
+            painter.pushClip(*cut);
+            paintTree(*child, context, inside.intersected(*cut));
+            painter.popClip();
+        } else {
+            paintTree(*child, context, inside);
+        }
+    }
     if (transformed)
         painter.popTransform();
     if (widget.clipsChildren_)
@@ -284,6 +302,8 @@ Widget* UiRoot::hit(Widget& widget, Point point) {
     if (!widget.clipsChildren_ || widget.childrenClip().contains(local)) {
         const Point inner = widget.childrenTransform().unmap(local);
         for (auto it = widget.children_.rbegin(); it != widget.children_.rend(); ++it) {
+            if (const std::optional<Rect> cut = widget.childClip(**it); cut && !cut->contains(inner))
+                continue;
             if (Widget* found = hit(**it, inner))
                 return found;
         }

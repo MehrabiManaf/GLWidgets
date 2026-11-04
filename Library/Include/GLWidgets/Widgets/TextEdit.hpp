@@ -106,11 +106,12 @@ public:
 
     // ---- scrolling ----
 
-    // Dips scrolled from the top / from the start.
+    // Dips scrolled from the top / from the start: set at once (what follows the caret), or eased there (the wheel).
     double verticalOffset() const { return offsetY_; }
     float horizontalOffset() const { return offsetX_; }
     void setVerticalOffset(double offset);
     void setHorizontalOffset(float offset);
+    void scrollSmoothly(double vertical, float horizontal);
     // Scrolled as little as it takes for `position` to show.
     void scrollTo(TextPosition position);
     float lineHeight() const { return lineHeight_; }
@@ -131,6 +132,7 @@ protected:
     void paintOver(PaintContext& context) override;
     Rect childrenClip() const override { return text_; }
     std::optional<platform::Cursor> cursorAt(Point point) const override;
+    void onHoverChanged(bool hovered) override;
     void onMouse(MouseEvent& event) override;
     void onKey(KeyEvent& event) override;
     void onText(TextEvent& event) override;
@@ -214,6 +216,17 @@ private:
     Rect text_;                             // where the lines show: less the gutter and the bar
     double offsetY_ = 0;
     float offsetX_ = 0;
+    void showY(double offset);
+    void showX(float offset);
+    bool barHovered_ = false;
+    // the caret as it shows, in the text's coordinates: gliding from where it was to where it is
+    Point caretFrom_;
+    Point caretTo_;
+    bool caretPlaced_ = false;
+    Animation caretGlide_{[this] { invalidatePaint(); }};
+    Animation barWide_{[this] { invalidatePaint(); }};          // its bar's thumb: thin (0) or wide (1)
+    SmoothScroll smoothY_{[this](double offset) { showY(offset); }};
+    SmoothScroll smoothX_{[this](double offset) { showX(static_cast<float>(offset)); }};
     bool showBar_ = false;
     std::optional<double> thumbGrab_;
     bool selecting_ = false;

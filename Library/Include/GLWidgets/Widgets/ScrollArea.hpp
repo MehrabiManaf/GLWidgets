@@ -8,6 +8,7 @@
 // In right to left, the content starts on the right and the vertical bar is on the left; the horizontal offset is measured
 // from the start side either way.
 #include <GLWidgets/Export.hpp>
+#include <GLWidgets/Widgets/Animation.hpp>
 #include <GLWidgets/Widgets/Theme.hpp>
 #include <GLWidgets/Widgets/Widget.hpp>
 
@@ -40,10 +41,14 @@ public:
     void setStyle(std::optional<ScrollBarStyle> style);
     const ScrollBarStyle& style() const;
 
-    // Dips scrolled: down, and from the start side across.
+    // Dips scrolled: down, and from the start side across. Where it shows now (it may be easing to another).
     Point offset() const { return offset_; }
+    // At once.
     void setOffset(Point offset);
-    void scrollBy(Point delta) { setOffset(offset_ + delta); }
+    // Eased there (the theme's scroll motion) from where it shows: what the wheel, a page and revealing do.
+    void scrollTo(Point offset);
+    // ... from where it is going.
+    void scrollBy(Point delta);
     Point maximumOffset() const;
     // Where the content shows, in its own coordinates (its content rectangle without the bars).
     Rect viewport() const { return viewport_; }
@@ -68,6 +73,8 @@ private:
     std::optional<Bar> horizontalBar() const;
     Part partAt(Point point) const;
     void placeContent();
+    void show(Point offset);                            // the offset shown: clamped, the content moved
+    Point going() const;                                // where it is going
 
     Widget* content_ = nullptr;
     ScrollBarPolicy horizontal_ = ScrollBarPolicy::Never;
@@ -82,6 +89,10 @@ private:
     Part dragging_ = Part::None;
     float grab_ = 0;                                    // from the thumb's start to the pointer, along the bar
     Part hoveredPart_ = Part::None;
+    Animation wideVertical_{[this] { invalidatePaint(); }};      // its bars' thumbs: thin (0) or wide (1)
+    Animation wideHorizontal_{[this] { invalidatePaint(); }};
+    SmoothScroll smoothX_{[this](double x) { show({static_cast<float>(x), offset_.y}); }};
+    SmoothScroll smoothY_{[this](double y) { show({offset_.x, static_cast<float>(y)}); }};
 };
 
 } // namespace glw

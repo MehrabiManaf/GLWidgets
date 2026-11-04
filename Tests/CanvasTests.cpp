@@ -113,6 +113,33 @@ TEST(aCanvasZoomsAtTheMouseAndPans) {
     CHECK(near(c.canvas->zoom(), c.canvas->maximumZoom()));
 }
 
+TEST(aCanvasZoomsAndFramesEased) {
+    tests::testScheduler().setAnimationsEnabled(true);
+    Canvased c;
+    c.canvas->addItem(std::make_unique<Box>(), {100, 50});
+    c.root.layout();
+    // the wheel: zoomed over the theme's scroll motion, the point under the mouse staying under it all the way
+    const Point mouse{100, 50};
+    c.root.dispatch(platform::MouseWheelScrolled{1, {0, 1}, mouse});
+    tests::advance(std::chrono::milliseconds(50));
+    CHECK(c.canvas->zoom() > 1.02f && c.canvas->zoom() < 1.15f);
+    CHECK(near(c.canvas->fromCanvas({100, 50}), mouse));
+    // turned again on the way: further
+    c.root.dispatch(platform::MouseWheelScrolled{1, {0, 1}, mouse});
+    tests::advance(std::chrono::milliseconds(200));
+    CHECK(near(c.canvas->zoom(), 1.15 * 1.15, 0.001) && near(c.canvas->fromCanvas({100, 50}), mouse));
+    // framed: eased there (the slow motion), the area's middle in the canvas's at the end
+    c.canvas->frame({500, 500, 100, 100}, 0);
+    CHECK(tests::testScheduler().animating());
+    tests::advance(std::chrono::milliseconds(300));
+    CHECK(near(c.canvas->zoom(), 1) && near(c.canvas->fromCanvas({550, 550}), {200, 150}));
+    // panned meanwhile: what was on its way stops
+    c.canvas->frame({0, 0, 50, 50}, 0);
+    c.canvas->setOrigin({10, 10});
+    CHECK(!tests::testScheduler().animating() && near(c.canvas->origin(), {10, 10}));
+    tests::testScheduler().setAnimationsEnabled(false);
+}
+
 TEST(aCanvasPaintsTheItemsThatShowOnly) {
     Canvased c;
     // ten thousand boxes, a grid of 100 x 100, 200 apart
