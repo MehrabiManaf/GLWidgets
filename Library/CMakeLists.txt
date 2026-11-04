@@ -35,6 +35,7 @@ add_library(GLWidgets ${GLW_LIB_TYPE}
     Source/Widgets/ComboBox.cpp
     Source/Widgets/Dialog.cpp
     Source/Widgets/Docking.cpp
+    Source/Widgets/Highlighter.cpp
     Source/Widgets/ItemModel.cpp
     Source/Widgets/Json.cpp
     Source/Widgets/Label.cpp
@@ -51,6 +52,7 @@ add_library(GLWidgets ${GLW_LIB_TYPE}
     Source/Widgets/Splitter.cpp
     Source/Widgets/Theme.cpp
     Source/Widgets/TableView.cpp
+    Source/Widgets/TextEdit.cpp
     Source/Widgets/TreeView.cpp
     Source/Widgets/UiRoot.cpp
     Source/Widgets/Widget.cpp

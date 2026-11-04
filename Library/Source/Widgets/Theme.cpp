@@ -124,6 +124,24 @@ Theme Theme::fromPalette(const Palette& p) {
     t.menu.mark = p.text;
     t.menu.separator = Color{p.text.r, p.text.g, p.text.b, 0.10f};
     t.menu.cornerRadius = t.cornerRadius;
+    // code: the colors of the editors people know (Visual Studio Code's Dark+ and Light+)
+    const bool dark = p.window.r + p.window.g + p.window.b < 1.5f;
+    const auto hex = [](unsigned v) { return Color{((v >> 16) & 0xff) / 255.0f, ((v >> 8) & 0xff) / 255.0f, (v & 0xff) / 255.0f, 1}; };
+    t.textEdit.background = p.window;
+    t.textEdit.text = p.text;
+    t.textEdit.gutter = p.window;
+    t.textEdit.lineNumber = p.disabledText;
+    t.textEdit.currentLineNumber = p.text;
+    t.textEdit.currentLine = Color{p.text.r, p.text.g, p.text.b, 0.04f};
+    t.textEdit.selection = p.selection;
+    t.textEdit.caret = p.text;
+    t.textEdit.keyword = hex(dark ? 0x569CD6 : 0x0000FF);
+    t.textEdit.type = hex(dark ? 0x4EC9B0 : 0x267F99);
+    t.textEdit.string = hex(dark ? 0xCE9178 : 0xA31515);
+    t.textEdit.number = hex(dark ? 0xB5CEA8 : 0x098658);
+    t.textEdit.comment = hex(dark ? 0x6A9955 : 0x008000);
+    t.textEdit.preprocessor = hex(dark ? 0xC586C0 : 0xAF00DB);
+    t.textEdit.function = hex(dark ? 0xDCDCAA : 0x795E26);
     t.toolTip.background = p.surface;
     t.toolTip.border = Color{p.text.r, p.text.g, p.text.b, 0.14f};
     t.toolTip.text = p.text;

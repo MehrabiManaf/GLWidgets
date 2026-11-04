@@ -126,6 +126,8 @@ public:
     void setLanguage(const std::string& language);
     Translator& translator();
     const text::FontLibrary& fonts() const;
+    // To load fonts into (a monospace font for code): what widgets show with them comes from there.
+    text::FontLibrary& fonts();
     platform::Platform& platform();
     rhi::Device& device();
     paint::Renderer& renderer();

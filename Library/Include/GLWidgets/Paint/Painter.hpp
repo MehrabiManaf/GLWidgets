@@ -68,6 +68,8 @@ public:
     void popTransform();
 
     const Transform& transform() const { return transforms_.back(); }
+    // The clip in effect, in the target's dips.
+    const Rect& clip() const { return clips_.back(); }
     float pixelsPerDip() const { return pixelsPerDip_; }
 
 private:

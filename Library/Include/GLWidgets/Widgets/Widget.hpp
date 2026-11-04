@@ -46,6 +46,7 @@ class Painter;
 
 namespace glw::text {
 class TextLayout;
+struct ColorSpan;
 } // namespace glw::text
 
 namespace glw {
@@ -122,6 +123,8 @@ struct GLW_EXPORT PaintContext {
     const UiContext& ui;
 
     void drawText(const text::TextLayout& layout, Point origin, Color color) const;
+    // ... in the colors of `spans` (text::ColorSpan), `color` out of them.
+    void drawText(const text::TextLayout& layout, Point origin, Color color, std::span<const text::ColorSpan> spans) const;
 };
 
 class GLW_EXPORT Widget {

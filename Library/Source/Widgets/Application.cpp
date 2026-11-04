@@ -851,6 +851,10 @@ const text::FontLibrary& Application::fonts() const {
     return *impl_->fonts;
 }
 
+text::FontLibrary& Application::fonts() {
+    return *impl_->fonts;
+}
+
 platform::Platform& Application::platform() {
     return *impl_->platform;
 }

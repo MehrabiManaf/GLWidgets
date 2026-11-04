@@ -450,6 +450,23 @@ of buttons at its end (the default one in the accent color); a button closes it 
 default button (a field without its own Enter handler leaves Enter to it), Escape closes it without a choice; the focus
 starts on its first field. `showMessage` is a dialog of a wrapped text.
 
+**A `TextEdit` holds a text of many lines** (`Widgets/TextEdit.hpp`): code, a log appended to, a field of several lines.
+Its lines are kept apart (positions are lines and bytes in them), and only those that show are laid out (one
+`TextLayout` each, kept while it does not change, those far from what shows let go) and painted; a line's height is the
+fonts', so where a line is, is a product. Lines are not wrapped; it scrolls both ways. Each line is laid out left to right
+whatever is in it, the Persian in its strings and comments shaped and ordered as written. It has the keys of a code
+editor (words, Home to the first character, Up and Down keeping their column, Page Up / Down, Shift to select; Enter
+keeping the indent, Tab and Shift+Tab indenting the lines selected, Backspace back to the tab stop in an indent), the
+mouse (a drag selects, a double click a word, a triple one a line), the clipboard, and undo and redo (what is typed one
+character after the other undone as one; an indent of many lines as one). A `Highlighter` colors a line at a time from
+the state the line before left (a comment going on), so an edit is colored again from its line down only as the lines
+show; `CppHighlighter` does C and what looks like it, in the theme's colors of code (`textEdit`: Dark+ and Light+).
+`text::drawText` takes color spans for it, and leaves out the glyphs of a long line out of the clip. Read only, it is a
+log: `append` adds lines and keeps it at its end while it was there. With a million lines of highlighted C++, painting
+takes 0.4 ms, scrolling a page 1.3 ms, typing a character 0.6 ms; reading it 0.2 s, going to its end (colored from the top
+once) 0.14 s; some 250 lines are laid out at any time (`glw_benchmarks`). Still to come: find and replace, folding,
+wrapped lines, completion (on the search popup), several carets.
+
 **A canvas is a surface without edges with widgets on it** (`Widgets/Canvas.hpp`): the ground of a node editor, a
 diagram, a level map. A widget may give its children coordinates of their own (`childrenTransform`: a uniform scale and a
 translation, `paint::Transform`); they are then painted, found under the mouse and mapped to the root
@@ -721,7 +738,7 @@ The `GLW_USE_SYSTEM_SDL3` option uses an installed SDL3 instead of the pinned re
 | M3 | Widget core: tree, events, focus, layout, a UI root independent of the platform, window chrome as widgets (with the native extras), live resize | Done, apart from the native extras of the chrome and what is listed in [Widgets](#widgets) |
 | M4 | Basic widgets (label, button, line edit, scroll area, splitter), styles, `LocalizedText` and catalogs, right-to-left layouts | Done, apart from plural rules and the formatting of numbers and dates (see [Localization](#localization-and-right-to-left)) |
 | M5 | Docking: major and panel tabs, windows merging and splitting by their tabs, both modes, layout persistence | Done: docking in a window, major tabs and saved layouts (M5a), across windows in the full mode (M5b), global panels, saved workspaces and Wayland's restricted mode (M5c). Wayland's drag-and-drop between windows, and keeping restored windows on the screens there are, later; the restricted mode not yet run on Wayland |
-| M6 | Validation: a node canvas and a code editor (FlowGraph), a chart widget with custom commands, an engine embedding example | In progress: the node canvas (`Canvas`, `node_editor`), menus and popups |
+| M6 | Validation: a node canvas and a code editor (FlowGraph), a chart widget with custom commands, an engine embedding example | In progress: the node canvas (`Canvas`, `node_editor`), menus, popups and dialogs, the code editor (`TextEdit`, `code_editor`) |
 
 ## Open questions
 

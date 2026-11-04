@@ -13,6 +13,10 @@ void PaintContext::drawText(const text::TextLayout& layout, Point origin, Color 
     text::drawText(painter, ui.atlas, layout, origin, color);
 }
 
+void PaintContext::drawText(const text::TextLayout& layout, Point origin, Color color, std::span<const text::ColorSpan> spans) const {
+    text::drawText(painter, ui.atlas, layout, origin, color, spans);
+}
+
 Widget::Widget() = default;
 Widget::~Widget() = default;
 

@@ -13,6 +13,7 @@
 #include <GLWidgets/Widgets/ListView.hpp>
 #include <GLWidgets/Widgets/ScrollArea.hpp>
 #include <GLWidgets/Widgets/TableView.hpp>
+#include <GLWidgets/Widgets/TextEdit.hpp>
 #include <GLWidgets/Widgets/TreeView.hpp>
 #include <GLWidgets/Widgets/UiRoot.hpp>
 
@@ -272,6 +273,46 @@ void nodesOnACanvas(glw::UiContext& ui, int count) {
                 drawn.vertices.size());
 }
 
+// A text of `count` lines of C++, highlighted.
+void linesInATextEdit(glw::UiContext& ui, int count) {
+    std::string code;
+    for (int i = 0; i < count; ++i)
+        code += "    int value" + std::to_string(i) + " = compute(" + std::to_string(i) + ", \"text\"); // a comment\n";
+    glw::UiRoot root(ui);
+    root.setSize({1000, 700});
+    auto made = std::make_unique<glw::TextEdit>();
+    glw::TextEdit& edit = *made;
+    edit.setHighlighter(std::make_unique<glw::CppHighlighter>());
+    root.setContent(std::move(made));
+    const double load = once([&] { edit.setText(code); });
+    glw::paint::DrawList drawn;
+    const double first = once([&] { root.paint(drawn); });
+    const double paint = best(5, [&] {
+        root.invalidatePaint();
+        root.paint(drawn);
+    });
+    double at = 0;
+    const double scroll = best(5, [&] {
+        at += 600;
+        edit.setVerticalOffset(at);
+        root.paint(drawn);
+    });
+    // typing in the middle: the line laid out and colored again, those after it colored again as they show
+    edit.select({static_cast<std::size_t>(count / 2), 10}, {static_cast<std::size_t>(count / 2), 10});
+    root.paint(drawn);
+    const double type = best(5, [&] {
+        edit.replace(edit.selection(), "x");
+        root.paint(drawn);
+    });
+    // to the end: highlighted from where it was known to there, once
+    const double jump = once([&] {
+        edit.select({static_cast<std::size_t>(count), 0}, {static_cast<std::size_t>(count), 0});
+        root.paint(drawn);
+    });
+    std::printf("%9d | %8.1f | %8.2f | %8.2f | %8.2f | %8.2f | %8.1f | %8zu\n", count, load, first, paint, scroll, type, jump,
+                edit.laidOutLines());
+}
+
 } // namespace
 
 int main(int argc, char** argv) {
@@ -314,5 +355,10 @@ int main(int argc, char** argv) {
     std::printf("    nodes |    build |   layout |    paint |      pan |     zoom |      all | vertices\n");
     for (int count : {1000, 10000})
         nodesOnACanvas(ui, count);
+
+    std::printf("\nLines of C++ in a text edit, highlighted, milliseconds\n");
+    std::printf("    lines |     load |    first |    paint |   scroll |     type | to the end |     laid\n");
+    for (int count : {10'000, 1'000'000})
+        linesInATextEdit(ui, count);
     return 0;
 }

@@ -188,6 +188,28 @@ struct MenuStyle {
     float minimumWidth = 160;
 };
 
+// A multi-line text and code (TextEdit): its text, its gutter, and the colors of the kinds of tokens a highlighter finds.
+struct TextEditStyle {
+    Color background;
+    Color text;
+    Color gutter;                   // behind the line numbers
+    Color lineNumber;
+    Color currentLineNumber;
+    Color currentLine;              // behind the line the caret is on
+    Color selection;
+    Color caret;
+    // tokens
+    Color keyword;
+    Color type;
+    Color string;
+    Color number;
+    Color comment;
+    Color preprocessor;
+    Color function;
+    float fontSize = 13;
+    float tabWidth = 4;             // in spaces
+};
+
 // How long things take to change (Fluent's durations): a hover or a press, what opens, what moves far.
 struct MotionStyle {
     std::chrono::milliseconds fast{83};
@@ -263,6 +285,7 @@ struct Theme {
     CardStyle card;
     CanvasStyle canvas;
     MenuStyle menu;
+    TextEditStyle textEdit;
     ToolTipStyle toolTip;
     MotionStyle motion;
     DialogStyle dialog;
