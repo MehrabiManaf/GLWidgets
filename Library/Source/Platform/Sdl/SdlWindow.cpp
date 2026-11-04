@@ -18,6 +18,16 @@
 
 namespace glw::platform::sdl {
 
+namespace {
+
+// A length of dips in the window's units (`f` dips each): rounded up, so that what was measured to fit does (a popup of
+// a text one line long; rounded to the nearest, it may lose part of a pixel, and the text wraps).
+int sizeInUnits(float dips, float f) {
+    return std::max(1, static_cast<int>(std::ceil(dips / f - 0.01f)));
+}
+
+} // namespace
+
 SdlWindow::SdlWindow(SdlPlatform& platform, const WindowDesc& desc) : platform_(platform) {
     GLW_EXPECTS(desc.size.width > 0 && desc.size.height > 0);
     SDL_WindowFlags flags = SDL_WINDOW_HIDDEN | SDL_WINDOW_HIGH_PIXEL_DENSITY;
@@ -37,8 +47,7 @@ SdlWindow::SdlWindow(SdlPlatform& platform, const WindowDesc& desc) : platform_(
         const Point at = desc.position.value_or(Point{});
         flags = SDL_WINDOW_HIDDEN | SDL_WINDOW_HIGH_PIXEL_DENSITY | (desc.tooltip ? SDL_WINDOW_TOOLTIP : SDL_WINDOW_POPUP_MENU);
         window_ = SDL_CreatePopupWindow(popupOf_->window_, static_cast<int>(std::lround(at.x / f)), static_cast<int>(std::lround(at.y / f)),
-                                        std::max(1, static_cast<int>(std::lround(desc.size.width / f))),
-                                        std::max(1, static_cast<int>(std::lround(desc.size.height / f))), flags);
+                                        sizeInUnits(desc.size.width, f), sizeInUnits(desc.size.height, f), flags);
         if (!window_)
             throw Error(std::string("SDL_CreatePopupWindow: ") + SDL_GetError());
         platform_.windowCreated();
@@ -79,7 +88,7 @@ Size SdlWindow::size() const {
 void SdlWindow::setSize(Size size) {
     GLW_EXPECTS(size.width > 0 && size.height > 0);
     const float f = dipsPerUnit(window_);
-    SDL_SetWindowSize(window_, static_cast<int>(std::lround(size.width / f)), static_cast<int>(std::lround(size.height / f)));
+    SDL_SetWindowSize(window_, sizeInUnits(size.width, f), sizeInUnits(size.height, f));
 }
 
 PixelSize SdlWindow::pixelSize() const {

@@ -18,6 +18,8 @@ struct FontMetrics {
     float ascent = 0;       // above the baseline
     float descent = 0;      // below the baseline (positive)
     float lineGap = 0;      // what the font asks for between lines
+    float capHeight = 0;    // of capital letters, above the baseline
+    float xHeight = 0;      // of small letters without ascenders
     float lineHeight() const { return ascent + descent + lineGap; }
 };
 

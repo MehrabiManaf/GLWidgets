@@ -232,6 +232,12 @@ itself.
 pixels (scale and zoom included). Text on the zoomable node canvas therefore stays sharp, at the cost of more atlas entries
 while zooming. Whether MSDF glyphs are needed for the canvas is measured in M5.
 
+**A line placed alone in a box is centered by its letters** (`TextLayout::opticalOffset`, what labels and fields add to
+its origin). The default font is made for Persian: its height has room for marks above and for deep descenders below
+(0.54 em of 1.56), and Latin letters centered by it look 1 to 2 dips high. A line without Arabic script is moved down so
+that the middle of its letters (between their x-height and cap height, from the font's OS/2 table) is the middle of its
+height; a line with Arabic script stays as the font centers it, and a text of several lines is not moved.
+
 Still to come: system fonts and fallback through the system, visual cursor movement (arrow keys across direction
 changes), the composition of input methods in text fields, and tab stops.
 

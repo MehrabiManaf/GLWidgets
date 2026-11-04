@@ -48,6 +48,15 @@ FontMetrics Font::metrics(float size) const {
     m.ascent = face->ascender * scale;
     m.descent = -face->descender * scale;
     m.lineGap = std::max(0.0f, face->height * scale - m.ascent - m.descent);
+    // the OS/2 table's (version 2 and later); a font without them: what most Latin fonts have
+    const auto* os2 = static_cast<const TT_OS2*>(FT_Get_Sfnt_Table(face, FT_SFNT_OS2));
+    if (os2 && os2->version >= 2 && os2->sCapHeight > 0 && os2->sxHeight > 0) {
+        m.capHeight = os2->sCapHeight * scale;
+        m.xHeight = os2->sxHeight * scale;
+    } else {
+        m.capHeight = size * 0.70f;
+        m.xHeight = size * 0.50f;
+    }
     return m;
 }
 

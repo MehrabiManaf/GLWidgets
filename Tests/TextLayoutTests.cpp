@@ -237,3 +237,16 @@ TEST(emptyText) {
     CHECK(t.hitTest({10, 5}) == 0);
     CHECK(t.caret(0).height > 0);
 }
+
+TEST(aLineOfLatinIsCenteredByItsLetters) {
+    // the default font (Vazirmatn) has room below for Persian: Latin letters' middle is above its height's
+    const FontMetrics m = fonts().defaultFont().metrics(16);
+    CHECK(m.capHeight > m.xHeight && m.xHeight > 0 && m.capHeight < m.ascent);
+    const TextLayout latin = layout("Open");
+    const float expected = (m.xHeight + m.capHeight) / 4 - (m.ascent - m.descent) / 2;
+    CHECK(expected > 0.5f && std::abs(latin.opticalOffset() - expected) < 0.01f);
+    // a line with Persian: the font's height is centered on it already; and a text of several lines is not centered
+    CHECK(layout("سلام").opticalOffset() == 0);
+    CHECK(layout("Script ۱ سلام").opticalOffset() == 0);
+    CHECK(layout("one\ntwo").opticalOffset() == 0);
+}

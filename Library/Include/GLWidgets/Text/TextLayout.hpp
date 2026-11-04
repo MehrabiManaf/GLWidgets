@@ -72,6 +72,11 @@ struct TextLine {
     std::size_t firstGlyph = 0;         // its glyphs in glyphs(), in visual order (left to right)
     std::size_t glyphCount = 0;
     bool rightToLeft = false;           // the direction of its paragraph
+    // How far down the line is to be moved to look centered in its height, placed alone in a box (a button's label): the
+    // middle of its letters (between their x-height and cap height) where the middle of its height is. A font made for
+    // Persian has room for its marks and descenders below and above Latin letters, which look high otherwise. None for
+    // a line with Arabic script: the font's height is centered on it.
+    float opticalShift = 0;
 };
 
 class GLW_EXPORT TextLayout {
@@ -86,6 +91,9 @@ public:
     const TextStyle& style() const;
     // The widest line's width (without trailing spaces) and the height of all lines.
     Size size() const;
+    // What a text of one line is moved down by to look centered in its height (TextLine::opticalShift): what widgets that
+    // place a line in a box add to its origin. None for a text of several lines, which is not centered.
+    float opticalOffset() const;
     std::span<const PositionedGlyph> glyphs() const;
     std::span<const TextLine> lines() const;
 

@@ -30,6 +30,10 @@ struct ShapedGlyph {
 };
 
 // Characters of one paragraph with one bidi level, one script and one font: what is shaped at once.
+bool isArabicScript(hb_script_t script) {
+    return script == HB_SCRIPT_ARABIC || script == HB_SCRIPT_SYRIAC || script == HB_SCRIPT_THAANA || script == HB_SCRIPT_NKO;
+}
+
 struct Item {
     std::size_t begin = 0;
     std::size_t end = 0;
@@ -283,6 +287,17 @@ void TextLayout::Data::layoutParagraph(std::size_t begin, std::size_t end, SBAlg
         line.top = y;
         line.height = metrics.lineHeight() * style.lineSpacing;
         line.baseline = y + (line.height - metrics.ascent - metrics.descent) / 2 + metrics.ascent;
+        // looking centered: the middle of its letters where its height's middle is (Arabic script is the font's own)
+        bool arabic = false;
+        for (const Item& item : items) {
+            if (item.end > lineBegin && item.begin < lineEnd)
+                arabic = arabic || isArabicScript(item.script);
+        }
+        if (!arabic) {
+            const float letters = (primary.xHeight + primary.capHeight) / 4;    // the middle of them, above the baseline
+            const float middle = (metrics.ascent - metrics.descent) / 2;         // the height's, above it
+            line.opticalShift = letters - middle;
+        }
 
         float x = 0;
         if (lineEnd > lineBegin) {
@@ -417,6 +432,10 @@ const TextStyle& TextLayout::style() const {
 
 Size TextLayout::size() const {
     return data_->size;
+}
+
+float TextLayout::opticalOffset() const {
+    return data_->lines.size() == 1 ? data_->lines.front().opticalShift : 0.0f;
 }
 
 std::span<const PositionedGlyph> TextLayout::glyphs() const {

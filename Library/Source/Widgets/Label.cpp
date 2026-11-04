@@ -90,7 +90,8 @@ const text::TextLayout* Label::textLayout(float width) {
     const UiContext* ui = context();
     if (!ui)
         return nullptr;
-    const float maxWidth = wrap_ ? width : unbounded;
+    // wrapped in its width, and half a dip more: a width rounded to pixels may be a little less than the text measured
+    const float maxWidth = wrap_ ? width + 0.5f : unbounded;
     const bool rtl = rightToLeft();
     if (!layout_ || maxWidth != layoutWidth_ || rtl != layoutRightToLeft_) {
         text::TextOptions options;
@@ -177,7 +178,7 @@ void Label::paint(PaintContext& context) {
         else if (right)
             x += content_.width - size.width;
     }
-    const float y = content_.y + (content_.height - size.height) / 2;
+    const float y = content_.y + (content_.height - size.height) / 2 + layout->opticalOffset();
     const Palette& palette = context.ui.theme.palette;
     context.drawText(*layout, {x, y}, color_ ? *color_ : muted_ ? palette.mutedText : palette.text);
 }

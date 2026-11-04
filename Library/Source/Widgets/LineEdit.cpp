@@ -165,7 +165,7 @@ Point LineEdit::textOrigin() {
     if (!layout)
         return {content_.x, content_.y};
     const Size size = layout->size();
-    const float y = content_.y + (content_.height - size.height) / 2;
+    const float y = content_.y + (content_.height - size.height) / 2 + layout->opticalOffset();
     // a text that fits is at the start side; a longer one is scrolled
     if (size.width <= content_.width)
         return {rightToLeft() ? content_.right() - size.width : content_.x, y};
@@ -472,7 +472,8 @@ void LineEdit::paint(PaintContext& context) {
     if (text_.empty() && composition_.empty()) {
         if (const text::TextLayout* placeholder = placeholderLayout(); placeholder && !placeholder->text().empty()) {
             const float w = placeholder->size().width;
-            const Point at{rightToLeft() ? content_.right() - w : content_.x, content_.y + (content_.height - placeholder->size().height) / 2};
+            const Point at{rightToLeft() ? content_.right() - w : content_.x,
+                           content_.y + (content_.height - placeholder->size().height) / 2 + placeholder->opticalOffset()};
             context.drawText(*placeholder, at, s.placeholder);
         }
     }
