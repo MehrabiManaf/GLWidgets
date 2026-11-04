@@ -464,6 +464,12 @@ std::optional<std::size_t> TableView::headerAt(Point point) const {
     return std::nullopt;
 }
 
+std::optional<platform::Cursor> TableView::cursorAt(Point point) const {
+    if (resizing_ || edgeAt(point))
+        return platform::Cursor::ResizeHorizontal;
+    return Widget::cursorAt(point);
+}
+
 std::optional<std::size_t> TableView::edgeAt(Point point) const {
     const Rect h = headerRect();
     if (!headerVisible_ || !h.contains(point))

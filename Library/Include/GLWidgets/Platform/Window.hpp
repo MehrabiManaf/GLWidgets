@@ -8,6 +8,7 @@
 #include <GLWidgets/Export.hpp>
 #include <GLWidgets/Platform/Event.hpp>
 
+#include <cstddef>
 #include <cstdint>
 #include <functional>
 #include <optional>
@@ -43,6 +44,22 @@ enum class HitArea : std::uint8_t {
     Caption,                // drags the window; a double click maximizes or restores it
     ResizeTopLeft, ResizeTop, ResizeTopRight, ResizeRight, ResizeBottomRight, ResizeBottom, ResizeBottomLeft, ResizeLeft,
 };
+
+// The shape of the mouse's pointer (Platform::setCursor): the system's own.
+enum class Cursor : std::uint8_t {
+    Arrow,
+    Text,                   // an I-beam: over text that can be selected or typed in
+    Pointer,                // a hand: over a link
+    Move,                   // what is dragged moves, any way
+    ResizeHorizontal,       // left and right: a vertical splitter's handle, a window's side
+    ResizeVertical,         // up and down
+    ResizeDiagonal,         // top left and bottom right
+    ResizeAntiDiagonal,     // top right and bottom left
+    NotAllowed,
+    Wait,
+    Crosshair,
+};
+inline constexpr std::size_t cursorCount = static_cast<std::size_t>(Cursor::Crosshair) + 1;
 
 // Called by the system with a point of the window (dips), whenever it needs to know - often: it must be quick.
 using HitTest = std::function<HitArea(Point)>;

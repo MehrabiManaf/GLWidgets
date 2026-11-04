@@ -529,8 +529,15 @@ is hidden (not painted, not under the mouse, not in the order of the focus); the
 closes. A click on the header, Enter or Space toggle it, Right and Left open and close it (mirrored in right to left);
 buttons at the header's end trigger actions (a + that adds an item). `ui::CollapsiblePanel` takes its content as children.
 
-Still to come in the widget core: mouse cursors (the resize cursor
-over a splitter's handle and a table header's edge), and the native extras of the chrome (Windows 11 shadow, rounded corners and snap layouts).
+**The pointer's shape** (`platform::Cursor`, the system's own shapes) is what the widget under the mouse says
+(`Widget::setCursor`, or `cursorAt` for a widget whose parts differ), or its nearest ancestor that says one, the arrow
+otherwise; while a widget has the mouse (a button pressed on it), its shape stays wherever the mouse goes. The root works
+it out as the mouse moves or a button changes and tells its host (`UiHost::setCursor`, the platform's `setCursor`). Fields
+and text editors show an I-beam over their text (the arrow over a text editor's gutter and bar), splitters and docked
+stacks' gaps a resize shape along their direction, a table header's edges left and right, a canvas being panned the move
+shape, the edges of a borderless window the resize shapes of its sides and corners. A disabled widget shows its parent's.
+
+Still to come in the widget core: the native extras of the chrome (Windows 11 shadow, rounded corners and snap layouts).
 
 ## Docking
 

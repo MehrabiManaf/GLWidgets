@@ -733,6 +733,14 @@ void TextEdit::updateInputArea() {
 
 // ---- events ----
 
+std::optional<platform::Cursor> TextEdit::cursorAt(Point point) const {
+    // over its lines, and while they are selected by a drag; the arrow over its bar
+    const bool overBar = showBar_ && verticalTrack().contains(point);
+    if (selecting_ || (!thumbGrab_ && !overBar && text_.contains(point)))
+        return platform::Cursor::Text;
+    return Widget::cursorAt(point);
+}
+
 void TextEdit::onMouse(MouseEvent& event) {
     switch (event.type) {
     case MouseEventType::Wheel: {

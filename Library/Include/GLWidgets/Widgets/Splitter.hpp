@@ -37,6 +37,7 @@ protected:
     Size measureContent(Size available) override;
     void arrangeContent(const Rect& content) override;
     void paint(PaintContext& context) override;
+    std::optional<platform::Cursor> cursorAt(Point point) const override;
     void onMouse(MouseEvent& event) override;
     void onHoverChanged(bool hovered) override;
 

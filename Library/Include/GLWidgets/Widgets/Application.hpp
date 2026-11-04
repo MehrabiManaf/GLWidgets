@@ -70,6 +70,7 @@ public:
     void setTextInputArea(const Rect& area) override;
     std::string clipboardText() const override;
     void setClipboardText(const std::string& text) override;
+    void setCursor(platform::Cursor cursor) override;
     UiRoot* openPopup(PopupRequest request) override;
 
 private:

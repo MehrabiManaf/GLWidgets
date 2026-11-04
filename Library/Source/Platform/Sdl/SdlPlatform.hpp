@@ -6,6 +6,9 @@
 #include <GLWidgets/Platform/Platform.hpp>
 
 #include <SDL3/SDL_events.h>
+#include <SDL3/SDL_mouse.h>
+
+#include <array>
 
 #include <string>
 
@@ -25,6 +28,7 @@ public:
     bool placesWindows() const override;
     Point mousePosition() const override;
     void captureMouse(bool capture) override;
+    void setCursor(Cursor cursor) override;
     std::string clipboardText() const override;
     void setClipboardText(std::string_view text) override;
 
@@ -42,6 +46,8 @@ private:
     int windows_ = 0;
     std::function<void(WindowId)> exposeHandler_;
     bool watching_ = false;
+    std::array<SDL_Cursor*, cursorCount> cursors_{};       // made the first time they are shown
+    Cursor cursor_ = Cursor::Arrow;
 };
 
 } // namespace glw::platform::sdl

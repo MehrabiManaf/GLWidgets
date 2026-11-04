@@ -342,8 +342,14 @@ void UiRoot::dispatch(const platform::Event& event) {
                        if (!e.entered && !capture_)
                            updateHover(nullptr);
                    },
-                   [&](const platform::MouseMoved& e) { mouseMoved(e.position); },
-                   [&](const platform::MouseButtonChanged& e) { mouseButton(e); },
+                   [&](const platform::MouseMoved& e) {
+                       mouseMoved(e.position);
+                       updateCursor();
+                   },
+                   [&](const platform::MouseButtonChanged& e) {
+                       mouseButton(e);
+                       updateCursor();
+                   },
                    [&](const platform::MouseWheelScrolled& e) {
                        hideToolTip(true);
                        MouseEvent wheel{MouseEventType::Wheel, {}, platform::MouseButton::Left, 0, e.delta, modifiers_};
@@ -473,6 +479,44 @@ void UiRoot::mouseButton(const platform::MouseButtonChanged& e) {
     }
     if (!capture_)
         updateHover(widgetAt(e.position));
+}
+
+namespace {
+
+std::optional<platform::Cursor> edgeCursor(platform::HitArea area) {
+    using platform::Cursor;
+    using platform::HitArea;
+    switch (area) {
+    case HitArea::ResizeLeft:
+    case HitArea::ResizeRight: return Cursor::ResizeHorizontal;
+    case HitArea::ResizeTop:
+    case HitArea::ResizeBottom: return Cursor::ResizeVertical;
+    case HitArea::ResizeTopLeft:
+    case HitArea::ResizeBottomRight: return Cursor::ResizeDiagonal;
+    case HitArea::ResizeTopRight:
+    case HitArea::ResizeBottomLeft: return Cursor::ResizeAntiDiagonal;
+    default: return std::nullopt;
+    }
+}
+
+} // namespace
+
+void UiRoot::updateCursor() {
+    std::optional<platform::Cursor> shape;
+    // what has the mouse, wherever it is; or the window's edge; or what is under the mouse (what is enabled of it)
+    Widget* from = capture_;
+    if (!from && content_) {
+        if (const auto area = content_->frameHitArea(content_->mapFromRoot(mouse_)))
+            shape = edgeCursor(*area);
+        if (!shape && !hovered_.empty())
+            from = hovered_.back();
+    }
+    for (Widget* w = from; w && !shape; w = w->parent_)
+        shape = w->cursorAt(w->mapFromRoot(mouse_));
+    cursor_ = shape.value_or(platform::Cursor::Arrow);
+    // told each time: another window may have shown another shape meanwhile (the platform keeps what it shows)
+    if (host_)
+        host_->setCursor(cursor_);
 }
 
 void UiRoot::captureMouse(Widget& widget) {

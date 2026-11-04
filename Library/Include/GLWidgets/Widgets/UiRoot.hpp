@@ -89,6 +89,8 @@ public:
     // its window closing. Its widgets are told by onWindowClosing. A popup's host opens popups of its own (a submenu): they
     // close with it. None where there are no popups (a host of an engine, by default).
     virtual UiRoot* openPopup(PopupRequest request) { return nullptr; }
+    // The pointer's shape over the window now (told as the mouse moves over it). Ignored by default (an engine's host).
+    virtual void setCursor(platform::Cursor cursor) {}
 };
 
 class GLW_EXPORT UiRoot {
@@ -121,6 +123,8 @@ public:
     platform::HitArea windowHitTest(Point point) const;
     // The widget under `point`, the deepest one that can be under the mouse.
     Widget* widgetAt(Point point) const;
+    // The pointer's shape now, as it was last told to the host.
+    platform::Cursor cursor() const { return cursor_; }
 
     // Runs `call` once the event being dispatched is done (now when none is): what removes or moves widgets, the one
     // handling the event among them, does it from there.
@@ -180,6 +184,8 @@ private:
     void showToolTip();
     void hideToolTip(bool suppress);
     void mouseMoved(Point point);
+    // The pointer's shape: what has the mouse says, or the edge of the window under it, or what is under it.
+    void updateCursor();
     void mouseButton(const platform::MouseButtonChanged& e);
     // `visible`: what of the widget's parent shows (its coordinates); a widget out of it is not painted, nor anything in it.
     static void paintTree(Widget& widget, PaintContext& context, const Rect& visible);
@@ -201,6 +207,7 @@ private:
     int buttonsDown_ = 0;
     std::vector<Widget*> hovered_;      // the widget under the mouse and its ancestors, from the root down
     Point mouse_;
+    platform::Cursor cursor_ = platform::Cursor::Arrow;
     platform::KeyModifiers modifiers_ = platform::KeyModifiers::None;
     int dispatching_ = 0;
     std::vector<std::function<void()>> deferred_;

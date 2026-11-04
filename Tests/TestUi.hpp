@@ -60,6 +60,7 @@ struct FakeHost : UiHost {
     bool textInput = false;
     Rect inputArea;
     std::string clipboard;
+    platform::Cursor cursor = platform::Cursor::Arrow;
 
     platform::WindowState windowState() const override { return state; }
     void minimizeWindow() override { ++minimized; }
@@ -70,6 +71,7 @@ struct FakeHost : UiHost {
     void setTextInputArea(const Rect& area) override { inputArea = area; }
     std::string clipboardText() const override { return clipboard; }
     void setClipboardText(const std::string& text) override { clipboard = text; }
+    void setCursor(platform::Cursor shape) override { cursor = shape; }
     UiRoot* openPopup(PopupRequest request) override;
 
     // The popups open now, in order.

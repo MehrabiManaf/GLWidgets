@@ -91,6 +91,7 @@ protected:
     void paint(PaintContext& context) override;
     void paintOver(PaintContext& context) override;
     paint::Transform childrenTransform() const override { return viewTransform(); }
+    std::optional<platform::Cursor> cursorAt(Point point) const override;
     void onMouse(MouseEvent& event) override;
 
     // In the canvas's coordinates, the painter transformed: over the grid, under the items / over them.

@@ -749,6 +749,10 @@ void Window::setClipboardText(const std::string& text) {
     app_.impl_->platform->setClipboardText(text);
 }
 
+void Window::setCursor(platform::Cursor cursor) {
+    app_.impl_->platform->setCursor(cursor);
+}
+
 // ---- application ----
 
 Application::Application() : impl_(std::make_unique<Impl>(*this)) {

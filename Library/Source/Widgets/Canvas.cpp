@@ -226,6 +226,12 @@ void Canvas::paintOver(PaintContext& context) {
 
 // ---- the mouse ----
 
+std::optional<platform::Cursor> Canvas::cursorAt(Point point) const {
+    if (panning_ != Pan::None)
+        return platform::Cursor::Move;
+    return Widget::cursorAt(point);
+}
+
 void Canvas::onMouse(MouseEvent& event) {
     switch (event.type) {
     case MouseEventType::Wheel:

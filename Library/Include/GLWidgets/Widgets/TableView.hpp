@@ -111,6 +111,7 @@ protected:
     void paint(PaintContext& context) override;
     void paintOver(PaintContext& context) override;
     void onPreviewMouse(MouseEvent& event) override;
+    std::optional<platform::Cursor> cursorAt(Point point) const override;
     void onMouse(MouseEvent& event) override;
     void onPreviewKey(KeyEvent& event) override;
     void onHoverChanged(bool hovered) override;

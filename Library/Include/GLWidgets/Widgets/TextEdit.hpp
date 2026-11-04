@@ -130,6 +130,7 @@ protected:
     void paint(PaintContext& context) override;
     void paintOver(PaintContext& context) override;
     Rect childrenClip() const override { return text_; }
+    std::optional<platform::Cursor> cursorAt(Point point) const override;
     void onMouse(MouseEvent& event) override;
     void onKey(KeyEvent& event) override;
     void onText(TextEvent& event) override;

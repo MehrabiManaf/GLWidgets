@@ -113,6 +113,12 @@ void Splitter::arrangeContent(const Rect& content) {
     }
 }
 
+std::optional<platform::Cursor> Splitter::cursorAt(Point point) const {
+    if (dragging_ >= 0 || handleAt(point) >= 0)
+        return orientation_ == Orientation::Horizontal ? platform::Cursor::ResizeHorizontal : platform::Cursor::ResizeVertical;
+    return Widget::cursorAt(point);
+}
+
 int Splitter::handleAt(Point p) const {
     for (std::size_t i = 0; i < handles_.size(); ++i) {
         if (handles_[i].contains(p))

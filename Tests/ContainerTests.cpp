@@ -217,3 +217,37 @@ TEST(checkBoxes) {
     box->setChecked(true);
     CHECK(box->checked() && toggles == 2);          // not by the user: not told
 }
+
+TEST(thePointersShapeFollowsWhatIsUnderIt) {
+    tests::FakeHost host;
+    UiRoot root(tests::testContext(), &host);
+    const float t = tests::testContext().theme.splitter.thickness;
+    root.setSize({400 + t, 100});
+    Splitter* splitter = nullptr;
+    LineEdit* field = nullptr;
+    Widget* plain = nullptr;
+    root.setContent(ui::Splitter({}, ui::LineEdit({}).bind(field).alignment(Alignment::Stretch, Alignment::Start),
+                                 ui::make<Block>(Size{}).bind(plain))
+                        .bind(splitter));
+    root.layout();
+    const auto at = [&](Point p) {
+        root.dispatch(platform::MouseMoved{1, p});
+        return host.cursor;
+    };
+    // a field: an I-beam; the handle: left and right; elsewhere the arrow
+    CHECK(at(field->mapToRoot({10, 5})) == platform::Cursor::Text);
+    const Point handle = splitter->handles()[0].center();
+    CHECK(at(handle) == platform::Cursor::ResizeHorizontal);
+    CHECK(at(plain->mapToRoot({20, 20})) == platform::Cursor::Arrow);
+    // dragging the handle keeps its shape, over the field too
+    at(handle);
+    root.dispatch(press(handle));
+    CHECK(at(field->mapToRoot({10, 5})) == platform::Cursor::ResizeHorizontal);
+    root.dispatch(press(field->mapToRoot({10, 5}), false));
+    CHECK(host.cursor == platform::Cursor::Text && root.cursor() == platform::Cursor::Text);
+    // disabled, a field is not typed in: the arrow; a widget's own shape goes to its children without one
+    field->setEnabled(false);
+    CHECK(at(field->mapToRoot({12, 5})) == platform::Cursor::Arrow);
+    plain->setCursor(platform::Cursor::Pointer);
+    CHECK(at(plain->mapToRoot({21, 20})) == platform::Cursor::Pointer);
+}

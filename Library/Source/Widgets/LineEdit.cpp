@@ -53,6 +53,7 @@ LineEdit::LineEdit(Props props)
       onSubmit_(std::move(props.onSubmit)),
       style_(std::move(props.style)) {
     setFocusable(true);
+    setCursor(platform::Cursor::Text);
     setAlignment(Alignment::Stretch, Alignment::Center);
     caret_ = anchor_ = text_.size();
     setPadding(style().padding);

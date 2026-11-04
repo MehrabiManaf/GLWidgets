@@ -222,6 +222,11 @@ public:
     void setWindowArea(platform::HitArea area) { windowArea_ = area; }
     platform::HitArea windowArea() const { return windowArea_; }
 
+    // The pointer's shape over it, and over its children that have none: none by default, its parent's (the arrow at the
+    // top). A widget whose parts differ (a splitter's handles) says so in cursorAt.
+    void setCursor(std::optional<platform::Cursor> cursor) { cursor_ = cursor; }
+    std::optional<platform::Cursor> cursor() const { return cursor_; }
+
     // What shows by the mouse when it stays over it a moment (UiRoot shows it, the theme's toolTip); none by default.
     void setToolTip(LocalizedText text);
     const LocalizedText* toolTip() const { return toolTip_.get(); }
@@ -264,6 +269,9 @@ protected:
     // For a widget filling a borderless window: what the point (its own coordinates) is for the window before the widget
     // under it is asked (WindowFrame: its resize borders).
     virtual std::optional<platform::HitArea> frameHitArea(Point point) const { return std::nullopt; }
+    // The pointer's shape with the mouse at `point` (its own coordinates), over it or, while it has the mouse (a button
+    // pressed on it), anywhere: setCursor's by default. None: its parent's.
+    virtual std::optional<platform::Cursor> cursorAt(Point point) const { return cursor_; }
     // Where its children are cut when it clips them (its own coordinates): all of it by default, a scroll area's viewport.
     // Outside of it, its children are neither painted nor under the mouse.
     virtual Rect childrenClip() const { return {0, 0, bounds_.width, bounds_.height}; }
@@ -310,6 +318,7 @@ private:
     Alignment verticalAlignment_ = Alignment::Stretch;
     LayoutDirection direction_ = LayoutDirection::Inherit;
     platform::HitArea windowArea_ = platform::HitArea::Client;
+    std::optional<platform::Cursor> cursor_;
 
     bool visible_ = true;
     bool enabled_ = true;

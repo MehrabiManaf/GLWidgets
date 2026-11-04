@@ -63,6 +63,10 @@ SdlPlatform::~SdlPlatform() {
     GLW_ASSERT(windows_ == 0);
     if (watching_)
         SDL_RemoveEventWatch(&SdlPlatform::watch, this);
+    for (SDL_Cursor* cursor : cursors_) {
+        if (cursor)
+            SDL_DestroyCursor(cursor);
+    }
     SDL_Quit();
     platformExists = false;
 }
@@ -113,6 +117,23 @@ Point SdlPlatform::mousePosition() const {
 
 void SdlPlatform::captureMouse(bool capture) {
     SDL_CaptureMouse(capture);
+}
+
+void SdlPlatform::setCursor(Cursor cursor) {
+    if (cursor == cursor_)
+        return;
+    static constexpr std::array<SDL_SystemCursor, cursorCount> system{
+        SDL_SYSTEM_CURSOR_DEFAULT,     SDL_SYSTEM_CURSOR_TEXT,       SDL_SYSTEM_CURSOR_POINTER,     SDL_SYSTEM_CURSOR_MOVE,
+        SDL_SYSTEM_CURSOR_EW_RESIZE,   SDL_SYSTEM_CURSOR_NS_RESIZE,  SDL_SYSTEM_CURSOR_NWSE_RESIZE, SDL_SYSTEM_CURSOR_NESW_RESIZE,
+        SDL_SYSTEM_CURSOR_NOT_ALLOWED, SDL_SYSTEM_CURSOR_WAIT,       SDL_SYSTEM_CURSOR_CROSSHAIR,
+    };
+    const auto index = static_cast<std::size_t>(cursor);
+    if (!cursors_[index])
+        cursors_[index] = SDL_CreateSystemCursor(system[index]);
+    // a system without that shape: the arrow
+    SDL_Cursor* shown = cursors_[index] ? cursors_[index] : SDL_GetDefaultCursor();
+    if (shown && SDL_SetCursor(shown))
+        cursor_ = cursor;
 }
 
 std::string SdlPlatform::clipboardText() const {

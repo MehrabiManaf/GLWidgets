@@ -52,6 +52,9 @@ public:
     virtual Point mousePosition() const = 0;
     // While on, the window the mouse was pressed in gets the mouse's events outside of it too (dragging out of it).
     virtual void captureMouse(bool capture) = 0;
+    // The shape of the pointer while it is over the application's windows (where they are the application's: over the
+    // edges a window resizes by, the system shows its own).
+    virtual void setCursor(Cursor cursor) = 0;
 
     // The text of the system's clipboard (UTF-8; empty when it holds none).
     virtual std::string clipboardText() const = 0;
