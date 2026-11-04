@@ -439,10 +439,23 @@ order it shows its items in, sorted (`setSortOrder`: the model's comparison or a
 in the model's order) and filtered (`setFilter`: the items a function accepts): a position to a model's item and back
 (`modelIndex`, `position`), nothing at all while it shows them as they are. Its delegate, its handlers and what is asked
 of it (`current`, `setCurrent`, `rowWidget`, `itemRect`) speak of the model's items still, so a delegate written for
-the model shows it sorted and filtered unchanged; the model's changes sort and filter it again. A table sorts by a click
-on a sortable column's header (ascending, descending, not; an arrow in the header says which) and filters its rows; a
-tree sorts the children of each node, and its filter keeps the nodes it accepts with their ancestors, opened to show them
-(every node of the model is asked). A million rows sort in 0.4 s, filter in 0.2 s (`glw_benchmarks`).
+the model shows it sorted and filtered unchanged. A table sorts by a click on a sortable column's header (ascending,
+descending, not; an arrow in the header says which) and filters its rows; a tree sorts the children of each node, and
+its filter keeps the nodes it accepts with their ancestors, opened to show them (every node of the model is asked). A
+million rows sort in 0.4 s, filter in 0.2 s (`glw_benchmarks`).
+
+**The model's changes reach the order item by item**, for models that change all the time (a live feed of a million
+rows): the items a notification names only are compared and filtered. An item inserted goes where it sorts (a binary
+search among those shown), one removed goes, one changed stays where it is when it still sorts between its neighbors
+(two comparisons) and moves where it sorts otherwise; the filter is asked of those items only. The order is an
+`ItemOrder`: each item a handle, in two sequences, the model's order (a handle's place is its index) and the order shown
+(its place is its position), each in blocks of a few hundred handles with where each block starts, so an item is
+inserted, erased, found and moved in about the square root of their count, and an item inserted before others shifts no
+index. The current item and the item at the top stay where they were; the rows that show are bound again only when the
+change reaches them. In a table of a million rows sorted by price, a price changed costs 20 µs, a row appended 25 µs,
+one inserted first 18 µs, the oldest removed 11 µs (`glw_benchmarks`: a thousand of each, then a frame painted); many at
+once (more than a quarter of what shows) sort it all again. A tree sorted or filtered sorts and filters all of it again
+as its model changes.
 
 An editable item is edited in place, in any widget its delegate makes for it (`makeEditor`: a field, a check box, a combo
 box...), in a frame over it (over a tree's node after its arrow; a table's cell, within its rows): by a double click

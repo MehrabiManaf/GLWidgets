@@ -3,6 +3,7 @@
 #include <GLWidgets/Widgets/ListView.hpp>
 
 #include "Widgets/ItemEditor.hpp"
+#include "Widgets/ItemOrder.hpp"
 #include "Widgets/RowHeights.hpp"
 
 #include <GLWidgets/Paint/Painter.hpp>
@@ -57,7 +58,8 @@ void TextDelegate::commitEdit(Widget& editor, std::size_t index) {
 
 // ---- the view ----
 
-ListView::ListView() : heights_(std::make_unique<RowHeights>()), editor_(std::make_unique<ItemEditor>(*this)) {
+ListView::ListView()
+    : heights_(std::make_unique<RowHeights>()), order_(std::make_unique<ItemOrder>()), editor_(std::make_unique<ItemEditor>(*this)) {
     setFocusable(true);
     setClipsChildren(true);
 }
@@ -161,19 +163,17 @@ void ListView::activate(std::size_t at) {
 std::size_t ListView::shownCount() const {
     if (!model_)
         return 0;
-    return ordered() ? order_.size() : model_->count();
+    return ordered() ? order_->shown() : model_->count();
 }
 
 std::size_t ListView::modelIndex(std::size_t at) const {
-    return ordered() && at < order_.size() ? order_[at] : at;
+    return ordered() && at < order_->shown() ? order_->modelIndex(at) : at;
 }
 
 std::optional<std::size_t> ListView::position(std::size_t index) const {
     if (!ordered())
         return index;
-    if (index >= positions_.size() || positions_[index] == hidden)
-        return std::nullopt;
-    return positions_[index];
+    return order_->position(index);
 }
 
 void ListView::setSortOrder(std::optional<SortOrder> order, std::function<std::partial_ordering(std::size_t, std::size_t)> compare) {
@@ -193,29 +193,9 @@ void ListView::reorder() {
     cancelEdit();
     endChange(false);
     smooth_.stop();
-    order_.clear();
-    positions_.clear();
-    const std::size_t count = model_ ? model_->count() : 0;
-    if (ordered()) {
-        order_.reserve(count);
-        for (std::size_t i = 0; i < count; ++i) {
-            if (!filter_ || filter_(i))
-                order_.push_back(i);
-        }
-        if (sortOrder_) {
-            const auto compare = compare_ ? compare_ : [this](std::size_t a, std::size_t b) { return model_->compare(a, b); };
-            // equals in the model's order (a merge sort: fewer of the model's comparisons than a quick sort)
-            const bool descending = *sortOrder_ == SortOrder::Descending;
-            std::stable_sort(order_.begin(), order_.end(), [&](std::size_t a, std::size_t b) {
-                const std::partial_ordering o = compare(a, b);
-                return descending ? o > 0 : o < 0;
-            });
-        }
-        positions_.assign(count, hidden);
-        for (std::size_t at = 0; at < order_.size(); ++at)
-            positions_[order_[at]] = at;
-        order_.shrink_to_fit();
-    }
+    order_->clear();
+    if (ordered())
+        buildOrder();
     resetHeights();
     offset_ = std::clamp(offset_, 0.0, maximumOffset());
     hovered_.reset();
@@ -226,6 +206,79 @@ void ListView::reorder() {
     if (told && onCurrentChanged_)
         onCurrentChanged_(current());
     rebindAll_ = true;
+    invalidateLayout();
+}
+
+// ---- the order, item by item ----
+
+void ListView::buildOrder() {
+    const std::size_t count = model_ ? model_->count() : 0;
+    if (!sortOrder_) {
+        order_->build(count, filter_);
+        return;
+    }
+    // the comparison as it is, without going through `before`: a million items sort in twenty million of them
+    const bool ascending = *sortOrder_ == SortOrder::Ascending;
+    if (compare_) {
+        order_->build(count, filter_, [&](std::uint32_t a, std::uint32_t b) {
+            const std::partial_ordering o = compare_(a, b);
+            return ascending ? o < 0 : o > 0;
+        });
+    } else {
+        order_->build(count, filter_, [&](std::uint32_t a, std::uint32_t b) {
+            const std::partial_ordering o = model_->compare(a, b);
+            return ascending ? o < 0 : o > 0;
+        });
+    }
+}
+
+bool ListView::before(std::size_t a, std::size_t b) const {
+    if (sortOrder_) {
+        const std::partial_ordering o = compare_ ? compare_(a, b) : model_->compare(a, b);
+        if (o < 0)
+            return *sortOrder_ == SortOrder::Ascending;
+        if (o > 0)
+            return *sortOrder_ == SortOrder::Descending;
+    }
+    return a < b;
+}
+
+ListView::Kept ListView::keep() const {
+    Kept kept;
+    kept.current = current();
+    kept.currentAt = current_.value_or(0);
+    if (!rows_.empty()) {
+        const std::size_t first = heights_->indexAt(offset_);
+        kept.top = modelIndex(first);
+        kept.within = offset_ - heights_->top(first);
+    }
+    return kept;
+}
+
+void ListView::reordered(Kept kept, std::size_t from, std::size_t to, bool counted) {
+    // the rows' places (uniform: nothing kept per row; measured: estimated again)
+    if (counted || !heights_->uniform())
+        resetHeights();
+    // the item at the top stays where it was
+    if (kept.top) {
+        if (const std::optional<std::size_t> at = position(*kept.top))
+            offset_ = heights_->top(*at) + kept.within;
+    }
+    offset_ = std::clamp(offset_, 0.0, maximumOffset());
+    hovered_.reset();
+    pressed_.reset();
+    // the current item kept; gone, the one in its place
+    std::optional<std::size_t> now = kept.current ? position(*kept.current) : std::nullopt;
+    if ((kept.current || kept.lost) && !now && shownCount() > 0)
+        now = std::min(kept.currentAt, shownCount() - 1);
+    const bool told = kept.lost || kept.current != (now ? std::optional<std::size_t>(modelIndex(*now)) : std::nullopt);
+    current_ = now;
+    if (told && onCurrentChanged_)
+        onCurrentChanged_(current());
+    // what shows, bound again when the change reached it
+    const bool reached = counted || rows_.empty() || (from <= rows_.back().index && to > rows_.front().index);
+    if (reached)
+        rebindAll_ = true;
     invalidateLayout();
 }
 
@@ -780,8 +833,25 @@ void ListView::onStyleChanged() {
 // ---- the model's changes ----
 
 void ListView::itemsInserted(std::size_t first, std::size_t count) {
-    if (ordered()) {        // where they go is the order's: sorted and filtered again
-        reorder();
+    if (ordered()) {
+        // the items after them move on; those accepted go where they sort
+        cancelEdit();
+        endChange(false);
+        smooth_.stop();
+        Kept kept = keep();
+        for (std::optional<std::size_t>* index : {&kept.current, &kept.top}) {
+            if (*index && **index >= first)
+                **index += count;
+        }
+        ItemOrder::Span span;
+        if (count > 4096 && count > order_->shown() / 4) {
+            // many: sorted again, all of it
+            buildOrder();
+            span = {0, order_->shown(), true};
+        } else {
+            span = order_->inserted(first, count, filter_, [this](std::size_t a, std::size_t b) { return before(a, b); });
+        }
+        reordered(kept, span.from, span.to, span.counted);
         return;
     }
     cancelEdit();
@@ -808,7 +878,21 @@ void ListView::itemsInserted(std::size_t first, std::size_t count) {
 
 void ListView::itemsRemoved(std::size_t first, std::size_t count) {
     if (ordered()) {
-        reorder();
+        // those that showed go; the items after them move back
+        cancelEdit();
+        endChange(false);
+        smooth_.stop();
+        Kept kept = keep();
+        for (std::optional<std::size_t>* index : {&kept.current, &kept.top}) {
+            if (*index && **index >= first + count) {
+                **index -= count;
+            } else if (*index && **index >= first) {
+                kept.lost = kept.lost || index == &kept.current;
+                index->reset();
+            }
+        }
+        const ItemOrder::Span span = order_->removed(first, count);
+        reordered(kept, span.from, span.to, span.counted);
         return;
     }
     cancelEdit();
@@ -846,8 +930,18 @@ void ListView::itemsRemoved(std::size_t first, std::size_t count) {
 }
 
 void ListView::itemsChanged(std::size_t first, std::size_t count) {
-    if (ordered()) {        // they may go elsewhere, or not show
-        reorder();
+    if (ordered()) {
+        // many at once: all of it again
+        if (count > std::max<std::size_t>(4096, order_->shown() / 4)) {
+            reorder();
+            return;
+        }
+        // each: where it is when it still sorts there, elsewhere if not, in or out as the filter says now
+        cancelEdit();
+        endChange(false);
+        const Kept kept = keep();
+        const ItemOrder::Span span = order_->changed(first, count, filter_, [this](std::size_t a, std::size_t b) { return before(a, b); });
+        reordered(kept, span.from, span.to, span.counted);
         return;
     }
     // those that show, shown again (measured again)

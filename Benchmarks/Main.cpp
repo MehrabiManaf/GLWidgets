@@ -21,8 +21,11 @@
 #include <algorithm>
 #include <chrono>
 #include <cmath>
+#include <compare>
+#include <cstdint>
 #include <cstdio>
 #include <cstdlib>
+#include <deque>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -275,6 +278,75 @@ void cellsInATableView(glw::UiContext& ui, std::size_t rows, std::size_t columns
                 scroll, scrollAcross, jump, sort, filter, widgetsIn(table));
 }
 
+// A live feed: prices that change all the time, rows coming and going, sorted by price.
+class Ticks final : public glw::TableModel {
+public:
+    explicit Ticks(std::size_t rows) : prices(rows) {
+        for (std::size_t i = 0; i < rows; ++i)
+            prices[i] = next();
+    }
+    std::size_t rowCount() const override { return prices.size(); }
+    std::size_t columnCount() const override { return 3; }
+    bool sortable(std::size_t) const override { return true; }
+    std::partial_ordering compare(std::size_t a, std::size_t b, std::size_t) const override { return prices[a] <=> prices[b]; }
+
+    void change(std::size_t row) {
+        prices[row] = next();
+        notifyRowsChanged(row, 1);
+    }
+    void insert(std::size_t at) {
+        prices.insert(prices.begin() + static_cast<std::ptrdiff_t>(at), next());
+        notifyRowsInserted(at, 1);
+    }
+    void remove(std::size_t at) {
+        prices.erase(prices.begin() + static_cast<std::ptrdiff_t>(at));
+        notifyRowsRemoved(at, 1);
+    }
+    std::size_t any() { return static_cast<std::size_t>(random_() % prices.size()); }
+    std::deque<double> prices;      // inserted and erased at the ends in no time: what is timed is the table's
+
+private:
+    double next() { return static_cast<double>(random_() % 1'000'000) / 100; }
+    std::uint64_t random_() { return seed_ = seed_ * 6364136223846793005ull + 1442695040888963407ull, seed_ >> 33; }
+    std::uint64_t seed_ = 1;
+};
+
+// The feed in a table, sorted, a thousand of its changes at a time (then a frame painted): what each costs, in microseconds.
+void aLiveFeedInATableView(glw::UiContext& ui, std::size_t rows) {
+    glw::UiRoot root(ui);
+    root.setSize({800, 600});
+    auto ticks = std::make_shared<Ticks>(rows);
+    auto made = std::make_unique<glw::TableView>();
+    glw::TableView& table = *made;
+    table.setModel(ticks);
+    table.setDelegate(std::make_unique<glw::TableTextDelegate>([t = ticks.get()](std::size_t r, std::size_t) {
+        return glw::LocalizedText(std::to_string(t->prices[r]));
+    }));
+    root.setContent(std::move(made));
+    root.layout();
+    glw::paint::DrawList drawn;
+    const double sort = once([&] {
+        table.sortBy(0);
+        root.paint(drawn);
+    });
+    const auto each = [&](int n, auto&& op) {
+        return once([&] {
+            for (int i = 0; i < n; ++i)
+                op();
+            root.paint(drawn);
+        }) * 1000.0 / n;
+    };
+    const double changed = each(1000, [&] { ticks->change(ticks->any()); });
+    const double appended = each(1000, [&] { ticks->insert(ticks->prices.size()); });
+    const double insertedFirst = each(1000, [&] { ticks->insert(0); });
+    const double removed = each(1000, [&] { ticks->remove(0); });          // the oldest: a window that moves on
+    // filtered too: a price under 5000
+    table.setFilter([t = ticks.get()](std::size_t r) { return t->prices[r] < 5000; });
+    const double changedFiltered = each(1000, [&] { ticks->change(ticks->any()); });
+    std::printf("%9zu | %8.1f | %8.1f | %8.1f | %8.1f | %8.1f | %8.1f\n", rows, sort, changed, appended, insertedFirst, removed,
+                changedFiltered);
+}
+
 // Nodes of a canvas: a box with a title and two lines each, `count` of them in a grid.
 void nodesOnACanvas(glw::UiContext& ui, int count) {
     glw::UiRoot root(ui);
@@ -396,6 +468,10 @@ int main(int argc, char** argv) {
     std::printf("     rows | columns |    build |   layout |    paint |   scroll |   across |     jump |     sort |   filter |  widgets\n");
     cellsInATableView(ui, 1'000'000, 100);
     cellsInATableView(ui, 100'000'000, 1000);
+
+    std::printf("\nA live feed in a table view, sorted by price: sorting in milliseconds, then each change in microseconds\n");
+    std::printf("     rows |     sort |   change |   append | at first |   oldest | filtered\n");
+    aLiveFeedInATableView(ui, 1'000'000);
 
     std::printf("\nNodes on a canvas, milliseconds (all: every one in view, zoomed out)\n");
     std::printf("    nodes |    build |   layout |    paint |      pan |     zoom |      all | vertices\n");

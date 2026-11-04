@@ -35,6 +35,7 @@ namespace glw {
 
 class RowHeights;
 class ItemEditor;
+class ItemOrder;
 
 // What makes the widgets of a list's rows, and shows an item in one.
 class GLW_EXPORT ListDelegate {
@@ -118,7 +119,8 @@ public:
     // Only the items `accepts` says yes to (the model's indices); none: all of them.
     void setFilter(std::function<bool(std::size_t)> accepts);
     // Sorted and filtered again: what the comparison or the filter says changed (the text searched for). The model's
-    // changes do it by themselves.
+    // changes need not: the items they name only are compared and filtered (an item inserted goes where it sorts, one
+    // changed stays where it is when it still sorts there), the rest of the order kept.
     void reorder();
     // How many show, which item shows at a position, where an item shows (none: filtered out).
     std::size_t shownCount() const;
@@ -215,6 +217,21 @@ private:
     void setCurrentAt(std::optional<std::size_t> position);
     void scrollToPosition(std::size_t position);
     bool ordered() const { return sortOrder_.has_value() || static_cast<bool>(filter_); }
+    // ---- the order, as the model changes: the items it names only ----
+    // In the order shown, whether the model's `a` goes before its `b` (equals in the model's order).
+    bool before(std::size_t a, std::size_t b) const;
+    void buildOrder();                  // all of it, sorted and filtered
+    // What a change of the order keeps: the current item, the item at the top and how far into it the view is.
+    struct Kept {
+        std::optional<std::size_t> current;     // the model's
+        std::size_t currentAt = 0;              // where it was
+        bool lost = false;                      // it went: the one in its place is current
+        std::optional<std::size_t> top;
+        double within = 0;
+    };
+    Kept keep() const;
+    // After it: the positions [from, to) changed (`counted`: so did how many show).
+    void reordered(Kept kept, std::size_t from, std::size_t to, bool counted);
     bool editAt(std::size_t position);
     void placeEditor();
     std::optional<Rect> editorRect() const;
@@ -231,8 +248,7 @@ private:
     std::optional<SortOrder> sortOrder_;
     std::function<std::partial_ordering(std::size_t, std::size_t)> compare_;
     std::function<bool(std::size_t)> filter_;
-    std::vector<std::size_t> order_;        // the model's item at each position, while sorted or filtered
-    std::vector<std::size_t> positions_;    // ... the position of each item (npos: filtered out)
+    std::unique_ptr<ItemOrder> order_;      // while sorted or filtered: the items shown, in their order
     EditTriggers editTriggers_ = EditTriggers::All;
     std::unique_ptr<ItemEditor> editor_;
     std::optional<std::size_t> edited_;     // the position edited

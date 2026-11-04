@@ -42,6 +42,7 @@ add_library(GLWidgets ${GLW_LIB_TYPE}
     Source/Widgets/Icon.cpp
     Source/Widgets/ItemEditor.cpp
     Source/Widgets/ItemModel.cpp
+    Source/Widgets/ItemOrder.cpp
     Source/Widgets/Json.cpp
     Source/Widgets/Label.cpp
     Source/Widgets/Layout.cpp

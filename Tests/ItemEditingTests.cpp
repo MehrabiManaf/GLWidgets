@@ -14,7 +14,9 @@
 #include <GLWidgets/Widgets/TreeView.hpp>
 #include <GLWidgets/Widgets/UiRoot.hpp>
 
+#include <algorithm>
 #include <memory>
+#include <random>
 #include <string>
 #include <vector>
 
@@ -364,4 +366,121 @@ TEST(aTreesNodeIsEditedAfterItsArrow) {
     type(t.root, "bee");
     key(t.root, platform::Key::Enter);
     CHECK(!t.tree->editing() && t.nodes->nodes[4].name == "bee" && t.shown() == "a bee");
+}
+
+namespace {
+
+// Numbers, changed as a live feed changes: inserted, removed and changed anywhere, one or many at a time.
+class Values final : public ListModel {
+public:
+    std::vector<int> values;
+    std::size_t count() const override { return values.size(); }
+    std::partial_ordering compare(std::size_t a, std::size_t b) const override { return values[a] <=> values[b]; }
+    void insert(std::size_t at, std::vector<int> added) {
+        values.insert(values.begin() + static_cast<std::ptrdiff_t>(at), added.begin(), added.end());
+        notifyInserted(at, added.size());
+    }
+    void remove(std::size_t at, std::size_t n) {
+        values.erase(values.begin() + static_cast<std::ptrdiff_t>(at), values.begin() + static_cast<std::ptrdiff_t>(at + n));
+        notifyRemoved(at, n);
+    }
+    void change(std::size_t at, std::vector<int> now) {
+        std::copy(now.begin(), now.end(), values.begin() + static_cast<std::ptrdiff_t>(at));
+        notifyChanged(at, now.size());
+    }
+};
+
+// A thousand random changes of a list sorted (`order`) and filtered or not: after each, the order must be what a sort and
+// a filter from nothing give.
+bool followsItemByItem(unsigned seed, std::optional<SortOrder> order, bool filtered) {
+    UiRoot root(tests::testContext());
+    auto values = std::make_shared<Values>();
+    for (int i = 0; i < 300; ++i)
+        values->values.push_back((i * 37) % 101);
+    auto made = std::make_unique<ListView>();
+    ListView& list = *made;
+    list.setModel(values);
+    root.setSize({200, 200});
+    root.setContent(std::move(made));
+    list.setSortOrder(order);
+    const auto accepts = [&](std::size_t i) { return values->values[i] % 3 != 0; };
+    if (filtered)
+        list.setFilter(accepts);
+    root.layout();
+    const auto expected = [&] {
+        std::vector<std::size_t> want;
+        for (std::size_t i = 0; i < values->values.size(); ++i) {
+            if (!filtered || accepts(i))
+                want.push_back(i);
+        }
+        if (order) {
+            std::stable_sort(want.begin(), want.end(), [&](std::size_t a, std::size_t b) {
+                return *order == SortOrder::Ascending ? values->values[a] < values->values[b] : values->values[a] > values->values[b];
+            });
+        }
+        return want;
+    };
+    const auto matches = [&] {
+        const std::vector<std::size_t> want = expected();
+        if (list.shownCount() != want.size())
+            return false;
+        for (std::size_t at = 0; at < want.size(); ++at) {
+            if (list.modelIndex(at) != want[at] || list.position(want[at]) != at)
+                return false;
+        }
+        return true;
+    };
+    if (!matches())
+        return false;
+    std::mt19937 random(seed);
+    const auto any = [&](std::size_t n) { return static_cast<std::size_t>(random() % std::max<std::size_t>(1, n)); };
+    const auto numbers = [&](std::size_t n) {
+        std::vector<int> made(n);
+        for (int& v : made)
+            v = static_cast<int>(random() % 101);
+        return made;
+    };
+    bool all = true;
+    for (int step = 0; step < 1000 && all; ++step) {
+        const std::size_t n = values->values.size();
+        switch (random() % 5) {
+        case 0: values->insert(any(n + 1), numbers(1 + any(3))); break;
+        case 1: values->insert(any(n + 1), numbers(40 + any(30))); break;        // many at once: merged
+        case 2:
+            if (n > 10) {
+                const std::size_t at = any(n - 5);
+                values->remove(at, 1 + any(4));
+            }
+            break;
+        default:
+            if (n > 0) {
+                const std::size_t at = any(n);
+                values->change(at, numbers(std::min<std::size_t>(n - at, 1 + any(3))));
+            }
+            break;
+        }
+        all = matches();
+    }
+    if (!all)
+        return false;
+    // the current item followed, by the model's index: through an insert before it, and moved by a change
+    list.setCurrent(list.modelIndex(5));
+    const int value = values->values[*list.current()];
+    values->insert(0, {1000});
+    if (!list.current() || values->values[*list.current()] != value)
+        return false;
+    if (!order)
+        return true;            // not sorted: a change does not move it
+    values->change(*list.current(), {order == SortOrder::Ascending ? -1 : 1001});     // to the top, still current
+    return list.current() && list.position(*list.current()) == 0u;
+}
+
+} // namespace
+
+TEST(aSortedFilteredListFollowsItsModelItemByItem) {
+    for (unsigned seed : {7u, 11u, 23u}) {
+        CHECK(followsItemByItem(seed, SortOrder::Descending, true));
+        CHECK(followsItemByItem(seed, SortOrder::Ascending, false));
+        CHECK(followsItemByItem(seed, std::nullopt, true));
+    }
 }
