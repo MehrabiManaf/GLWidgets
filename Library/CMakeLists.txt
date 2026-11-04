@@ -47,6 +47,7 @@ add_library(GLWidgets ${GLW_LIB_TYPE}
     Source/Widgets/Panel.cpp
     Source/Widgets/RowHeights.cpp
     Source/Widgets/ScrollArea.cpp
+    Source/Widgets/SearchPopup.cpp
     Source/Widgets/Splitter.cpp
     Source/Widgets/Theme.cpp
     Source/Widgets/TableView.cpp

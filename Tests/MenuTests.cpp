@@ -12,11 +12,13 @@
 #include <GLWidgets/Widgets/Layout.hpp>
 #include <GLWidgets/Widgets/LineEdit.hpp>
 #include <GLWidgets/Widgets/Menu.hpp>
+#include <GLWidgets/Widgets/SearchPopup.hpp>
 #include <GLWidgets/Widgets/UiRoot.hpp>
 
 #include <memory>
 #include <optional>
 #include <string>
+#include <utility>
 #include <vector>
 
 using namespace glw;
@@ -231,4 +233,47 @@ TEST(aDialogsFocusStartsOnItsFirstFieldAndEnterChoosesTheDefault) {
     // the text wraps at the dialog's width
     showMessage(*m.content, "A long one", std::string(400, 'x') + " " + std::string(10, 'y'), {"OK"});
     CHECK(m.popup(0).size().width <= 460);
+}
+
+TEST(searchFindsEveryWordAndRanksWhereTheyAre) {
+    const std::vector<std::pair<std::string, std::string>> entries{
+        {"Add", "Math"}, {"Multiply", "Math"}, {"Print String", "Text"}, {"To Text", "Text"}, {"Branch", "Flow"}};
+    CHECK(searchTexts(entries, "") == (std::vector<std::size_t>{0, 1, 2, 3, 4}));
+    // at the start of the text, then of a word of it, then anywhere (its detail too); case aside
+    CHECK(searchTexts(entries, "TEXT") == (std::vector<std::size_t>{3, 2}));
+    CHECK(searchTexts(entries, "m") == (std::vector<std::size_t>{1, 0}));
+    CHECK(searchTexts(entries, "math add") == std::vector<std::size_t>{0});
+    CHECK(searchTexts(entries, "str  pri") == std::vector<std::size_t>{2});
+    CHECK(searchTexts(entries, "nothing").empty());
+}
+
+TEST(aSearchPopupFiltersAsItIsTypedAndChooses) {
+    Menued m;
+    std::vector<std::size_t> chosen;
+    int closed = 0;
+    const auto open = [&] {
+        return showSearchPopup(*m.content, {40, 50, 0, 0},
+                               {.items = {{"Add", "Math"}, {"Multiply", "Math"}, {"Print String", "Text"}},
+                                .onChosen = [&](std::size_t i) { chosen.push_back(i); },
+                                .onClosed = [&] { ++closed; }});
+    };
+    CHECK(open());
+    UiRoot& popup = m.popup(0);
+    CHECK(m.popups()[0]->anchor == (Rect{40, 50, 0, 0}) && popup.size() == (Size{300, 340}));
+    // typed in its field (which has the focus): the list follows; Enter takes the first
+    popup.dispatch(platform::TextInput{1, "mul"});
+    Menued::key(popup, platform::Key::Enter);
+    CHECK(chosen == std::vector<std::size_t>{1} && m.popups().empty() && closed == 1);
+    // Down and Up choose while the field keeps the focus
+    open();
+    Menued::key(m.popup(0), platform::Key::Down);
+    Menued::key(m.popup(0), platform::Key::Down);
+    Menued::key(m.popup(0), platform::Key::Down);
+    Menued::key(m.popup(0), platform::Key::Up);
+    Menued::key(m.popup(0), platform::Key::Enter);
+    CHECK(chosen == (std::vector<std::size_t>{1, 1}));
+    // Escape: none
+    open();
+    Menued::key(m.popup(0), platform::Key::Escape);
+    CHECK(chosen.size() == 2 && m.popups().empty() && closed == 3);
 }

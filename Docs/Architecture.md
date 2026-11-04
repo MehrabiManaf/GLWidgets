@@ -431,7 +431,11 @@ does with the keyboard. Popups are not among the application's windows (docking 
 end, a check mark, a submenu, separators, disabled items. The mouse chooses by going over an item (a submenu opens) and
 triggers by letting go over it; the keys choose (Up, Down, Home, End, past separators and disabled items), go in and out
 of submenus (Right and Left, mirrored in right to left), trigger (Enter, Space) and close (Escape). A `ComboBox` is a text
-chosen from such a menu under it, the current one checked; Up and Down change it without opening it. A widget's
+chosen from such a menu under it, the current one checked; Up and Down change it without opening it. A search popup
+(`showSearchPopup`, `Widgets/SearchPopup.hpp`) is a field over a list filtered as it is typed in: every word typed must
+be in an item's text or detail (case aside), those starting with the first come first, then those with a word that does;
+Up and Down choose while the field keeps the focus, Enter or a click takes one (what adds a node by its name, completes a
+word, runs a command). A widget's
 tooltip (`Widget::setToolTip`) is a popup that takes no input, under the mouse's pointer, shown by the root after the
 mouse stayed over the widget half a second (80 ms when another closed a moment ago: along a toolbar), gone when the
 mouse leaves the widget, presses, scrolls or a key is pressed, and not again until it leaves.

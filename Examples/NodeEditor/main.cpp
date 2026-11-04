@@ -5,7 +5,8 @@
 // the canvas draws under them. Drag a node by its header or body (the selected ones move together), a pin to another to
 // link them (Alt and a click on a pin breaks its links), the empty canvas to select with a rectangle; the wheel zooms, the
 // middle or right button pans; Delete removes the selection, F frames it (or everything), Ctrl+A selects all. A comment's
-// header moves it with the nodes in it, its corner resizes it.
+// header moves it with the nodes in it, its corner resizes it. Space or Tab searches the nodes to add one by its name;
+// a link let go on the empty canvas searches those that have a pin for it, and links the one added.
 //
 //   node_editor [--nodes N] [--rtl] [--frames N]
 //
@@ -18,6 +19,7 @@
 #include <GLWidgets/Widgets/Layout.hpp>
 #include <GLWidgets/Widgets/LineEdit.hpp>
 #include <GLWidgets/Widgets/Menu.hpp>
+#include <GLWidgets/Widgets/SearchPopup.hpp>
 #include <GLWidgets/Widgets/UiRoot.hpp>
 
 #include <algorithm>
@@ -69,6 +71,35 @@ struct NodeSpec {
     Color header;
     std::vector<PinSpec> inputs, outputs;
 };
+
+// What can be added, by category.
+struct CatalogEntry {
+    std::string category;
+    NodeSpec spec;
+};
+
+const std::vector<CatalogEntry>& catalog() {
+    const PinSpec exec{"", Type::Exec};
+    static const std::vector<CatalogEntry> entries{
+        {"Flow", {"Branch", flowHeader, {exec, {"Condition", Type::Bool}}, {{"True", Type::Exec}, {"False", Type::Exec}}}},
+        {"Flow", {"Sequence", flowHeader, {exec}, {{"Then 0", Type::Exec}, {"Then 1", Type::Exec}}}},
+        {"Flow", {"Delay", functionHeader, {exec, {"Seconds", Type::Float}}, {exec}}},
+        {"Math", {"Add", pureHeader, {{"A", Type::Float}, {"B", Type::Float}}, {{"Sum", Type::Float}}}},
+        {"Math", {"Subtract", pureHeader, {{"A", Type::Float}, {"B", Type::Float}}, {{"Difference", Type::Float}}}},
+        {"Math", {"Multiply", pureHeader, {{"A", Type::Float}, {"B", Type::Float}}, {{"Result", Type::Float}}}},
+        {"Math", {"Greater", pureHeader, {{"A", Type::Float}, {"B", Type::Float}}, {{"Result", Type::Bool}}}},
+        {"Math", {"Increment", functionHeader, {exec, {"Value", Type::Int}, {"By", Type::Int}}, {exec, {"Value", Type::Int}}}},
+        {"Logic", {"And", pureHeader, {{"A", Type::Bool}, {"B", Type::Bool}}, {{"Result", Type::Bool}}}},
+        {"Logic", {"Not", pureHeader, {{"Value", Type::Bool}}, {{"Result", Type::Bool}}}},
+        {"Text", {"Print String", functionHeader, {exec, {"In String", Type::String}, {"Print to Screen", Type::Bool}}, {exec}}},
+        {"Text", {"To Text", pureHeader, {{"Value", Type::Int}}, {{"Text", Type::String}}}},
+        {"Text", {"Append", pureHeader, {{"A", Type::String}, {"B", Type::String}}, {{"Result", Type::String}}}},
+        {"Text", {"Write Log", functionHeader, {exec, {"Message", Type::String}}, {exec}}},
+        {"Variables", {"Get Speed", variableHeader, {}, {{"Speed", Type::Float}}}},
+        {"Variables", {"Set Speed", variableHeader, {exec, {"Speed", Type::Float}}, {exec, {"Speed", Type::Float}}}},
+    };
+    return entries;
+}
 
 constexpr float connectorRoom = 22;     // a pin's connector, on the node's side of its row
 constexpr float nodeRadius = 8;
@@ -169,29 +200,62 @@ public:
 
     // What the canvas offers where it was clicked: nodes to add there, and what is done to the selection.
     void contextMenu(Point at) {
-        const auto add = [this, at](NodeSpec spec) { return [this, at, spec] { addNode(spec, at).setSelected(true); }; };
-        const PinSpec exec{"", Type::Exec};
         bool any = false;
         for (NodeView* node : nodes_)
             any = any || node->selected();
+        // a submenu for each category, in the catalog's order
+        std::vector<MenuItem> categories;
+        for (const CatalogEntry& entry : catalog()) {
+            if (categories.empty() || categories.back().text.source != entry.category)
+                categories.push_back({.text = LocalizedText(entry.category)});
+            categories.back().items.push_back(
+                {.text = LocalizedText(entry.spec.title), .onTriggered = [this, at, spec = entry.spec] { select(addNode(spec, at), false); }});
+        }
         showContextMenu(*this, fromCanvas(at),
-                        {{.text = "Add Node",
-                          .items = {{.text = "Flow",
-                                     .items = {{.text = "Branch", .onTriggered = add({"Branch", flowHeader, {exec, {"Condition", Type::Bool}}, {{"True", Type::Exec}, {"False", Type::Exec}}})},
-                                               {.text = "Sequence", .onTriggered = add({"Sequence", flowHeader, {exec}, {{"Then 0", Type::Exec}, {"Then 1", Type::Exec}}})}}},
-                                    {.text = "Math",
-                                     .items = {{.text = "Add", .onTriggered = add({"Add", pureHeader, {{"A", Type::Float}, {"B", Type::Float}}, {{"Sum", Type::Float}}})},
-                                               {.text = "Multiply", .onTriggered = add({"Multiply", pureHeader, {{"A", Type::Float}, {"B", Type::Float}}, {{"Result", Type::Float}}})},
-                                               {.text = "Greater", .onTriggered = add({"Greater", pureHeader, {{"A", Type::Float}, {"B", Type::Float}}, {{"Result", Type::Bool}}})}}},
-                                    {.text = "Text",
-                                     .items = {{.text = "Print String", .onTriggered = add({"Print String", functionHeader, {exec, {"In String", Type::String}}, {exec}})},
-                                               {.text = "To Text", .onTriggered = add({"To Text", pureHeader, {{"Value", Type::Int}}, {{"Text", Type::String}}})}}}}},
+                        {{.text = "Add Node", .items = std::move(categories)},
+                         {.text = "Search Nodes…", .onTriggered = [this, at] { openPalette(at, nullptr); }, .shortcut = "Space"},
                          MenuItem::separatorItem(),
                          {.text = "Frame", .onTriggered = [this] { frameSelection(); }, .shortcut = "F"},
                          {.text = "Select All", .onTriggered = [this] { selectAll(true); }, .shortcut = "Ctrl+A"},
                          {.text = "Delete", .onTriggered = [this] { removeSelected(); }, .shortcut = "Del", .enabled = any},
                          MenuItem::separatorItem(),
                          {.text = "Show Grid", .onTriggered = [this] { setGridVisible(!grid()); }, .checked = grid()}});
+    }
+
+    // The nodes of the catalog to add at `at` (the canvas's), searched by name. Those with a pin `from` (let go on the empty
+    // canvas) links to, when there is one: the node added is linked to it.
+    void openPalette(Point at, PinRow* from) {
+        std::vector<SearchItem> items;
+        std::vector<std::size_t> which;
+        for (std::size_t i = 0; i < catalog().size(); ++i) {
+            const NodeSpec& spec = catalog()[i].spec;
+            const auto& pins = from && !from->input() ? spec.inputs : spec.outputs;
+            if (from && std::none_of(pins.begin(), pins.end(), [&](const PinSpec& p) { return p.type == from->type(); }))
+                continue;
+            items.push_back({LocalizedText(spec.title), LocalizedText(catalog()[i].category)});
+            which.push_back(i);
+        }
+        // the pin by its node and its place, not a pointer: the node may go while the palette is open
+        NodeView* node = from ? &from->node() : nullptr;
+        const std::size_t pin = node ? std::size_t(std::find(node->pins().begin(), node->pins().end(), from) - node->pins().begin()) : 0;
+        const Point shown = fromCanvas(at);
+        showSearchPopup(*this, {shown.x, shown.y, 0, 0},
+                        {.items = std::move(items),
+                         .placeholder = "Search nodes",
+                         .onChosen = [this, at, which, node, pin](std::size_t i) {
+                             const NodeSpec& spec = catalog()[which[i]].spec;
+                             const bool linked = node && std::find(nodes_.begin(), nodes_.end(), node) != nodes_.end();
+                             // from an input: the node at the start side of the point, its output toward it
+                             const bool toInput = linked && node->pins()[pin]->input();
+                             NodeView& added = addNode(spec, toInput ? at - Point{rightToLeft() ? -40.0f : 180.0f, 20} : at - Point{0, 20});
+                             select(added, false);
+                             if (linked) {
+                                 for (PinRow* p : added.pins()) {
+                                     if (link(*node->pins()[pin], *p))
+                                         break;
+                                 }
+                             }
+                         }});
     }
 
     NodeView& addNode(const NodeSpec& spec, Point at) {
@@ -329,6 +393,8 @@ public:
                 return;
             }
         }
+        // on the empty canvas: what to link it to, to add there
+        openPalette(linkTo_, from);
     }
 
     // A point of `widget` (in a node, a comment) on the canvas.
@@ -364,6 +430,11 @@ protected:
             p.fillRect(r, {accent.r, accent.g, accent.b, 0.12f});
             p.strokeRoundedRect(r, 0, 1 / zoom(), accent);
         }
+    }
+
+    void onPreviewMouse(MouseEvent& event) override {
+        if (event.type == MouseEventType::Move)
+            mouse_ = event.position;         // where Space opens the palette
     }
 
     void onMouse(MouseEvent& event) override {
@@ -413,6 +484,8 @@ protected:
             removeSelected();
         } else if (event.key == platform::Key::F && !shortcut) {
             frameSelection();
+        } else if ((event.key == platform::Key::Space || event.key == platform::Key::Tab) && !shortcut) {
+            openPalette(toCanvas(mouse_), nullptr);
         } else if (event.key == platform::Key::A && shortcut) {
             selectAll(true);
         } else {
@@ -478,6 +551,7 @@ private:
     std::optional<std::pair<Point, Point>> band_;
     bool bandAdds_ = false;
     std::vector<bool> bandBefore_;
+    Point mouse_;                           // its own coordinates
     std::function<void()> onChanged_;
 };
 

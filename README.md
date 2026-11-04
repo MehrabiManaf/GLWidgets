@@ -47,7 +47,8 @@ Then, in `build/<preset>/bin`:
   theme. `--language fa` and `--light` start it so.
 - `node_editor` is a node editor on a `Canvas`: nodes with pins and fields for their values, links drawn as curves,
   dragged from pin to pin; nodes moved, selected by a rectangle, framed (F), deleted; comments that carry their nodes;
-  a context menu (the right button) to add nodes by category.
+  a context menu (the right button) to add nodes by category, and a palette to add one by its name (Space, Tab, or a
+  link let go on the empty canvas: then only the nodes that have a pin for it, the one added linked).
   The wheel zooms, the middle or right button pans. `--nodes N` adds N more (thousands: only what shows is painted),
   `--rtl` mirrors it.
 - `hello_window` opens two windows drawn by one GPU device.
