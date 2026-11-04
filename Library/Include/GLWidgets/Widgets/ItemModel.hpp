@@ -9,17 +9,44 @@
 //   public:
 //       std::size_t count() const override { return names.size(); }
 //       void add(std::string name) { names.push_back(std::move(name)); notifyInserted(names.size() - 1, 1); }
+//       // sorted by name (ListView::setSortOrder), renamed in place (ItemFlags::Editable)
+//       std::partial_ordering compare(std::size_t a, std::size_t b) const override { return names[a] <=> names[b]; }
+//       glw::ItemFlags flags(std::size_t) const override { return glw::ItemFlags::Editable; }
 //       std::vector<std::string> names;
 //   };
+//
+// A model says what can be done with an item (flags: editable), and how two of its items compare, for the views to sort
+// them: the data is the model's, so are its order and its kinds of values.
 #include <GLWidgets/Export.hpp>
 #include <GLWidgets/Widgets/Localization.hpp>
 
+#include <compare>
 #include <cstddef>
 #include <cstdint>
 #include <optional>
 #include <vector>
 
 namespace glw {
+
+// What can be done with an item, as its model says. None by default: it is shown and chosen.
+enum class ItemFlags : std::uint8_t {
+    None = 0,
+    Editable = 1 << 0,      // edited in place (a double click, F2, typing): in a widget its delegate makes
+};
+constexpr ItemFlags operator|(ItemFlags a, ItemFlags b) {
+    return static_cast<ItemFlags>(static_cast<std::uint8_t>(a) | static_cast<std::uint8_t>(b));
+}
+constexpr ItemFlags operator&(ItemFlags a, ItemFlags b) {
+    return static_cast<ItemFlags>(static_cast<std::uint8_t>(a) & static_cast<std::uint8_t>(b));
+}
+constexpr bool hasFlag(ItemFlags flags, ItemFlags flag) {
+    return (flags & flag) != ItemFlags::None;
+}
+
+enum class SortOrder : std::uint8_t {
+    Ascending,              // the least first
+    Descending,
+};
 
 // What a view of a list model is told, after the model changed.
 class GLW_EXPORT ListModelObserver {
@@ -43,6 +70,9 @@ public:
     ListModel& operator=(const ListModel&) = delete;
 
     virtual std::size_t count() const = 0;
+    virtual ItemFlags flags(std::size_t index) const { return ItemFlags::None; }
+    // How two items compare, to sort them (ListView::setSortOrder): by default equivalent (the model's order kept).
+    virtual std::partial_ordering compare(std::size_t a, std::size_t b) const { return std::partial_ordering::equivalent; }
 
     void addObserver(ListModelObserver& observer);
     void removeObserver(ListModelObserver& observer);
@@ -66,6 +96,11 @@ public:
 
     std::size_t count() const override { return items_.size(); }
     const LocalizedText& text(std::size_t index) const { return items_[index]; }
+    // Sorted by their texts, as they are written (case aside, for Latin letters).
+    std::partial_ordering compare(std::size_t a, std::size_t b) const override;
+    // Edited in place (a ListView shows them in fields, and sets them): off by default.
+    void setEditable(bool editable) { editable_ = editable; }
+    ItemFlags flags(std::size_t) const override { return editable_ ? ItemFlags::Editable : ItemFlags::None; }
 
     void setItems(std::vector<LocalizedText> items);
     void insert(std::size_t index, LocalizedText text);
@@ -75,6 +110,7 @@ public:
 
 private:
     std::vector<LocalizedText> items_;
+    bool editable_ = false;
 };
 
 // ---- trees ----
@@ -109,6 +145,9 @@ public:
     // Whether it has children, before they are counted (a folder not read yet: read when it is expanded). By default,
     // whether it has any.
     virtual bool hasChildren(TreeNode node) const { return childCount(node) > 0; }
+    virtual ItemFlags flags(TreeNode node) const { return ItemFlags::None; }
+    // How two children of one node compare, to sort them (TreeView::setSortOrder): by default equivalent.
+    virtual std::partial_ordering compare(TreeNode a, TreeNode b) const { return std::partial_ordering::equivalent; }
 
     void addObserver(TreeModelObserver& observer);
     void removeObserver(TreeModelObserver& observer);
@@ -149,6 +188,12 @@ public:
     virtual std::size_t rowCount() const = 0;
     virtual std::size_t columnCount() const = 0;
     virtual LocalizedText header(std::size_t column) const { return {}; }
+    virtual ItemFlags flags(std::size_t row, std::size_t column) const { return ItemFlags::None; }
+    // Whether the rows can be sorted by a column (a click on its header), and how two rows compare in it.
+    virtual bool sortable(std::size_t column) const { return false; }
+    virtual std::partial_ordering compare(std::size_t rowA, std::size_t rowB, std::size_t column) const {
+        return std::partial_ordering::equivalent;
+    }
 
     void addObserver(TableModelObserver& observer);
     void removeObserver(TableModelObserver& observer);

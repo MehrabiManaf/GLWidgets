@@ -1,0 +1,367 @@
+// SPDX-FileCopyrightText: 2026 Abdolmanaf Mehrabi Sisakht
+// SPDX-License-Identifier: MIT
+// Item views sorted, filtered and edited: lists sorted by their model's comparison and filtered, the model's indices kept
+// for what is asked of them; a table sorted by a click on a header (ascending, descending, not), cells edited in fields
+// and in other widgets (a check box), Tab to the next editable cell; a tree's children sorted, its nodes filtered with
+// their ancestors opened; editing started by F2, typing and a double click, ended by Enter, Escape and the focus leaving.
+#include "Check.hpp"
+#include "TestUi.hpp"
+
+#include <GLWidgets/Widgets/CheckBox.hpp>
+#include <GLWidgets/Widgets/LineEdit.hpp>
+#include <GLWidgets/Widgets/ListView.hpp>
+#include <GLWidgets/Widgets/TableView.hpp>
+#include <GLWidgets/Widgets/TreeView.hpp>
+#include <GLWidgets/Widgets/UiRoot.hpp>
+
+#include <memory>
+#include <string>
+#include <vector>
+
+using namespace glw;
+
+namespace {
+
+void key(UiRoot& root, platform::Key k, platform::KeyModifiers modifiers = platform::KeyModifiers::None) {
+    root.dispatch(platform::KeyChanged{1, k, modifiers, true, false});
+    root.layout();
+}
+
+void type(UiRoot& root, std::string text) {
+    root.dispatch(platform::TextInput{1, std::move(text)});
+    root.layout();
+}
+
+void click(UiRoot& root, Point at, int clicks = 1) {
+    root.dispatch(platform::MouseMoved{1, at});
+    root.dispatch(platform::MouseButtonChanged{1, platform::MouseButton::Left, true, clicks, at});
+    root.dispatch(platform::MouseButtonChanged{1, platform::MouseButton::Left, false, clicks, at});
+    root.layout();
+}
+
+// A list of fruit, as a ListView shows a StringListModel by itself.
+struct Fruit {
+    UiRoot root{tests::testContext()};
+    ListView* list = nullptr;
+    std::shared_ptr<StringListModel> texts =
+        std::make_shared<StringListModel>(std::vector<LocalizedText>{"pear", "Apple", "fig", "banana"});
+
+    Fruit() {
+        auto made = std::make_unique<ListView>();
+        list = made.get();
+        list->setModel(texts);
+        root.setSize({300, 300});
+        root.setContent(std::move(made));
+        root.layout();
+    }
+    // the texts as they show, in order
+    std::string shown() const {
+        std::string out;
+        for (std::size_t at = 0; at < list->shownCount(); ++at)
+            out += (at ? " " : "") + texts->text(list->modelIndex(at)).source;
+        return out;
+    }
+};
+
+} // namespace
+
+TEST(aListSortsAndFiltersItsItemsAsTheyAre) {
+    Fruit f;
+    CHECK(f.shown() == "pear Apple fig banana");
+    f.list->setCurrent(3);                                      // banana
+    f.list->setSortOrder(SortOrder::Ascending);
+    CHECK(f.shown() == "Apple banana fig pear");                // case aside
+    CHECK(f.list->current() == 3u && f.list->position(3) == 1u);   // the model's index kept, where it shows now
+    f.list->setSortOrder(SortOrder::Descending);
+    CHECK(f.shown() == "pear fig banana Apple");
+    // filtered: those it accepts; the current one kept while it shows
+    f.list->setFilter([&](std::size_t i) { return f.texts->text(i).source.find('a') != std::string::npos; });
+    CHECK(f.shown() == "pear banana" && f.list->current() == 3u);
+    f.list->setFilter([&](std::size_t i) { return f.texts->text(i).source.size() == 3; });
+    CHECK(f.shown() == "fig" && !f.list->current() && !f.list->position(0));
+    // the model's changes, sorted and filtered as they come
+    f.list->setFilter({});
+    f.texts->append("cherry");
+    CHECK(f.shown() == "pear fig cherry banana Apple");
+    // the delegate still binds the model's items: the row showing "fig" is the model's item 2's
+    f.root.layout();
+    CHECK(f.list->rowWidget(2) != nullptr && f.list->itemAt({50, 30}) == 2u);
+    f.list->setSortOrder(std::nullopt);
+    CHECK(f.shown() == "pear Apple fig banana cherry");
+}
+
+TEST(aListItemIsEditedInPlace) {
+    Fruit f;
+    f.list->focus();
+    f.list->setCurrent(1);
+    // not editable: F2 does nothing
+    key(f.root, platform::Key::F2);
+    CHECK(!f.list->editing());
+    f.texts->setEditable(true);
+    // F2: a field over it, its text in it chosen, the focus in it
+    key(f.root, platform::Key::F2);
+    CHECK(f.list->editing() && f.list->editedItem() == 1u);
+    auto* field = dynamic_cast<LineEdit*>(f.list->editor());
+    CHECK(field && field->text() == "Apple" && field->hasFocus());
+    // typed over, Enter: put in, the focus back to the list
+    type(f.root, "Apricot");
+    key(f.root, platform::Key::Enter);
+    CHECK(!f.list->editing() && f.texts->text(1).source == "Apricot" && f.list->hasFocus());
+    // Escape: left as it was
+    key(f.root, platform::Key::F2);
+    type(f.root, "Plum");
+    key(f.root, platform::Key::Escape);
+    CHECK(!f.list->editing() && f.texts->text(1).source == "Apricot");
+    // typing on it: edited, what was typed in the field
+    type(f.root, "K");
+    CHECK(f.list->editing() && static_cast<LineEdit*>(f.list->editor())->text() == "K");
+    type(f.root, "iwi");
+    // the focus leaving it (the list pressed): put in
+    f.list->focus();
+    f.root.layout();
+    CHECK(!f.list->editing() && f.texts->text(1).source == "Kiwi");
+    // a double click: edited, not activated
+    bool activated = false;
+    f.list->setOnActivated([&](std::size_t) { activated = true; });
+    const Rect row = *f.list->itemRect(2);
+    click(f.root, row.center(), 2);
+    CHECK(f.list->editing() && f.list->editedItem() == 2u && !activated);
+    f.list->cancelEdit();
+    // only by the triggers it has
+    f.list->setEditTriggers(EditTriggers::F2);
+    type(f.root, "x");
+    CHECK(!f.list->editing());
+}
+
+namespace {
+
+// People: a name (a field), and whether they come (a check box); sortable by name.
+class People final : public TableModel {
+public:
+    std::vector<std::string> names{"Sara", "Ali", "Mina", "Reza"};
+    std::vector<bool> coming{true, false, true, false};
+    std::size_t rowCount() const override { return names.size(); }
+    std::size_t columnCount() const override { return 3; }
+    LocalizedText header(std::size_t column) const override { return LocalizedText(column == 0 ? "Name" : column == 1 ? "Comes" : "Id"); }
+    ItemFlags flags(std::size_t, std::size_t column) const override { return column < 2 ? ItemFlags::Editable : ItemFlags::None; }
+    bool sortable(std::size_t column) const override { return column == 0; }
+    std::partial_ordering compare(std::size_t a, std::size_t b, std::size_t) const override { return names[a] <=> names[b]; }
+    void changed(std::size_t row) { notifyRowsChanged(row, 1); }
+};
+
+// Names in fields (the text delegate's), whether they come in a check box.
+class PeopleDelegate final : public TableDelegate {
+public:
+    explicit PeopleDelegate(People& people) : people_(people), text_([&p = people](std::size_t r, std::size_t c) {
+        return LocalizedText(c == 0 ? p.names[r] : c == 1 ? (p.coming[r] ? "yes" : "no") : std::to_string(r));
+    }) {
+        text_.setOnEdited([&p = people](std::size_t r, std::size_t, std::string name) {
+            p.names[r] = std::move(name);
+            p.changed(r);
+        });
+    }
+    std::unique_ptr<Widget> makeCell(std::size_t kind) override { return text_.makeCell(kind); }
+    void bindCell(Widget& cell, std::size_t row, std::size_t column) override { text_.bindCell(cell, row, column); }
+    std::unique_ptr<Widget> makeEditor(std::size_t row, std::size_t column) override {
+        if (column == 1)
+            return std::make_unique<CheckBox>(CheckBox::Props{.text = "Comes", .checked = people_.coming[row]});
+        return text_.makeEditor(row, column);
+    }
+    void commitEdit(Widget& editor, std::size_t row, std::size_t column) override {
+        if (column == 1) {
+            people_.coming[row] = static_cast<CheckBox&>(editor).checked();
+            people_.changed(row);
+        } else {
+            text_.commitEdit(editor, row, column);
+        }
+    }
+
+private:
+    People& people_;
+    TableTextDelegate text_;
+};
+
+struct Peopled {
+    UiRoot root{tests::testContext()};
+    TableView* table = nullptr;
+    std::shared_ptr<People> people = std::make_shared<People>();
+
+    Peopled() {
+        auto made = std::make_unique<TableView>();
+        table = made.get();
+        table->setModel(people);
+        table->setDelegate(std::make_unique<PeopleDelegate>(*people));
+        root.setSize({600, 300});
+        root.setContent(std::move(made));
+        root.layout();
+    }
+    std::string shown() const {
+        std::string out;
+        for (std::size_t at = 0; at < table->shownRowCount(); ++at)
+            out += (at ? " " : "") + people->names[table->list().modelIndex(at)];
+        return out;
+    }
+    Point header(std::size_t column) const {
+        const Widget* h = table->headerWidget(column);
+        return h->mapToRoot({h->size().width / 2, h->size().height / 2});
+    }
+    Point cell(std::size_t row, std::size_t column) const {
+        const Widget* c = table->cellWidget(row, column);
+        return c->mapToRoot({c->size().width / 2, c->size().height / 2});
+    }
+};
+
+} // namespace
+
+TEST(aTableSortsByAHeaderClickAndFilters) {
+    Peopled p;
+    CHECK(p.shown() == "Sara Ali Mina Reza");
+    // a sortable column's header: ascending, descending, not
+    click(p.root, p.header(0));
+    CHECK(p.shown() == "Ali Mina Reza Sara" && p.table->sortColumn() == 0u && p.table->sortOrder() == SortOrder::Ascending);
+    click(p.root, p.header(0));
+    CHECK(p.shown() == "Sara Reza Mina Ali" && p.table->sortOrder() == SortOrder::Descending);
+    click(p.root, p.header(0));
+    CHECK(p.shown() == "Sara Ali Mina Reza" && !p.table->sortColumn());
+    // not sortable: nothing
+    click(p.root, p.header(2));
+    CHECK(!p.table->sortColumn());
+    // filtered, and sorted: the delegate binds the model's rows still
+    p.table->sortBy(0);
+    p.table->setFilter([&](std::size_t r) { return p.people->coming[r]; });
+    p.root.layout();
+    CHECK(p.shown() == "Mina Sara");
+    CHECK(static_cast<Label*>(p.table->cellWidget(2, 0))->text().source == "Mina");
+}
+
+TEST(aTableCellIsEditedInWhateverWidgetItsDelegateMakes) {
+    Peopled p;
+    p.table->list().focus();
+    // a double click on a name: a field
+    click(p.root, p.cell(1, 0), 2);
+    CHECK(p.table->editing() && p.table->editedCell() == std::pair<std::size_t, std::size_t>{1, 0});
+    CHECK(dynamic_cast<LineEdit*>(p.table->editor()) != nullptr);
+    type(p.root, "Arash");
+    // Tab: put in, the next editable cell (a check box)
+    key(p.root, platform::Key::Tab);
+    CHECK(p.people->names[1] == "Arash");
+    auto* box = dynamic_cast<CheckBox*>(p.table->editor());
+    CHECK(box && !box->checked() && p.table->editedCell() == std::pair<std::size_t, std::size_t>{1, 1});
+    box->setChecked(true);
+    key(p.root, platform::Key::Enter);
+    CHECK(!p.table->editing() && p.people->coming[1]);
+    // not editable (the id): nothing
+    CHECK(!p.table->edit(1, 2));
+    // F2 on the current row: its current cell
+    p.table->list().focus();
+    key(p.root, platform::Key::F2);
+    CHECK(p.table->editing() && p.table->editedCell() == std::pair<std::size_t, std::size_t>{1, 1});
+    key(p.root, platform::Key::Escape);
+    CHECK(!p.table->editing() && p.people->coming[1]);
+    // typing on the current row, the name's cell current: edited, what was typed in its field
+    p.table->list().focus();
+    p.table->edit(1, 0);
+    key(p.root, platform::Key::Escape);
+    type(p.root, "N");
+    CHECK(p.table->editing() && static_cast<LineEdit*>(p.table->editor())->text() == "N");
+    key(p.root, platform::Key::Escape);
+    // sorted while edited: the edit goes, nothing put in
+    p.table->edit(0, 0);
+    type(p.root, "Zed");
+    p.table->sortBy(0);
+    CHECK(!p.table->editing() && p.people->names[0] == "Sara");
+}
+
+namespace {
+
+// a: a1 a2 (a2x), b — editable, sorted by name.
+class Nodes final : public TreeModel {
+public:
+    struct Node {
+        std::string name;
+        std::vector<std::size_t> children;
+    };
+    std::vector<Node> nodes{{"a", {1, 2}}, {"a1", {}}, {"a2", {3}}, {"a2x", {}}, {"b", {}}};
+    std::vector<std::size_t> top{0, 4};
+    std::size_t childCount(std::optional<TreeNode> parent) const override { return parent ? nodes[parent->id].children.size() : top.size(); }
+    TreeNode child(std::optional<TreeNode> parent, std::size_t index) const override {
+        return {parent ? nodes[parent->id].children[index] : top[index]};
+    }
+    ItemFlags flags(TreeNode) const override { return ItemFlags::Editable; }
+    std::partial_ordering compare(TreeNode a, TreeNode b) const override { return nodes[a.id].name <=> nodes[b.id].name; }
+    void rename(TreeNode node) {
+        // its place among its siblings
+        for (std::size_t p = 0; p < nodes.size(); ++p) {
+            const auto& c = nodes[p].children;
+            if (const auto it = std::find(c.begin(), c.end(), node.id); it != c.end()) {
+                notifyChanged(TreeNode{p}, static_cast<std::size_t>(it - c.begin()), 1);
+                return;
+            }
+        }
+        const auto it = std::find(top.begin(), top.end(), node.id);
+        notifyChanged(std::nullopt, static_cast<std::size_t>(it - top.begin()), 1);
+    }
+};
+
+struct Treed {
+    UiRoot root{tests::testContext()};
+    TreeView* tree = nullptr;
+    std::shared_ptr<Nodes> nodes = std::make_shared<Nodes>();
+
+    Treed() {
+        auto made = std::make_unique<TreeView>();
+        tree = made.get();
+        tree->setModel(nodes);
+        auto delegate = std::make_unique<TreeTextDelegate>([n = nodes.get()](TreeNode node) { return LocalizedText(n->nodes[node.id].name); });
+        delegate->setOnEdited([n = nodes.get()](TreeNode node, std::string name) {
+            n->nodes[node.id].name = std::move(name);
+            n->rename(node);
+        });
+        tree->setDelegate(std::move(delegate));
+        root.setSize({300, 400});
+        root.setContent(std::move(made));
+        root.layout();
+    }
+    std::string shown() const {
+        std::string out;
+        for (std::size_t i = 0; i < tree->shownCount(); ++i)
+            out += (i ? " " : "") + std::string(tree->depthOf(i), '.') + nodes->nodes[tree->shownNode(i).id].name;
+        return out;
+    }
+};
+
+} // namespace
+
+TEST(aTreeSortsItsChildrenAndFiltersItsNodes) {
+    Treed t;
+    t.tree->setExpanded({0}, true);
+    t.tree->setExpanded({2}, true);
+    CHECK(t.shown() == "a .a1 .a2 ..a2x b");
+    t.tree->setSortOrder(SortOrder::Descending);
+    CHECK(t.shown() == "b a .a2 ..a2x .a1");
+    t.tree->setSortOrder(std::nullopt);
+    // filtered: what it accepts, with its ancestors, opened to show it
+    t.tree->collapseAll();
+    t.tree->setFilter([&](TreeNode n) { return t.nodes->nodes[n.id].name == "a2x"; });
+    CHECK(t.shown() == "a .a2 ..a2x");
+    // an ancestor closed by the user: closed
+    t.tree->setExpanded({2}, false);
+    CHECK(t.shown() == "a .a2");
+    t.tree->setFilter({});
+    CHECK(t.shown() == "a b");
+}
+
+TEST(aTreesNodeIsEditedAfterItsArrow) {
+    Treed t;
+    t.tree->list().focus();
+    t.tree->setCurrent({4});
+    key(t.root, platform::Key::F2);
+    CHECK(t.tree->editing());
+    // the field after the indent and the arrow, not over them
+    const Widget* row = t.tree->list().rowWidget(1);
+    const Point fieldAt = t.tree->editor()->mapToRoot({});
+    CHECK(fieldAt.x > row->mapToRoot({}).x + 10);
+    type(t.root, "bee");
+    key(t.root, platform::Key::Enter);
+    CHECK(!t.tree->editing() && t.nodes->nodes[4].name == "bee" && t.shown() == "a bee");
+}

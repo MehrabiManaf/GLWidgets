@@ -187,6 +187,7 @@ private:
     void showToolTip();
     void hideToolTip(bool suppress);
     void mouseMoved(Point point);
+    void runDeferred();                 // what was deferred, once nothing is dispatched
     // The pointer's shape: what has the mouse says, or the edge of the window under it, or what is under it.
     void updateCursor();
     void mouseButton(const platform::MouseButtonChanged& e);

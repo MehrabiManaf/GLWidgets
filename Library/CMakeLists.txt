@@ -40,6 +40,7 @@ add_library(GLWidgets ${GLW_LIB_TYPE}
     Source/Widgets/Docking.cpp
     Source/Widgets/Highlighter.cpp
     Source/Widgets/Icon.cpp
+    Source/Widgets/ItemEditor.cpp
     Source/Widgets/ItemModel.cpp
     Source/Widgets/Json.cpp
     Source/Widgets/Label.cpp

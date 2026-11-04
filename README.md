@@ -43,7 +43,8 @@ Then, in `build/<preset>/bin`:
 - `widgets_demo` is an application made of widgets, written with the declarative builders (`glw::ui`): a window with its
   own chrome, split in two by a handle, a form (text field, check boxes, buttons; Tab moves the focus) and, over each
   other, a list of a million items, a tree of a thousand folders of a thousand files (all open: a million rows, eased as
-  they open and close) and a table of a million rows of fifty columns (only what shows is widgets); a menu
+  they open and close) and a table of a million rows of fifty columns, sorted by a click on a header, filtered by a field
+  and edited in place (only what shows is widgets); a menu
   (with a submenu, check marks, shortcuts), a combo box, dialogs (a form; the Close button asks first), and panels that
   open and close, eased (a + in one's header adds a row); buttons switch to Persian (the window is mirrored) and to the light
   theme. `--language fa` and `--light` start it so.

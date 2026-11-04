@@ -2,16 +2,19 @@
 // SPDX-License-Identifier: MIT
 #include <GLWidgets/Widgets/ListView.hpp>
 
+#include "Widgets/ItemEditor.hpp"
 #include "Widgets/RowHeights.hpp"
 
 #include <GLWidgets/Paint/Painter.hpp>
 #include <GLWidgets/Widgets/Bevel.hpp>
 #include <GLWidgets/Widgets/Label.hpp>
 #include <GLWidgets/Widgets/Layout.hpp>
+#include <GLWidgets/Widgets/LineEdit.hpp>
 #include <GLWidgets/Widgets/UiRoot.hpp>
 
 #include <algorithm>
 #include <cmath>
+#include <numeric>
 
 namespace glw {
 
@@ -19,6 +22,7 @@ namespace {
 
 constexpr float wheelRows = 3;          // rows a step of the wheel scrolls
 constexpr float parkedAt = -100000;     // where a row widget showing nothing waits: out of sight, out of the mouse's way
+constexpr std::size_t hidden = static_cast<std::size_t>(-1);      // a position: filtered out
 
 } // namespace
 
@@ -38,9 +42,22 @@ void TextDelegate::bindRow(Widget& row, std::size_t index) {
     static_cast<Label&>(*row.children()[0]).setText(text_(index));
 }
 
+std::unique_ptr<Widget> TextDelegate::makeEditor(std::size_t index) {
+    if (!onEdited_)
+        return nullptr;
+    auto field = std::make_unique<LineEdit>(LineEdit::Props{.text = text_(index).source});
+    field->selectAll();
+    return field;
+}
+
+void TextDelegate::commitEdit(Widget& editor, std::size_t index) {
+    if (onEdited_)
+        onEdited_(index, static_cast<LineEdit&>(editor).text());
+}
+
 // ---- the view ----
 
-ListView::ListView() : heights_(std::make_unique<RowHeights>()) {
+ListView::ListView() : heights_(std::make_unique<RowHeights>()), editor_(std::make_unique<ItemEditor>(*this)) {
     setFocusable(true);
     setClipsChildren(true);
 }
@@ -63,9 +80,12 @@ void ListView::setModel(std::shared_ptr<ListModel> model) {
     model_ = std::move(model);
     if (model_)
         model_->addObserver(*this);
-    // texts: shown as they are, unless told otherwise
-    if (auto* texts = dynamic_cast<StringListModel*>(model_.get()); texts && !delegate_)
-        delegate_ = std::make_unique<TextDelegate>([texts](std::size_t i) { return texts->text(i); });
+    // texts: shown as they are, unless told otherwise; edited, set
+    if (auto* texts = dynamic_cast<StringListModel*>(model_.get()); texts && !delegate_) {
+        auto delegate = std::make_unique<TextDelegate>([texts](std::size_t i) { return texts->text(i); });
+        delegate->setOnEdited([texts](std::size_t i, std::string text) { texts->set(i, LocalizedText(std::move(text))); });
+        delegate_ = std::move(delegate);
+    }
     modelReset();
 }
 
@@ -96,29 +116,192 @@ void ListView::setSelectionMode(SelectionMode mode) {
 }
 
 void ListView::resetHeights() {
-    const std::size_t count = model_ ? model_->count() : 0;
+    const std::size_t count = shownCount();
     const float height = rowHeight_.value_or(style().rowHeight);
     // measured: estimated as the theme's row until then
     heights_->reset(count, height > 0 ? height : style().rowHeight, height > 0);
+}
+
+std::optional<std::size_t> ListView::current() const {
+    return current_ ? std::optional<std::size_t>(modelIndex(*current_)) : std::nullopt;
+}
+
+bool ListView::isSelected(std::size_t index) const {
+    return selectionMode_ == SelectionMode::Single && current_ && modelIndex(*current_) == index;
 }
 
 void ListView::setCurrent(std::optional<std::size_t> index) {
     const std::size_t count = model_ ? model_->count() : 0;
     if (index && *index >= count)
         index = count > 0 ? std::optional<std::size_t>(count - 1) : std::nullopt;
-    if (index)
-        scrollTo(*index);
-    if (index == current_)
-        return;
-    current_ = index;
-    invalidatePaint();
-    if (onCurrentChanged_)
-        onCurrentChanged_(current_);
+    setCurrentAt(index ? position(*index) : std::nullopt);
 }
 
-void ListView::activate(std::size_t index) {
+void ListView::setCurrentAt(std::optional<std::size_t> at) {
+    const std::size_t count = shownCount();
+    if (at && *at >= count)
+        at = count > 0 ? std::optional<std::size_t>(count - 1) : std::nullopt;
+    if (at)
+        scrollToPosition(*at);
+    if (at == current_)
+        return;
+    current_ = at;
+    invalidatePaint();
+    if (onCurrentChanged_)
+        onCurrentChanged_(current());
+}
+
+void ListView::activate(std::size_t at) {
     if (onActivated_)
-        onActivated_(index);
+        onActivated_(modelIndex(at));
+}
+
+// ---- sorting and filtering ----
+
+std::size_t ListView::shownCount() const {
+    if (!model_)
+        return 0;
+    return ordered() ? order_.size() : model_->count();
+}
+
+std::size_t ListView::modelIndex(std::size_t at) const {
+    return ordered() && at < order_.size() ? order_[at] : at;
+}
+
+std::optional<std::size_t> ListView::position(std::size_t index) const {
+    if (!ordered())
+        return index;
+    if (index >= positions_.size() || positions_[index] == hidden)
+        return std::nullopt;
+    return positions_[index];
+}
+
+void ListView::setSortOrder(std::optional<SortOrder> order, std::function<std::partial_ordering(std::size_t, std::size_t)> compare) {
+    sortOrder_ = order;
+    compare_ = std::move(compare);
+    reorder();
+}
+
+void ListView::setFilter(std::function<bool(std::size_t)> accepts) {
+    filter_ = std::move(accepts);
+    reorder();
+}
+
+void ListView::reorder() {
+    // the current item kept (if it still shows), the offset where it was
+    const std::optional<std::size_t> was = current();
+    cancelEdit();
+    endChange(false);
+    smooth_.stop();
+    order_.clear();
+    positions_.clear();
+    const std::size_t count = model_ ? model_->count() : 0;
+    if (ordered()) {
+        order_.reserve(count);
+        for (std::size_t i = 0; i < count; ++i) {
+            if (!filter_ || filter_(i))
+                order_.push_back(i);
+        }
+        if (sortOrder_) {
+            const auto compare = compare_ ? compare_ : [this](std::size_t a, std::size_t b) { return model_->compare(a, b); };
+            // equals in the model's order (a merge sort: fewer of the model's comparisons than a quick sort)
+            const bool descending = *sortOrder_ == SortOrder::Descending;
+            std::stable_sort(order_.begin(), order_.end(), [&](std::size_t a, std::size_t b) {
+                const std::partial_ordering o = compare(a, b);
+                return descending ? o > 0 : o < 0;
+            });
+        }
+        positions_.assign(count, hidden);
+        for (std::size_t at = 0; at < order_.size(); ++at)
+            positions_[order_[at]] = at;
+        order_.shrink_to_fit();
+    }
+    resetHeights();
+    offset_ = std::clamp(offset_, 0.0, maximumOffset());
+    hovered_.reset();
+    pressed_.reset();
+    const std::optional<std::size_t> now = was ? position(*was) : std::nullopt;
+    const bool told = now != current_ || (current_ && was != current());
+    current_ = now;
+    if (told && onCurrentChanged_)
+        onCurrentChanged_(current());
+    rebindAll_ = true;
+    invalidateLayout();
+}
+
+// ---- editing ----
+
+bool ListView::edit(std::size_t index) {
+    const std::optional<std::size_t> at = position(index);
+    return at && editAt(*at);
+}
+
+bool ListView::editAt(std::size_t at) {
+    if (!model_ || !delegate_ || at >= shownCount())
+        return false;
+    const std::size_t index = modelIndex(at);
+    if (!hasFlag(model_->flags(index), ItemFlags::Editable))
+        return false;
+    commitEdit();
+    setCurrentAt(at);
+    std::unique_ptr<Widget> editor = delegate_->makeEditor(index);
+    if (!editor)
+        return false;
+    const std::optional<Rect> rect = std::optional<Rect>(itemRect(index));
+    edited_ = at;
+    editor_->begin(std::move(editor), rect.value_or(Rect{}), [this, index] {
+        if (Widget* e = editor_->editor(); e && delegate_)
+            delegate_->commitEdit(*e, index);
+        edited_.reset();
+    });
+    placeEditor();
+    return true;
+}
+
+bool ListView::editing() const {
+    return editor_->active();
+}
+
+std::optional<std::size_t> ListView::editedItem() const {
+    return edited_ ? std::optional<std::size_t>(modelIndex(*edited_)) : std::nullopt;
+}
+
+Widget* ListView::editor() const {
+    return editor_->editor();
+}
+
+void ListView::commitEdit() {
+    editor_->commit();
+    edited_.reset();
+}
+
+void ListView::cancelEdit() {
+    editor_->cancel();
+    edited_.reset();
+}
+
+std::optional<Rect> ListView::editorRect() const {
+    if (!edited_)
+        return std::nullopt;
+    const std::optional<Rect> row = itemRect(modelIndex(*edited_));
+    if (!row)
+        return std::nullopt;
+    if (!editorArea_)
+        return row;
+    const Widget* widget = nullptr;
+    for (const Row& r : rows_) {
+        if (r.index == *edited_)
+            widget = r.widget;
+    }
+    if (!widget)
+        return row;
+    const Rect in = editorArea_(*widget);
+    return Rect{row->x + in.x, row->y + in.y, in.width, in.height};
+}
+
+void ListView::placeEditor() {
+    if (editor_->active())
+        editor_->place(editorRect());
 }
 
 // ---- scrolling ----
@@ -160,6 +343,11 @@ void ListView::show(double offset) {
 }
 
 void ListView::scrollTo(std::size_t index) {
+    if (const std::optional<std::size_t> at = position(index))
+        scrollToPosition(*at);
+}
+
+void ListView::scrollToPosition(std::size_t index) {
     if (index >= heights_->count() || viewport_.height <= 0)
         return;
     const double top = heights_->top(index), bottom = top + heights_->height(index);
@@ -176,8 +364,9 @@ std::pair<std::size_t, std::size_t> ListView::shownItems() const {
 }
 
 Widget* ListView::rowWidget(std::size_t index) const {
+    const std::optional<std::size_t> at = position(index);
     for (const Row& row : rows_) {
-        if (row.index == index)
+        if (at && row.index == *at)
             return row.widget;
     }
     return nullptr;
@@ -189,10 +378,14 @@ std::optional<std::size_t> ListView::itemAt(Point point) const {
     const double y = offset_ + (point.y - viewport_.y);
     if (y >= heights_->total())
         return std::nullopt;
-    return heights_->indexAt(y);
+    return modelIndex(heights_->indexAt(y));
 }
 
-std::optional<Rect> ListView::itemRect(std::size_t index) const {
+std::optional<Rect> ListView::itemRect(std::size_t item) const {
+    const std::optional<std::size_t> at = position(item);
+    if (!at)
+        return std::nullopt;
+    const std::size_t index = *at;
     if (index >= heights_->count())
         return std::nullopt;
     const double y = heights_->top(index) - offset_ + shiftOf(index);
@@ -251,7 +444,7 @@ void ListView::layRows() {
             } else {
                 widget = &addChild(delegate_->makeRow());
             }
-            delegate_->bindRow(*widget, i);
+            delegate_->bindRow(*widget, modelIndex(i));
             if (!heights_->uniform())
                 heights_->set(i, widget->measure({viewport_.width, unbounded}).height);
         }
@@ -313,6 +506,7 @@ void ListView::layRows() {
         if (change_ && change_->inserted && row.index >= change_->first && row.index < change_->first + change_->count)
             revealed_.push_back(row.widget);
     }
+    placeEditor();
     // rows going: where they were, cut to what is left of them
     if (change_ && !change_->inserted) {
         const double top = heights_->top(std::min(change_->first, count)) - offset_;
@@ -385,7 +579,7 @@ void ListView::paint(PaintContext& context) {
     paint::Painter& p = context.painter;
     p.pushClip(viewport_);
     for (const Row& row : rows_) {
-        const std::optional<Rect> rect = itemRect(row.index);
+        const std::optional<Rect> rect = itemRect(modelIndex(row.index));
         if (!rect)
             continue;
         // a row coming in: cut as it is
@@ -402,7 +596,7 @@ void ListView::paint(PaintContext& context) {
         } uncut{p, cut};
         const Rect r{rect->x + s.inset, rect->y + 1, rect->width - 2 * s.inset, rect->height - 2};
         const VisualState state{.hovered = hovered_ == row.index, .pressed = pressed_ == row.index && hovered_ == row.index};
-        const bool selected = isSelected(row.index);
+        const bool selected = selectionMode_ == SelectionMode::Single && current_ == row.index;
         if (selected)
             p.fillRoundedRect(r, s.cornerRadius, s.selected);
         else if (state.hovered)
@@ -462,7 +656,8 @@ void ListView::onMouse(MouseEvent& event) {
             return;
         }
         const bool overBar = showBar_ && scrollTrack().contains(event.position);
-        const std::optional<std::size_t> over = overBar ? std::nullopt : itemAt(event.position);
+        const std::optional<std::size_t> item = overBar ? std::nullopt : itemAt(event.position);
+        const std::optional<std::size_t> over = item ? position(*item) : std::nullopt;
         if (over != hovered_ || overBar != barHovered_) {
             hovered_ = over;
             barHovered_ = overBar;
@@ -485,11 +680,13 @@ void ListView::onMouse(MouseEvent& event) {
             return;
         }
         const std::optional<std::size_t> item = itemAt(event.position);
-        pressed_ = item;
-        if (item) {
-            setCurrent(item);
-            if (event.clicks == 2)
-                activate(*item);
+        const std::optional<std::size_t> at = item ? position(*item) : std::nullopt;
+        pressed_ = at;
+        if (at) {
+            setCurrentAt(at);
+            // twice: edited (if it can be), activated otherwise
+            if (event.clicks == 2 && !(hasTrigger(editTriggers_, EditTriggers::DoubleClick) && editAt(*at)))
+                activate(*at);
         }
         invalidatePaint();
         break;
@@ -508,10 +705,32 @@ void ListView::onMouse(MouseEvent& event) {
     }
 }
 
-void ListView::onKey(KeyEvent& event) {
-    if (!event.pressed || !model_ || model_->count() == 0)
+void ListView::onPreviewKey(KeyEvent& event) {
+    // its editor's: Enter commits it, Escape cancels it
+    if (editor_->active() && editor_->key(event))
+        event.handled = true;
+}
+
+void ListView::onText(TextEvent& event) {
+    // typed on the current item: edited, what was typed into its editor (it has the focus now)
+    if (event.composing || event.text.empty() || editor_->active() || !current_ || !hasTrigger(editTriggers_, EditTriggers::Typing))
         return;
-    const std::size_t count = model_->count();
+    if (static_cast<unsigned char>(event.text[0]) < 0x20 || !editAt(*current_))
+        return;
+    event.handled = true;
+    if (UiRoot* r = root())
+        r->dispatch(platform::TextInput{0, event.text});
+}
+
+void ListView::onKey(KeyEvent& event) {
+    if (!event.pressed || !model_ || shownCount() == 0)
+        return;
+    if (event.key == platform::Key::F2 && current_ && hasTrigger(editTriggers_, EditTriggers::F2)) {
+        if (editAt(*current_))
+            event.handled = true;
+        return;
+    }
+    const std::size_t count = shownCount();
     const std::size_t at = current_.value_or(0);
     // a page: the rows that show, less one
     const std::size_t page = std::max<std::size_t>(1, rows_.size() > 1 ? rows_.size() - 1 : 1);
@@ -532,7 +751,7 @@ void ListView::onKey(KeyEvent& event) {
     default: return;
     }
     event.handled = true;
-    setCurrent(to);
+    setCurrentAt(to);
 }
 
 void ListView::onHoverChanged(bool hovered) {
@@ -561,6 +780,11 @@ void ListView::onStyleChanged() {
 // ---- the model's changes ----
 
 void ListView::itemsInserted(std::size_t first, std::size_t count) {
+    if (ordered()) {        // where they go is the order's: sorted and filtered again
+        reorder();
+        return;
+    }
+    cancelEdit();
     // what shows stays where it is: items before it push the offset down as much as they take
     const bool before = !rows_.empty() && first <= rows_.front().index;
     smooth_.stop();         // what shows is kept in place: not where a scroll was going
@@ -583,6 +807,11 @@ void ListView::itemsInserted(std::size_t first, std::size_t count) {
 }
 
 void ListView::itemsRemoved(std::size_t first, std::size_t count) {
+    if (ordered()) {
+        reorder();
+        return;
+    }
+    cancelEdit();
     const bool before = !rows_.empty() && first < rows_.front().index;
     const double removed = heights_->top(first + count) - heights_->top(first);
     smooth_.stop();
@@ -617,6 +846,10 @@ void ListView::itemsRemoved(std::size_t first, std::size_t count) {
 }
 
 void ListView::itemsChanged(std::size_t first, std::size_t count) {
+    if (ordered()) {        // they may go elsewhere, or not show
+        reorder();
+        return;
+    }
     // those that show, shown again (measured again)
     bool shows = false;
     for (const Row& row : rows_)
@@ -628,14 +861,12 @@ void ListView::itemsChanged(std::size_t first, std::size_t count) {
 }
 
 void ListView::modelReset() {
+    cancelEdit();
     endChange(false);
-    resetHeights();
     smooth_.stop();
     offset_ = 0;
     current_.reset();
-    hovered_.reset();
-    rebindAll_ = true;
-    invalidateLayout();
+    reorder();
 }
 
 } // namespace glw

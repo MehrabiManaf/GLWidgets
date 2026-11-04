@@ -9,6 +9,11 @@
 // The current item is chosen by a click or the keys (arrows, Page Up / Down, Home, End) and, in Single mode, selected;
 // a double click or Enter activates it.
 //
+// It shows its items sorted (setSortOrder: the model's compare) and filtered (setFilter) as asked, without the model
+// changing: its delegate, its handlers and what is asked of it speak of the model's items still (positions are what
+// shows: shownCount, modelIndex). An item its model says is editable (ItemFlags::Editable) is edited in place, in a
+// widget its delegate makes (makeEditor: a field, a check box, a combo box...), by a double click, F2 or typing.
+//
 //   auto texts = std::make_shared<glw::StringListModel>(std::vector<glw::LocalizedText>{"One", "Two"});
 //   auto list = std::make_unique<glw::ListView>();
 //   list->setModel(texts);                  // a StringListModel shows its texts by itself (a TextDelegate)
@@ -29,6 +34,7 @@
 namespace glw {
 
 class RowHeights;
+class ItemEditor;
 
 // What makes the widgets of a list's rows, and shows an item in one.
 class GLW_EXPORT ListDelegate {
@@ -38,18 +44,42 @@ public:
     virtual std::unique_ptr<Widget> makeRow() = 0;
     // `row` (made by makeRow) shows the item at `index` now.
     virtual void bindRow(Widget& row, std::size_t index) = 0;
+    // An editable item edited: the widget it is edited in, showing its value (any widget: a field, a check box, a combo
+    // box...); none: it is not. Then what was edited goes into the model (Enter, the focus leaving it; not on Escape).
+    virtual std::unique_ptr<Widget> makeEditor(std::size_t index) { return nullptr; }
+    virtual void commitEdit(Widget& editor, std::size_t index) {}
 };
 
-// Each item's text in a row.
+// Each item's text in a row; edited, in a field (when told where the text goes).
 class GLW_EXPORT TextDelegate : public ListDelegate {
 public:
     explicit TextDelegate(std::function<LocalizedText(std::size_t)> text) : text_(std::move(text)) {}
+    // What an editable item's text is set to, edited (none: it is not edited).
+    void setOnEdited(std::function<void(std::size_t, std::string)> handler) { onEdited_ = std::move(handler); }
     std::unique_ptr<Widget> makeRow() override;
     void bindRow(Widget& row, std::size_t index) override;
+    std::unique_ptr<Widget> makeEditor(std::size_t index) override;
+    void commitEdit(Widget& editor, std::size_t index) override;
 
 private:
     std::function<LocalizedText(std::size_t)> text_;
+    std::function<void(std::size_t, std::string)> onEdited_;
 };
+
+// What starts editing an editable item (flags).
+enum class EditTriggers : std::uint8_t {
+    None = 0,
+    DoubleClick = 1 << 0,   // a double click on it (otherwise it is activated)
+    F2 = 1 << 1,            // F2 on the current one
+    Typing = 1 << 2,        // typing on the current one: what is typed goes into its editor
+    All = DoubleClick | F2 | Typing,
+};
+constexpr EditTriggers operator|(EditTriggers a, EditTriggers b) {
+    return static_cast<EditTriggers>(static_cast<std::uint8_t>(a) | static_cast<std::uint8_t>(b));
+}
+constexpr bool hasTrigger(EditTriggers triggers, EditTriggers trigger) {
+    return (static_cast<std::uint8_t>(triggers) & static_cast<std::uint8_t>(trigger)) != 0;
+}
 
 enum class SelectionMode : std::uint8_t {
     None,                   // a current item, none selected
@@ -73,10 +103,41 @@ public:
     // rows removed go back under it (the theme's normal motion): a tree's nodes opened and closed. Off by default.
     void setAnimatesChanges(bool animates) { animatesChanges_ = animates; }
 
-    std::optional<std::size_t> current() const { return current_; }
+    // The model's item that is current (none: none is, or it is filtered out).
+    std::optional<std::size_t> current() const;
     // Scrolled to it, when it is one.
     void setCurrent(std::optional<std::size_t> index);
-    bool isSelected(std::size_t index) const { return selectionMode_ == SelectionMode::Single && current_ == index; }
+    bool isSelected(std::size_t index) const;
+
+    // ---- sorting and filtering ----
+    // Sorted by `compare` (the model's compare by default), ascending or descending; the model's own order among equals.
+    // None: in the model's order.
+    void setSortOrder(std::optional<SortOrder> order,
+                      std::function<std::partial_ordering(std::size_t, std::size_t)> compare = {});
+    std::optional<SortOrder> sortOrder() const { return sortOrder_; }
+    // Only the items `accepts` says yes to (the model's indices); none: all of them.
+    void setFilter(std::function<bool(std::size_t)> accepts);
+    // Sorted and filtered again: what the comparison or the filter says changed (the text searched for). The model's
+    // changes do it by themselves.
+    void reorder();
+    // How many show, which item shows at a position, where an item shows (none: filtered out).
+    std::size_t shownCount() const;
+    std::size_t modelIndex(std::size_t position) const;
+    std::optional<std::size_t> position(std::size_t index) const;
+
+    // ---- editing ----
+    void setEditTriggers(EditTriggers triggers) { editTriggers_ = triggers; }
+    EditTriggers editTriggers() const { return editTriggers_; }
+    // The item edited, if it is editable and its delegate makes an editor (true then).
+    bool edit(std::size_t index);
+    bool editing() const;
+    std::optional<std::size_t> editedItem() const;
+    Widget* editor() const;
+    // What was edited put in / not.
+    void commitEdit();
+    void cancelEdit();
+    // Where an item's editor goes in its row (the row's coordinates): all of it by default (a tree: after its arrow).
+    void setEditorArea(std::function<Rect(const Widget& row)> area) { editorArea_ = std::move(area); }
 
     // Dips scrolled from the top (where it shows now), and how far it goes.
     double offset() const { return offset_; }
@@ -88,7 +149,7 @@ public:
     double maximumOffset() const;
     // Scrolled so that the item shows (as little as it takes).
     void scrollTo(std::size_t index);
-    // The items that show now: [first, last).
+    // The positions that show now: [first, last) (the model's items, unsorted and unfiltered).
     std::pair<std::size_t, std::size_t> shownItems() const;
     // The widget showing the item, while it shows.
     Widget* rowWidget(std::size_t index) const;
@@ -113,7 +174,9 @@ protected:
     Rect childrenClip() const override { return viewport_; }
     std::optional<Rect> childClip(const Widget& child) const override;
     void onMouse(MouseEvent& event) override;
+    void onPreviewKey(KeyEvent& event) override;
     void onKey(KeyEvent& event) override;
+    void onText(TextEvent& event) override;
     void onHoverChanged(bool hovered) override;
     void onFocusChanged(bool focused) override;
     void onRootChanged() override;
@@ -148,7 +211,13 @@ private:
     void endChange(bool lay = true);      // the rows laid again (not in the model's notifications: it has changed)
     // The rows that show for the offset: bound (the widgets of those that showed kept), measured, placed.
     void layRows();
-    void activate(std::size_t index);
+    void activate(std::size_t position);
+    void setCurrentAt(std::optional<std::size_t> position);
+    void scrollToPosition(std::size_t position);
+    bool ordered() const { return sortOrder_.has_value() || static_cast<bool>(filter_); }
+    bool editAt(std::size_t position);
+    void placeEditor();
+    std::optional<Rect> editorRect() const;
     Rect scrollTrack() const;
     Rect scrollThumb() const;
 
@@ -157,8 +226,17 @@ private:
     std::unique_ptr<RowHeights> heights_;
     std::optional<float> rowHeight_;
     SelectionMode selectionMode_ = SelectionMode::Single;
-    std::optional<std::size_t> current_;
+    std::optional<std::size_t> current_;   // a position
     double offset_ = 0;
+    std::optional<SortOrder> sortOrder_;
+    std::function<std::partial_ordering(std::size_t, std::size_t)> compare_;
+    std::function<bool(std::size_t)> filter_;
+    std::vector<std::size_t> order_;        // the model's item at each position, while sorted or filtered
+    std::vector<std::size_t> positions_;    // ... the position of each item (npos: filtered out)
+    EditTriggers editTriggers_ = EditTriggers::All;
+    std::unique_ptr<ItemEditor> editor_;
+    std::optional<std::size_t> edited_;     // the position edited
+    std::function<Rect(const Widget&)> editorArea_;
     bool animatesChanges_ = false;
     std::optional<Change> change_;
     std::vector<Widget*> revealed_;     // the rows cut to the gap now

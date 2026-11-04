@@ -42,6 +42,18 @@ void ListModel::notifyReset() {
         o->modelReset();
 }
 
+std::partial_ordering StringListModel::compare(std::size_t a, std::size_t b) const {
+    const std::string& x = items_[a].source;
+    const std::string& y = items_[b].source;
+    const auto folded = [](char c) { return c >= 'A' && c <= 'Z' ? static_cast<char>(c - 'A' + 'a') : c; };
+    const std::size_t n = std::min(x.size(), y.size());
+    for (std::size_t i = 0; i < n; ++i) {
+        if (const auto order = folded(x[i]) <=> folded(y[i]); order != 0)
+            return order;
+    }
+    return x.size() <=> y.size();
+}
+
 void StringListModel::setItems(std::vector<LocalizedText> items) {
     items_ = std::move(items);
     notifyReset();

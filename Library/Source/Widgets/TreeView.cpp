@@ -5,6 +5,7 @@
 #include <GLWidgets/Paint/Painter.hpp>
 #include <GLWidgets/Widgets/Label.hpp>
 #include <GLWidgets/Widgets/Layout.hpp>
+#include <GLWidgets/Widgets/LineEdit.hpp>
 #include <GLWidgets/Widgets/UiRoot.hpp>
 
 #include <algorithm>
@@ -119,17 +120,37 @@ void TreeTextDelegate::bindRow(Widget& row, TreeNode node) {
     static_cast<Label&>(*row.children()[0]).setText(text_(node));
 }
 
+std::unique_ptr<Widget> TreeTextDelegate::makeEditor(TreeNode node) {
+    if (!onEdited_)
+        return nullptr;
+    auto field = std::make_unique<LineEdit>(LineEdit::Props{.text = text_(node).source});
+    field->selectAll();
+    return field;
+}
+
+void TreeTextDelegate::commitEdit(Widget& editor, TreeNode node) {
+    if (onEdited_)
+        onEdited_(node, static_cast<LineEdit&>(editor).text());
+}
+
 // ---- the list's model and delegate ----
 
 class TreeView::Rows final : public ListModel {
 public:
+    explicit Rows(const TreeView& tree) : tree_(tree) {}
     std::vector<Entry> entries;
 
     std::size_t count() const override { return entries.size(); }
+    ItemFlags flags(std::size_t index) const override {
+        return tree_.model_ && tree_.delegate_ ? tree_.model_->flags(entries[index].node) : ItemFlags::None;
+    }
     using ListModel::notifyChanged;
     using ListModel::notifyInserted;
     using ListModel::notifyRemoved;
     using ListModel::notifyReset;
+
+private:
+    const TreeView& tree_;
 };
 
 class TreeView::RowDelegate final : public ListDelegate {
@@ -150,17 +171,27 @@ public:
             tree_.delegate_->bindRow(treeRow.content(), entry.node);
     }
 
+    std::unique_ptr<Widget> makeEditor(std::size_t index) override {
+        return tree_.delegate_ ? tree_.delegate_->makeEditor(tree_.rows_->entries[index].node) : nullptr;
+    }
+    void commitEdit(Widget& editor, std::size_t index) override {
+        if (tree_.delegate_ && index < tree_.rows_->entries.size())
+            tree_.delegate_->commitEdit(editor, tree_.rows_->entries[index].node);
+    }
+
 private:
     TreeView& tree_;
 };
 
 // ---- the view ----
 
-TreeView::TreeView() : rows_(std::make_shared<Rows>()) {
+TreeView::TreeView() : rows_(std::make_shared<Rows>(*this)) {
     list_ = &add(std::make_unique<ListView>());
     list_->setModel(rows_);
     list_->setDelegate(std::make_unique<RowDelegate>(*this));
     list_->setAnimatesChanges(true);        // a node's children come out from under it, and go back
+    // an editor after the indent and the arrow
+    list_->setEditorArea([](const Widget& row) { return static_cast<const TreeRow&>(row).content().bounds(); });
     list_->setOnCurrentChanged([this](std::optional<std::size_t> index) {
         if (onCurrentChanged_)
             onCurrentChanged_(index ? std::optional<TreeNode>(rows_->entries[*index].node) : std::nullopt);
@@ -231,19 +262,87 @@ void TreeView::setCurrent(TreeNode node) {
 
 // ---- the entries ----
 
-void TreeView::appendChildren(std::optional<TreeNode> parent, std::uint32_t depth, std::vector<Entry>& out) const {
+std::vector<TreeNode> TreeView::shownChildren(std::optional<TreeNode> parent) const {
     const std::size_t count = model_->childCount(parent);
+    std::vector<TreeNode> children;
+    children.reserve(count);
     for (std::size_t i = 0; i < count; ++i) {
         const TreeNode node = model_->child(parent, i);
+        if (!filter_ || kept_.contains(node.id))
+            children.push_back(node);
+    }
+    if (sortOrder_) {
+        const bool descending = *sortOrder_ == SortOrder::Descending;
+        std::stable_sort(children.begin(), children.end(), [&](TreeNode a, TreeNode b) {
+            const std::partial_ordering o = model_->compare(a, b);
+            return descending ? o > 0 : o < 0;
+        });
+    }
+    return children;
+}
+
+bool TreeView::expandedNow(TreeNode node) const {
+    return expanded_.contains(node.id) || opened_.contains(node.id);
+}
+
+void TreeView::appendChildren(std::optional<TreeNode> parent, std::uint32_t depth, std::vector<Entry>& out) const {
+    for (const TreeNode node : shownChildren(parent)) {
+        // filtered: expandable only by what it keeps in it
         const bool expandable = model_->hasChildren(node);
-        const bool expanded = expandable && expanded_.contains(node.id);
+        const bool expanded = expandable && expandedNow(node);
         out.push_back({node, depth, expandable, expanded});
         if (expanded)
             appendChildren(node, depth + 1, out);
     }
 }
 
+void TreeView::setSortOrder(std::optional<SortOrder> order) {
+    sortOrder_ = order;
+    rebuild();
+}
+
+void TreeView::setFilter(std::function<bool(TreeNode)> accepts) {
+    filter_ = std::move(accepts);
+    reorder();
+}
+
+void TreeView::reorder() {
+    refilter();
+    rebuild();
+}
+
+void TreeView::refilter() {
+    kept_.clear();
+    opened_.clear();
+    if (!filter_ || !model_)
+        return;
+    // every node, from the bottom up: kept when accepted or when one of its children is (then opened, to show it)
+    const auto visit = [&](auto& self, TreeNode node) -> bool {
+        bool keepsAChild = false;
+        if (model_->hasChildren(node)) {
+            const std::size_t count = model_->childCount(node);
+            for (std::size_t i = 0; i < count; ++i)
+                keepsAChild = self(self, model_->child(node, i)) || keepsAChild;
+        }
+        if (keepsAChild)
+            opened_.insert(node.id);
+        const bool kept = keepsAChild || filter_(node);
+        if (kept)
+            kept_.insert(node.id);
+        return kept;
+    };
+    const std::size_t count = model_->childCount(std::nullopt);
+    for (std::size_t i = 0; i < count; ++i)
+        visit(visit, model_->child(std::nullopt, i));
+}
+
+bool TreeView::edit(TreeNode node) {
+    const std::optional<std::size_t> index = shownIndexOf(node);
+    return index && list_->edit(*index);
+}
+
 void TreeView::rebuild() {
+    list_->cancelEdit();
     rows_->entries.clear();
     if (model_)
         appendChildren(std::nullopt, 0, rows_->entries);
@@ -313,6 +412,7 @@ void TreeView::collapseAt(std::size_t index) {
     turn(entry.node, false);
     entry.expanded = false;
     expanded_.erase(entry.node.id);
+    opened_.erase(entry.node.id);
     const std::size_t end = subtreeEnd(index);
     // the current one under it: the node collapsed is current then
     const std::optional<std::size_t> current = list_->current();
@@ -410,6 +510,10 @@ void TreeView::onPreviewKey(KeyEvent& event) {
 // ---- the model's changes ----
 
 void TreeView::childrenInserted(std::optional<TreeNode> parent, std::size_t first, std::size_t count) {
+    if (ordered()) {        // where they go is the order's
+        reorder();
+        return;
+    }
     if (parent) {
         // a parent that shows collapsed: it may have children now
         const std::optional<std::size_t> index = shownIndexOf(*parent);
@@ -440,6 +544,10 @@ void TreeView::childrenInserted(std::optional<TreeNode> parent, std::size_t firs
 }
 
 void TreeView::childrenRemoved(std::optional<TreeNode> parent, std::size_t first, std::size_t count) {
+    if (ordered()) {
+        reorder();
+        return;
+    }
     const std::optional<std::size_t> at = childPosition(parent, first);
     if (at) {
         std::size_t end = *at;
@@ -462,6 +570,10 @@ void TreeView::childrenRemoved(std::optional<TreeNode> parent, std::size_t first
 }
 
 void TreeView::childrenChanged(std::optional<TreeNode> parent, std::size_t first, std::size_t count) {
+    if (ordered()) {        // they may go elsewhere, or not show
+        reorder();
+        return;
+    }
     std::optional<std::size_t> at = childPosition(parent, first);
     for (std::size_t k = 0; at && k < count && *at < rows_->entries.size(); ++k) {
         Entry& entry = rows_->entries[*at];
@@ -474,7 +586,7 @@ void TreeView::childrenChanged(std::optional<TreeNode> parent, std::size_t first
 
 void TreeView::modelReset() {
     expanded_.clear();
-    rebuild();
+    reorder();
 }
 
 } // namespace glw

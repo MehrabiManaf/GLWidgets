@@ -20,6 +20,8 @@
 #include <GLWidgets/Widgets/TreeView.hpp>
 
 #include <algorithm>
+#include <compare>
+#include <unordered_map>
 #include <cstdio>
 #include <cstdlib>
 #include <exception>
@@ -56,8 +58,9 @@ constexpr const char* persianCatalog = R"({
     "A million items, and only those that show are widgets. Drag the line between the two sides.":
       "یک میلیون مورد، و فقط آن‌هایی که دیده می‌شوند ویجت‌اند. خط میان دو طرف را بکشید.",
     "Close it with its button, Alt+F4, or the one above.": "با دکمه‌اش، Alt+F4 یا دکمه‌ی بالا ببندیدش.",
-    "A million rows of fifty columns. Drag a header's edge to resize its column; Shift and the wheel scroll across.":
-      "یک میلیون سطر در پنجاه ستون. لبه‌ی سرستونی را بکشید تا ستونش اندازه شود؛ Shift و چرخ ماوس به پهلو می‌برند.",
+    "A million rows of fifty columns. Click a header to sort by it; double click a cell (or F2, or type) to edit it; drag a header's edge to resize its column.":
+      "یک میلیون سطر در پنجاه ستون. روی سرستونی کلیک کنید تا بر اساس آن مرتب شود؛ روی خانه‌ای دوبار کلیک کنید (یا F2، یا تایپ) تا ویرایش شود؛ لبه‌ی سرستون را بکشید تا ستونش اندازه شود.",
+    "Rows whose number starts with…": "سطرهایی که شماره‌شان با این شروع می‌شود…",
     "Column {n}": "ستون {n}",
     "Menu": "منو",
     "New": "جدید",
@@ -107,12 +110,44 @@ public:
     std::size_t count() const override { return 1'000'000; }
 };
 
-// A million rows of fifty columns, made when they show.
+// A million rows of fifty columns of numbers, made when they show (only those edited are kept): sorted by any column,
+// edited in place.
 class Records final : public glw::TableModel {
 public:
     std::size_t rowCount() const override { return 1'000'000; }
     std::size_t columnCount() const override { return 50; }
     glw::LocalizedText header(std::size_t column) const override { return tr("Column {n}").arg("n", std::to_string(column + 1)); }
+    glw::ItemFlags flags(std::size_t, std::size_t) const override { return glw::ItemFlags::Editable; }
+    bool sortable(std::size_t) const override { return true; }
+    std::partial_ordering compare(std::size_t a, std::size_t b, std::size_t column) const override {
+        return value(a, column) <=> value(b, column);
+    }
+
+    // The first column numbers the rows; the others, numbers that look random.
+    double value(std::size_t row, std::size_t column) const {
+        if (const auto it = edited_.find(key(row, column)); it != edited_.end())
+            return it->second;
+        if (column == 0)
+            return static_cast<double>(row + 1);
+        return static_cast<double>((row * 7919 + column * 104729) % 100000) / 100;
+    }
+    std::string text(std::size_t row, std::size_t column) const {
+        char buffer[32];
+        std::snprintf(buffer, sizeof buffer, column == 0 ? "%.0f" : "%.2f", value(row, column));
+        return buffer;
+    }
+    void set(std::size_t row, std::size_t column, const std::string& text) {
+        char* end = nullptr;
+        const double v = std::strtod(text.c_str(), &end);
+        if (end == text.c_str())
+            return;             // not a number: as it was
+        edited_[key(row, column)] = v;
+        notifyRowsChanged(row, 1);
+    }
+
+private:
+    static std::uint64_t key(std::size_t row, std::size_t column) { return static_cast<std::uint64_t>(row) * 64 + column; }
+    std::unordered_map<std::uint64_t, double> edited_;
 };
 
 // A thousand folders of a thousand files, made when they show: a node's id says which it is.
@@ -165,19 +200,31 @@ struct Page {
     }
 
     std::unique_ptr<glw::Widget> table() {
+        auto records = std::make_shared<Records>();
         auto view = std::make_unique<glw::TableView>();
-        view->setModel(std::make_shared<Records>());
-        view->setDelegate(std::make_unique<glw::TableTextDelegate>([](std::size_t row, std::size_t column) {
-            return glw::LocalizedText(std::to_string(row + 1) + " · " + std::to_string(column + 1));
-        }));
+        glw::TableView* shown = view.get();
+        view->setModel(records);
+        auto delegate = std::make_unique<glw::TableTextDelegate>([r = records.get()](std::size_t row, std::size_t column) {
+            return glw::LocalizedText(r->text(row, column));
+        });
+        delegate->setOnEdited([r = records.get()](std::size_t row, std::size_t column, std::string text) { r->set(row, column, text); });
+        view->setDelegate(std::move(delegate));
         view->setColumnWidth(0, 100);
         view->setStretch(1);
+        // the rows whose number starts with what is typed
+        auto filter = ui::LineEdit({.placeholder = tr("Rows whose number starts with…"),
+                                    .onChanged = [shown, r = records.get()](const std::string& text) {
+                                        if (text.empty())
+                                            shown->setFilter({});
+                                        else
+                                            shown->setFilter([r, text](std::size_t row) { return r->text(row, 0).starts_with(text); });
+                                    }});
         return ui::VStack({.spacing = 8},
-                          ui::Label({.text = tr("A million rows of fifty columns. Drag a header's edge to resize its column; Shift and the "
-                                                "wheel scroll across."),
+                          ui::Label({.text = tr("A million rows of fifty columns. Click a header to sort by it; double click a cell (or F2, "
+                                                "or type) to edit it; drag a header's edge to resize its column."),
                                      .muted = true,
                                      .wrap = true}),
-                          std::move(view))
+                          std::move(filter), std::move(view))
             .padding(glw::Insets::all(16));
     }
 

@@ -432,6 +432,27 @@ Shift or tilted, and Left and Right; in right to left the first column is at the
 million rows of a hundred columns (or a hundred million of a thousand), some 190 widgets show it; painting and scrolling
 down or across take less than half a millisecond, a jump to anywhere 3 ms.
 
+**Views sort, filter and edit what their models hold, without the models changing.** A model says how two of its
+items compare (`ListModel::compare`, `TableModel::compare` in a column, with `sortable`; `TreeModel::compare` of two
+children) and what can be done with an item (`flags`: `ItemFlags::Editable`, as Qt's item flags). A list keeps the
+order it shows its items in, sorted (`setSortOrder`: the model's comparison or another, ascending or descending, equals
+in the model's order) and filtered (`setFilter`: the items a function accepts): a position to a model's item and back
+(`modelIndex`, `position`), nothing at all while it shows them as they are. Its delegate, its handlers and what is asked
+of it (`current`, `setCurrent`, `rowWidget`, `itemRect`) speak of the model's items still, so a delegate written for
+the model shows it sorted and filtered unchanged; the model's changes sort and filter it again. A table sorts by a click
+on a sortable column's header (ascending, descending, not; an arrow in the header says which) and filters its rows; a
+tree sorts the children of each node, and its filter keeps the nodes it accepts with their ancestors, opened to show them
+(every node of the model is asked). A million rows sort in 0.4 s, filter in 0.2 s (`glw_benchmarks`).
+
+An editable item is edited in place, in any widget its delegate makes for it (`makeEditor`: a field, a check box, a combo
+box...), in a frame over it (over a tree's node after its arrow; a table's cell, within its rows): by a double click
+(which then does not activate it), F2, or typing on it (what is typed goes into the editor), as `setEditTriggers` says.
+Enter, or the focus leaving the editor (another item pressed, another widget), puts what was edited in (`commitEdit`,
+the delegate's, into the model); Escape leaves it as it was; in a table, Tab goes on to the next editable cell of the row.
+The editor follows its item as the view scrolls, and goes when the model changes under it, or the view is sorted or
+filtered again. The text delegates edit in a field when told where the text goes (`setOnEdited`); a `StringListModel` made
+editable edits its texts by itself. A widget learns that the focus left its subtree (`onFocusWithinChanged`).
+
 **Popups are windows of their own** (`UiHost::openPopup`, `PopupRequest`), as native menus are, so that a menu of a
 small floating panel may go past the panel's edges: SDL's popup windows (`SDL_CreatePopupWindow`: Wayland's xdg_popup
 too), placed by the window of the widget they open from, from an anchor (below it, or beside it for a submenu), on the

@@ -408,13 +408,8 @@ void UiRoot::dispatch(const platform::Event& event) {
                },
                event);
     // what the handlers left for after the event, which may add more
-    if (--dispatching_ == 0) {
-        while (!deferred_.empty()) {
-            auto calls = std::exchange(deferred_, {});
-            for (auto& call : calls)
-                call();
-        }
-    }
+    if (--dispatching_ == 0)
+        runDeferred();
 }
 
 Widget* UiRoot::route(Widget* target, MouseEvent& event, Point point) {
@@ -570,11 +565,37 @@ void UiRoot::setFocus(Widget* widget) {
         return;
     GLW_EXPECTS(!widget || widget->root() == this);
     Widget* previous = std::exchange(focus_, widget);
+    // what the widgets told do that removes widgets waits until they all are told
+    ++dispatching_;
     if (previous)
         previous->onFocusChanged(false);
     if (focus_)
         focus_->onFocusChanged(true);
+    // the subtrees it left (from the deepest), then those it came into
+    std::vector<Widget*> before, after;
+    for (Widget* w = previous; w; w = w->parent_)
+        before.push_back(w);
+    for (Widget* w = focus_; w; w = w->parent_)
+        after.push_back(w);
+    for (Widget* w : before) {
+        if (std::find(after.begin(), after.end(), w) == after.end())
+            w->onFocusWithinChanged(false);
+    }
+    for (Widget* w : after) {
+        if (std::find(before.begin(), before.end(), w) == before.end())
+            w->onFocusWithinChanged(true);
+    }
     invalidatePaint();
+    if (--dispatching_ == 0)
+        runDeferred();
+}
+
+void UiRoot::runDeferred() {
+    while (!deferred_.empty()) {
+        auto calls = std::exchange(deferred_, {});
+        for (auto& call : calls)
+            call();
+    }
 }
 
 void UiRoot::focusNext(bool backwards) {

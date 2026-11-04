@@ -255,6 +255,8 @@ protected:
     virtual void onKey(KeyEvent& event) {}
     virtual void onText(TextEvent& event) {}
     virtual void onFocusChanged(bool focused) {}
+    // The focus came into it or into one of its children / went out of all of them (an editor left: its value taken).
+    virtual void onFocusWithinChanged(bool within) {}
     virtual void onHoverChanged(bool hovered) {}
     // It is now shown by another root, or by none: what depends on the root (fonts, theme, language) must be made again.
     virtual void onRootChanged() {}

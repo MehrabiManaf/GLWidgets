@@ -206,6 +206,12 @@ public:
     std::size_t rowCount() const override { return rows_; }
     std::size_t columnCount() const override { return columns_; }
     glw::LocalizedText header(std::size_t column) const override { return glw::LocalizedText("Column " + std::to_string(column)); }
+    // numbers that look random, to sort by
+    bool sortable(std::size_t) const override { return true; }
+    std::partial_ordering compare(std::size_t a, std::size_t b, std::size_t column) const override {
+        return value(a, column) <=> value(b, column);
+    }
+    static std::size_t value(std::size_t row, std::size_t column) { return (row * 7919 + column * 104729) % 100003; }
 
 private:
     std::size_t rows_, columns_;
@@ -251,8 +257,22 @@ void cellsInATableView(glw::UiContext& ui, std::size_t rows, std::size_t columns
         table.setHorizontalOffset(across);
         root.paint(drawn);
     });
-    std::printf("%9zu | %7zu | %8.2f | %8.2f | %8.2f | %8.2f | %8.2f | %8.2f | %8zu\n", rows, columns, build, layout, paint, scroll,
-                scrollAcross, jump, widgetsIn(table));
+    // sorted by a column, and a filter (half the rows), each with its first paint; a million rows only
+    double sort = 0, filter = 0;
+    if (rows <= 1'000'000) {
+        sort = once([&] {
+            table.sortBy(1);
+            root.paint(drawn);
+        });
+        filter = once([&] {
+            table.setFilter([](std::size_t row) { return Cells::value(row, 2) % 2 == 0; });
+            root.paint(drawn);
+        });
+        table.setFilter({});
+        table.sortBy(std::nullopt);
+    }
+    std::printf("%9zu | %7zu | %8.2f | %8.2f | %8.2f | %8.2f | %8.2f | %8.2f | %8.1f | %8.1f | %8zu\n", rows, columns, build, layout, paint,
+                scroll, scrollAcross, jump, sort, filter, widgetsIn(table));
 }
 
 // Nodes of a canvas: a box with a title and two lines each, `count` of them in a grid.
@@ -373,7 +393,7 @@ int main(int argc, char** argv) {
     nodesInATreeView(ui);
 
     std::printf("\nA table view (a widget for each cell that shows), milliseconds\n");
-    std::printf("     rows | columns |    build |   layout |    paint |   scroll |   across |     jump |  widgets\n");
+    std::printf("     rows | columns |    build |   layout |    paint |   scroll |   across |     jump |     sort |   filter |  widgets\n");
     cellsInATableView(ui, 1'000'000, 100);
     cellsInATableView(ui, 100'000'000, 1000);
 

@@ -2,10 +2,13 @@
 // SPDX-License-Identifier: MIT
 #include <GLWidgets/Widgets/TableView.hpp>
 
+#include "Widgets/ItemEditor.hpp"
+
 #include <GLWidgets/Paint/Painter.hpp>
 #include <GLWidgets/Widgets/Bevel.hpp>
 #include <GLWidgets/Widgets/Label.hpp>
 #include <GLWidgets/Widgets/Layout.hpp>
+#include <GLWidgets/Widgets/LineEdit.hpp>
 #include <GLWidgets/Widgets/UiRoot.hpp>
 
 #include <algorithm>
@@ -37,6 +40,19 @@ std::unique_ptr<Widget> TableTextDelegate::makeCell(std::size_t) {
 
 void TableTextDelegate::bindCell(Widget& cell, std::size_t row, std::size_t column) {
     static_cast<Label&>(cell).setText(text_(row, column));
+}
+
+std::unique_ptr<Widget> TableTextDelegate::makeEditor(std::size_t row, std::size_t column) {
+    if (!onEdited_)
+        return nullptr;
+    auto field = std::make_unique<LineEdit>(LineEdit::Props{.text = text_(row, column).source});
+    field->selectAll();
+    return field;
+}
+
+void TableTextDelegate::commitEdit(Widget& editor, std::size_t row, std::size_t column) {
+    if (onEdited_)
+        onEdited_(row, column, static_cast<LineEdit&>(editor).text());
 }
 
 // ---- the list's model ----
@@ -181,7 +197,7 @@ private:
 
 // ---- the view ----
 
-TableView::TableView() : rows_(std::make_shared<Rows>(*this)) {
+TableView::TableView() : rows_(std::make_shared<Rows>(*this)), editor_(std::make_unique<ItemEditor>(*this)) {
     setClipsChildren(true);
     list_ = &add(std::make_unique<ListView>());
     list_->setModel(rows_);
@@ -320,7 +336,7 @@ std::vector<TableView::Strip*> TableView::strips() const {
     std::vector<Strip*> result{header_};
     const auto [first, last] = list_->shownItems();
     for (std::size_t i = first; i < last; ++i) {
-        if (Widget* row = list_->rowWidget(i))
+        if (Widget* row = list_->rowWidget(list_->modelIndex(i)))
             result.push_back(static_cast<Strip*>(row));
     }
     return result;
@@ -329,7 +345,114 @@ std::vector<TableView::Strip*> TableView::strips() const {
 void TableView::rearrangeStrips() {
     for (Strip* strip : strips())
         strip->place();
+    placeEditor();
     invalidatePaint();
+}
+
+// ---- sorting ----
+
+void TableView::sortBy(std::optional<std::size_t> column, SortOrder order) {
+    if (column && (!model_ || *column >= model_->columnCount()))
+        column.reset();
+    sortColumn_ = column;
+    sortOrder_ = order;
+    cancelEdit();
+    if (column)
+        list_->setSortOrder(order, [this, c = *column](std::size_t a, std::size_t b) { return model_->compare(a, b, c); });
+    else
+        list_->setSortOrder(std::nullopt);
+    invalidatePaint();
+}
+
+// ---- editing ----
+
+bool TableView::editable(std::size_t row, std::size_t column) const {
+    return model_ && delegate_ && row < model_->rowCount() && column < model_->columnCount() &&
+           hasFlag(model_->flags(row, column), ItemFlags::Editable);
+}
+
+std::optional<std::size_t> TableView::nextEditable(std::size_t row, std::size_t column, bool backwards) const {
+    const std::size_t count = widths_.size();
+    for (std::size_t step = 1; step < count; ++step) {
+        const std::size_t c = backwards ? (column + count - step) % count : (column + step) % count;
+        if ((backwards ? c < column : c > column) && editable(row, c))
+            return c;
+    }
+    return std::nullopt;
+}
+
+bool TableView::edit(std::size_t row, std::size_t column) {
+    if (!editable(row, column) || !list_->position(row))
+        return false;
+    commitEdit();
+    list_->setCurrent(row);
+    currentColumn_ = column;
+    scrollToColumn(column);
+    std::unique_ptr<Widget> editor = delegate_->makeEditor(row, column);
+    if (!editor)
+        return false;
+    edited_ = std::pair{row, column};
+    editor_->begin(std::move(editor), cellRect(row, column).value_or(Rect{}), [this, row, column] {
+        if (Widget* e = editor_->editor(); e && delegate_)
+            delegate_->commitEdit(*e, row, column);
+        edited_.reset();
+    });
+    placeEditor();
+    return true;
+}
+
+bool TableView::editing() const {
+    return editor_->active();
+}
+
+Widget* TableView::editor() const {
+    return editor_->editor();
+}
+
+void TableView::commitEdit() {
+    editor_->commit();
+    edited_.reset();
+}
+
+void TableView::cancelEdit() {
+    editor_->cancel();
+    edited_.reset();
+}
+
+std::optional<Rect> TableView::cellRect(std::size_t row, std::size_t column) const {
+    const Widget* cell = cellWidget(row, column);
+    if (!cell || !cell->visible())
+        return std::nullopt;
+    const Point at = mapFromRoot(cell->mapToRoot({}));
+    return Rect{at.x, at.y, cell->size().width, cell->size().height};
+}
+
+std::optional<std::pair<std::size_t, std::size_t>> TableView::cellAt(Point point) const {
+    const Rect rows = list_->bounds();
+    const std::optional<std::size_t> row = list_->itemAt({point.x - rows.x, point.y - rows.y});
+    if (!row)
+        return std::nullopt;
+    const auto [first, last] = shownColumns();
+    const float x = point.x - rows.x - list_->viewport().x;
+    for (std::size_t column = first; column < last; ++column) {
+        const float left = columnX(column, viewWidth());
+        if (x >= left && x < left + shownWidth(column))
+            return std::pair{*row, column};
+    }
+    return std::nullopt;
+}
+
+void TableView::placeEditor() {
+    if (editor_->active() && edited_)
+        editor_->place(cellRect(edited_->first, edited_->second));
+}
+
+std::optional<Rect> TableView::childClip(const Widget& child) const {
+    // its editor: within the rows (not over the header or the bar), as its cell is
+    if (!editor_->active() || child.children().empty() || editor_->editor() != child.children().front().get())
+        return std::nullopt;
+    const Rect rows = list_->bounds(), view = list_->viewport();
+    return Rect{rows.x + view.x, rows.y + view.y, view.width, view.height};
 }
 
 void TableView::rebindStrips() {
@@ -432,6 +555,13 @@ void TableView::paint(PaintContext& context) {
             const VisualState state{.hovered = true, .pressed = pressedHeader_ == column};
             p.fillRoundedRect({x + s.inset, h.y + 2, w - 2 * s.inset, h.height - 4}, s.cornerRadius, s.row.resolve(state));
         }
+        // sorted by it: an arrow at its end side, up ascending, down descending
+        if (sortColumn_ == column) {
+            const float ax = rtl ? x + 14 : x + w - 14, ay = h.y + h.height / 2;
+            const float d = sortOrder_ == SortOrder::Ascending ? -1.0f : 1.0f;
+            const Point arrow[] = {{ax - 4, ay - 2 * d}, {ax, ay + 2 * d}, {ax + 4, ay - 2 * d}};
+            p.drawPolyline(arrow, 1.4f, s.headerText);
+        }
         // a short line at its end side, but for the last one stretched
         if (stretchLast_ && column + 1 == widths_.size())
             continue;
@@ -442,6 +572,7 @@ void TableView::paint(PaintContext& context) {
     }
     p.popClip();
     p.fillRect({area_.x, h.bottom() - 1, area_.width, 1}, s.headerLine);
+    placeEditor();          // over its cell, where the rows scrolled
 }
 
 Rect TableView::barTrack() const {
@@ -561,6 +692,13 @@ void TableView::onPreviewMouse(MouseEvent& event) {
             event.handled = true;
             pressedHeader_ = column;
             invalidatePaint();
+            break;
+        }
+        if (const auto cell = cellAt(event.position)) {
+            currentColumn_ = cell->second;
+            // twice on an editable cell: edited (not activated)
+            if (event.clicks == 2 && hasTrigger(editTriggers_, EditTriggers::DoubleClick) && edit(cell->first, cell->second))
+                event.handled = true;
         }
         break;
     }
@@ -594,8 +732,19 @@ void TableView::onMouse(MouseEvent& event) {
         resizing_.reset();
         thumbGrab_.reset();
         invalidatePaint();
-        if (pressed && headerAt(event.position) == pressed && onHeaderClicked_)
-            onHeaderClicked_(*pressed);
+        if (pressed && headerAt(event.position) == pressed) {
+            // sorted by it: ascending, then descending, then not
+            if (sortingEnabled_ && model_ && model_->sortable(*pressed)) {
+                if (sortColumn_ != pressed)
+                    sortBy(*pressed, SortOrder::Ascending);
+                else if (sortOrder_ == SortOrder::Ascending)
+                    sortBy(*pressed, SortOrder::Descending);
+                else
+                    sortBy(std::nullopt);
+            }
+            if (onHeaderClicked_)
+                onHeaderClicked_(*pressed);
+        }
         break;
     }
     default: break;
@@ -603,14 +752,59 @@ void TableView::onMouse(MouseEvent& event) {
 }
 
 void TableView::onPreviewKey(KeyEvent& event) {
-    if (!event.pressed || !list_->hasFocus())
+    if (!event.pressed)
         return;
+    // its editor's: Enter commits, Escape cancels, Tab goes on to the next editable cell of the row
+    if (editor_->active()) {
+        if (event.key == platform::Key::Tab && edited_) {
+            const auto [row, column] = *edited_;
+            const bool back = platform::hasAny(event.modifiers, platform::KeyModifiers::Shift);
+            const std::optional<std::size_t> next = nextEditable(row, column, back);
+            commitEdit();
+            if (next)
+                edit(row, *next);
+            event.handled = true;
+        } else if (editor_->key(event)) {
+            event.handled = true;
+        }
+        return;
+    }
+    if (!list_->hasFocus())
+        return;
+    // F2: the current cell edited (its column, or the row's first editable one)
+    if (event.key == platform::Key::F2 && hasTrigger(editTriggers_, EditTriggers::F2)) {
+        if (const std::optional<std::size_t> row = list_->current()) {
+            std::optional<std::size_t> column = currentColumn_;
+            if (!column || !editable(*row, *column))
+                column = editable(*row, 0) ? std::optional<std::size_t>(0) : nextEditable(*row, 0, false);
+            if (column && edit(*row, *column))
+                event.handled = true;
+        }
+        return;
+    }
     if (event.key != platform::Key::Left && event.key != platform::Key::Right)
         return;
     // toward the end side: on across
     const bool forward = event.key == (rightToLeft() ? platform::Key::Left : platform::Key::Right);
     setHorizontalOffset(horizontalOffset_ + (forward ? keyStep : -keyStep));
     event.handled = true;
+}
+
+void TableView::onText(TextEvent& event) {
+    // typed on the current row: its current cell (or first editable one) edited, what was typed into its editor
+    if (event.composing || event.text.empty() || editor_->active() || !hasTrigger(editTriggers_, EditTriggers::Typing))
+        return;
+    const std::optional<std::size_t> row = list_->current();
+    if (!row || static_cast<unsigned char>(event.text[0]) < 0x20)
+        return;
+    std::optional<std::size_t> column = currentColumn_;
+    if (!column || !editable(*row, *column))
+        column = editable(*row, 0) ? std::optional<std::size_t>(0) : nextEditable(*row, 0, false);
+    if (!column || !edit(*row, *column))
+        return;
+    event.handled = true;
+    if (UiRoot* r = root())
+        r->dispatch(platform::TextInput{0, event.text});
 }
 
 void TableView::onHoverChanged(bool hovered) {
@@ -635,10 +829,12 @@ void TableView::onStyleChanged() {
 // ---- the model's changes ----
 
 void TableView::rowsInserted(std::size_t first, std::size_t count) {
+    cancelEdit();
     rows_->notifyInserted(first, count);
 }
 
 void TableView::rowsRemoved(std::size_t first, std::size_t count) {
+    cancelEdit();
     rows_->notifyRemoved(first, count);
 }
 
@@ -647,6 +843,9 @@ void TableView::rowsChanged(std::size_t first, std::size_t count) {
 }
 
 void TableView::columnsChanged() {
+    cancelEdit();
+    if (sortColumn_ && *sortColumn_ >= (model_ ? model_->columnCount() : 0))
+        sortBy(std::nullopt);
     resetColumns();
     horizontalOffset_ = std::clamp(horizontalOffset_, 0.0, maximumHorizontalOffset());
     rebindStrips();
@@ -654,6 +853,9 @@ void TableView::columnsChanged() {
 }
 
 void TableView::modelReset() {
+    cancelEdit();
+    sortColumn_.reset();
+    list_->setSortOrder(std::nullopt);
     resetColumns();
     horizontalOffset_ = 0;
     header_->clear();

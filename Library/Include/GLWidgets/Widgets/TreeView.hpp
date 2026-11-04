@@ -9,6 +9,10 @@
 // The view draws a row's indent and its arrow (by a node with children: pressed, it expands or collapses it); a delegate
 // makes and fills the rest. Right expands, or goes to the first child; Left collapses, or goes to the parent (mirrored in
 // right to left); a double click or Enter activates a node, and expands or collapses one with children.
+//
+// The children of each node show sorted (setSortOrder: the model's compare) and filtered (setFilter: the nodes accepted,
+// with their ancestors, which show expanded), without the model changing. A node its model says is editable
+// (ItemFlags::Editable) is edited in a widget its delegate makes, after its arrow, by a double click, F2 or typing.
 #include <GLWidgets/Export.hpp>
 #include <GLWidgets/Widgets/ItemModel.hpp>
 #include <GLWidgets/Widgets/ListView.hpp>
@@ -31,17 +35,25 @@ public:
     virtual ~TreeDelegate();
     virtual std::unique_ptr<Widget> makeRow() = 0;
     virtual void bindRow(Widget& row, TreeNode node) = 0;
+    // An editable node edited: the widget it is edited in (any widget); none: it is not. Then what was edited goes into
+    // the model (not on Escape).
+    virtual std::unique_ptr<Widget> makeEditor(TreeNode node) { return nullptr; }
+    virtual void commitEdit(Widget& editor, TreeNode node) {}
 };
 
-// Each node's text in a row.
+// Each node's text in a row; edited, in a field (when told where the text goes).
 class GLW_EXPORT TreeTextDelegate : public TreeDelegate {
 public:
     explicit TreeTextDelegate(std::function<LocalizedText(TreeNode)> text) : text_(std::move(text)) {}
+    void setOnEdited(std::function<void(TreeNode, std::string)> handler) { onEdited_ = std::move(handler); }
     std::unique_ptr<Widget> makeRow() override;
     void bindRow(Widget& row, TreeNode node) override;
+    std::unique_ptr<Widget> makeEditor(TreeNode node) override;
+    void commitEdit(Widget& editor, TreeNode node) override;
 
 private:
     std::function<LocalizedText(TreeNode)> text_;
+    std::function<void(TreeNode, std::string)> onEdited_;
 };
 
 class GLW_EXPORT TreeView : public Widget, private TreeModelObserver {
@@ -66,6 +78,25 @@ public:
     std::optional<TreeNode> current() const;
     // When it shows.
     void setCurrent(TreeNode node);
+
+    // ---- sorting and filtering ----
+    // The children of each node sorted as the model compares them; none: in the model's order.
+    void setSortOrder(std::optional<SortOrder> order);
+    std::optional<SortOrder> sortOrder() const { return sortOrder_; }
+    // Only the nodes `accepts` says yes to, and their ancestors (expanded, so that they show); none: all of them. Every
+    // node of the model is asked (its children read).
+    void setFilter(std::function<bool(TreeNode)> accepts);
+    // Sorted and filtered again (what the filter says changed).
+    void reorder();
+
+    // ---- editing ----
+    void setEditTriggers(EditTriggers triggers) { list_->setEditTriggers(triggers); }
+    // The node edited, when it shows, is editable, and its delegate makes an editor (true then).
+    bool edit(TreeNode node);
+    bool editing() const { return list_->editing(); }
+    Widget* editor() const { return list_->editor(); }
+    void commitEdit() { list_->commitEdit(); }
+    void cancelEdit() { list_->cancelEdit(); }
 
     // The nodes that show, in order (the list's items).
     std::size_t shownCount() const;
@@ -101,6 +132,12 @@ private:
     // The children of `parent` (with those of its expanded children, and so on) as entries, at `depth`.
     void appendChildren(std::optional<TreeNode> parent, std::uint32_t depth, std::vector<Entry>& out) const;
     void rebuild();
+    // Its children as the view shows them: filtered, sorted.
+    std::vector<TreeNode> shownChildren(std::optional<TreeNode> parent) const;
+    bool ordered() const { return sortOrder_.has_value() || static_cast<bool>(filter_); }
+    // Whether it shows expanded: expanded by the user, or opened by the filter to show what it accepts in it.
+    bool expandedNow(TreeNode node) const;
+    void refilter();                        // the nodes kept by the filter, again
     // After the entry at `index` and those under it: the next one at its depth or above.
     std::size_t subtreeEnd(std::size_t index) const;
     // Where the `child`-th child of `parent` is (or goes) among the entries; none when `parent` does not show expanded.
@@ -118,6 +155,10 @@ private:
     std::shared_ptr<Rows> rows_;
     ListView* list_ = nullptr;
     std::unordered_set<std::uint64_t> expanded_;
+    std::optional<SortOrder> sortOrder_;
+    std::function<bool(TreeNode)> filter_;
+    std::unordered_set<std::uint64_t> kept_;        // filtered: the nodes accepted, and their ancestors
+    std::unordered_set<std::uint64_t> opened_;      // ... the ancestors, shown expanded (until collapsed)
     std::unordered_map<std::uint64_t, std::unique_ptr<Animation>> turning_;    // the arrows turning, by node
     std::function<void(std::optional<TreeNode>)> onCurrentChanged_;
     std::function<void(TreeNode)> onActivated_;

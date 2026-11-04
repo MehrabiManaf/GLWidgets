@@ -10,6 +10,13 @@
 // of a header resizes its column. The table scrolls across with its bar, the wheel turned with Shift (or tilted), or Left
 // and Right. Rows are chosen and activated as a list's are (ListView).
 //
+// A click on the header of a column its model can sort by (TableModel::sortable, compare) sorts the rows by it: ascending,
+// then descending, then not; an arrow in the header says which. A filter shows some rows only. Neither changes the
+// model: the delegate and the handlers speak of its rows still. A cell its model says is editable (ItemFlags::Editable)
+// is edited in a widget its delegate makes (makeEditor: a field, a check box, a combo box...), by a double click, F2 or
+// typing; Enter or the focus leaving it puts what was edited in (commitEdit), Tab goes on to the next editable cell,
+// Escape leaves it as it was.
+//
 //   class Sales : public glw::TableModel { ... rowCount, columnCount, header ... };
 //   auto table = std::make_unique<glw::TableView>();
 //   table->setModel(sales);
@@ -38,17 +45,26 @@ public:
     virtual std::unique_ptr<Widget> makeCell(std::size_t kind) = 0;
     // `cell` (made for the column's kind) shows the cell at `row`, `column` now.
     virtual void bindCell(Widget& cell, std::size_t row, std::size_t column) = 0;
+    // An editable cell edited: the widget it is edited in, showing its value (any widget); none: it is not. Then what was
+    // edited goes into the model (not on Escape).
+    virtual std::unique_ptr<Widget> makeEditor(std::size_t row, std::size_t column) { return nullptr; }
+    virtual void commitEdit(Widget& editor, std::size_t row, std::size_t column) {}
 };
 
 // Each cell's text.
 class GLW_EXPORT TableTextDelegate : public TableDelegate {
 public:
     explicit TableTextDelegate(std::function<LocalizedText(std::size_t row, std::size_t column)> text) : text_(std::move(text)) {}
+    // What an editable cell's text is set to, edited in a field (none: it is not edited).
+    void setOnEdited(std::function<void(std::size_t row, std::size_t column, std::string text)> handler) { onEdited_ = std::move(handler); }
     std::unique_ptr<Widget> makeCell(std::size_t kind) override;
     void bindCell(Widget& cell, std::size_t row, std::size_t column) override;
+    std::unique_ptr<Widget> makeEditor(std::size_t row, std::size_t column) override;
+    void commitEdit(Widget& editor, std::size_t row, std::size_t column) override;
 
 private:
     std::function<LocalizedText(std::size_t, std::size_t)> text_;
+    std::function<void(std::size_t, std::size_t, std::string)> onEdited_;
 };
 
 class GLW_EXPORT TableView : public Widget, private TableModelObserver {
@@ -102,8 +118,33 @@ public:
     void setOnCurrentChanged(std::function<void(std::optional<std::size_t>)> handler) { list_->setOnCurrentChanged(std::move(handler)); }
     // A double click or Enter on a row.
     void setOnActivated(std::function<void(std::size_t)> handler) { list_->setOnActivated(std::move(handler)); }
-    // A header clicked (to sort by its column, say).
+    // A header clicked (it sorts by its column, too, when it can).
     void setOnHeaderClicked(std::function<void(std::size_t)> handler) { onHeaderClicked_ = std::move(handler); }
+
+    // ---- sorting and filtering ----
+    // Sorted by a column, as the model compares its rows in it; none: in the model's order.
+    void sortBy(std::optional<std::size_t> column, SortOrder order = SortOrder::Ascending);
+    std::optional<std::size_t> sortColumn() const { return sortColumn_; }
+    SortOrder sortOrder() const { return sortOrder_; }
+    // A header clicked sorts by its column, if the model can (on by default).
+    void setSortingEnabled(bool enabled) { sortingEnabled_ = enabled; }
+    // Only the rows `accepts` says yes to (the model's rows); none: all of them.
+    void setFilter(std::function<bool(std::size_t)> accepts) { list_->setFilter(std::move(accepts)); }
+    // Sorted and filtered again (what the filter says changed).
+    void reorder() { list_->reorder(); }
+    std::size_t shownRowCount() const { return list_->shownCount(); }
+
+    // ---- editing ----
+    void setEditTriggers(EditTriggers triggers) { editTriggers_ = triggers; }
+    // The cell edited, if it is editable and its delegate makes an editor (true then).
+    bool edit(std::size_t row, std::size_t column);
+    bool editing() const;
+    std::optional<std::pair<std::size_t, std::size_t>> editedCell() const { return edited_; }
+    Widget* editor() const;
+    void commitEdit();
+    void cancelEdit();
+    // The column F2 and typing edit, on the current row: the last cell pressed (none: its first editable one).
+    std::optional<std::size_t> currentColumn() const { return currentColumn_; }
 
     const ItemViewStyle& style() const;
 
@@ -116,6 +157,8 @@ protected:
     std::optional<platform::Cursor> cursorAt(Point point) const override;
     void onMouse(MouseEvent& event) override;
     void onPreviewKey(KeyEvent& event) override;
+    void onText(TextEvent& event) override;
+    std::optional<Rect> childClip(const Widget& child) const override;
     void onHoverChanged(bool hovered) override;
     void onRootChanged() override;
     void onStyleChanged() override;
@@ -151,6 +194,14 @@ private:
     std::optional<std::size_t> headerAt(Point point) const;
     Rect barTrack() const;
     Rect barThumb() const;
+    // where a cell shows (its coordinates), while it does
+    std::optional<Rect> cellRect(std::size_t row, std::size_t column) const;
+    // the cell at a point of it, in the rows
+    std::optional<std::pair<std::size_t, std::size_t>> cellAt(Point point) const;
+    bool editable(std::size_t row, std::size_t column) const;
+    // the next editable cell after `column` in `row` (Tab), or before it (Shift+Tab)
+    std::optional<std::size_t> nextEditable(std::size_t row, std::size_t column, bool backwards) const;
+    void placeEditor();
 
     std::shared_ptr<TableModel> model_;
     std::unique_ptr<TableDelegate> delegate_;
@@ -182,6 +233,14 @@ private:
     bool barHovered_ = false;
     std::optional<double> thumbGrab_;       // the thumb dragged: where it was pressed, along it
     std::function<void(std::size_t)> onHeaderClicked_;
+
+    std::optional<std::size_t> sortColumn_;
+    SortOrder sortOrder_ = SortOrder::Ascending;
+    bool sortingEnabled_ = true;
+    EditTriggers editTriggers_ = EditTriggers::All;
+    std::unique_ptr<ItemEditor> editor_;
+    std::optional<std::pair<std::size_t, std::size_t>> edited_;     // the row and column edited
+    std::optional<std::size_t> currentColumn_;
 };
 
 } // namespace glw
