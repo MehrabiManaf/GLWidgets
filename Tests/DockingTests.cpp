@@ -29,7 +29,8 @@ DockPanel panel(const std::string& id) {
 
 // graph in the middle, palette at its start, output under it with search as its second tab
 struct Docked {
-    UiRoot root{tests::testContext()};
+    tests::FakeHost host;                   // for the tabs' menus
+    UiRoot root{tests::testContext(), &host};
     DockArea* area = nullptr;
     DockTabs* graph = nullptr;
     DockTabs* palette = nullptr;
@@ -370,10 +371,18 @@ TEST(aStackOfOnePanelHidesItsTabBar) {
         d.root.dispatch(platform::MouseButtonChanged{1, platform::MouseButton::Left, false, 1, at});
         d.root.layout();
     };
-    // the palette's stack (one panel): its hide button, the last of its tools (no float button without a docking host)
-    const Widget& tools = *d.palette->children()[1];
-    CHECK(tools.children().size() == 1);
-    click(tools.children().back()->mapToRoot({12, 12}));
+    // the palette's stack (one panel): no button for it, but its tab's menu (the right button): Hide the tab bar, then
+    // Close (no Float without a docking host)
+    CHECK(d.palette->children()[1]->children().empty());
+    const Point tab = d.tab(*d.palette, 0);
+    d.root.dispatch(platform::MouseButtonChanged{1, platform::MouseButton::Right, true, 1, tab});
+    d.root.dispatch(platform::MouseButtonChanged{1, platform::MouseButton::Right, false, 1, tab});
+    CHECK(d.host.open().size() == 1);
+    UiRoot& menu = d.host.open()[0]->root;
+    for (platform::Key k : {platform::Key::Down, platform::Key::Enter})
+        menu.dispatch(platform::KeyChanged{1, k, platform::KeyModifiers::None, true, false});
+    CHECK(d.host.open().empty());
+    d.root.layout();
     CHECK(d.palette->tabBarHidden() && d.palette->barHeight() == 0);
     // the panel takes all of the stack
     const Widget& content = *d.palette->panelContent(0);
@@ -399,4 +408,28 @@ TEST(aStackOfOnePanelHidesItsTabBar) {
     CHECK(palette.tabBarHidden());
     d.drag(d.tab(output, *output.indexOf("search")), palette.mapToRoot(palette.guide(DockSide::Center).center()));
     CHECK(palette.count() == 2 && !palette.tabBarHidden());
+}
+
+TEST(aTabBarSlidesAwayAndBack) {
+    tests::testScheduler().setAnimationsEnabled(true);
+    Docked d;
+    DockTabs& palette = *d.palette;
+    const float full = palette.barHeight();
+    palette.setTabBarHidden(true);
+    CHECK(palette.tabBarHidden() && near(palette.barHeight(), full));
+    // halfway (the theme's normal motion, 167 ms): half of it, the panel under it moved up with it
+    tests::advance(std::chrono::milliseconds(84));
+    d.root.layout();
+    const float half = palette.barHeight();
+    CHECK(half > full * 0.3f && half < full * 0.7f);
+    CHECK(near(palette.panelContent(0)->mapToRoot({}).y - palette.mapToRoot({}).y, half));
+    // gone: none of it; its corner shows it again, sliding back
+    tests::advance(std::chrono::milliseconds(100));
+    d.root.layout();
+    CHECK(palette.barHeight() == 0 && !palette.children()[0]->visible());
+    palette.setTabBarHidden(false);
+    CHECK(palette.children()[0]->visible() && palette.barHeight() == 0);
+    tests::advance(std::chrono::milliseconds(200));
+    CHECK(near(palette.barHeight(), full) && !tests::testScheduler().animating());
+    tests::testScheduler().setAnimationsEnabled(false);
 }

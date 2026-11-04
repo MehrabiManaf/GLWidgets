@@ -47,6 +47,10 @@ constexpr const char* persianCatalog = R"({
   "language": "fa",
   "texts": {
     "Docking": "داک",
+    "Float": "شناور کن",
+    "Dock": "داک کن",
+    "Hide the tab bar": "پنهان کردن نوار تب‌ها",
+    "Close": "بستن",
     "Script {n}": "اسکریپت {n}",
     "Palette": "پالت",
     "Inspector": "بازرس",

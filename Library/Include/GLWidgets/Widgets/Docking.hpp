@@ -42,6 +42,7 @@
 //
 // Start and End are the sides of the layout direction (Start is the right in right to left).
 #include <GLWidgets/Export.hpp>
+#include <GLWidgets/Widgets/Animation.hpp>
 #include <GLWidgets/Widgets/Localization.hpp>
 #include <GLWidgets/Widgets/Splitter.hpp>
 #include <GLWidgets/Widgets/Theme.hpp>
@@ -113,12 +114,12 @@ public:
     // Center, the one on that side of it for the others (Start and End mirrored with the direction).
     Rect guide(DockSide side) const;
 
-    // With one panel only: its tab bar hidden, the panel taking all of the stack; the triangle in its start corner shows the
-    // bar again (pressed). Shown again by itself when another panel joins it. Not in a floating window, whose tab bar is
-    // its title.
+    // With one panel only: its tab bar hidden (by its tab's menu, the right button), the panel taking all of the stack; the
+    // triangle in its start corner shows the bar again (pressed). Shown again by itself when another panel joins it. Not
+    // in a floating window, whose tab bar is its title. The bar slides away and back (the theme's normal motion).
     void setTabBarHidden(bool hidden);
     bool tabBarHidden() const { return barHidden_; }
-    float barHeight() const;                // its tab bar's: none while it is hidden
+    float barHeight() const;                // its tab bar's: none while it is hidden, less while it slides
     // Where the triangle that shows the bar again is (its coordinates), while the bar is hidden.
     Rect revealCorner() const;
     // Takes the panel at `index` out: the caller has it now.
@@ -144,10 +145,12 @@ private:
         DockScope scope = DockScope::MajorTab;
     };
     void rebuildBar();
-    void rebuildTools();                    // the buttons of the panel shown, the hide and float buttons
+    void rebuildTools();                    // the buttons of the panel shown, the float button
     // In a floating window: its bar is the window's title where it has no tab (`title`), and leaves `reserve` at its
     // `left` or right for the window buttons.
     void setTitleArea(bool title, float reserve, bool left);
+    void barStepped();                      // the bar slid
+    bool barGone() const;                   // hidden, all the way
 
     std::vector<Entry> entries_;
     std::size_t active_ = 0;
@@ -157,6 +160,7 @@ private:
     bool reserveLeft_ = false;
     bool title_ = false;
     bool barHidden_ = false;
+    Animation barShown_{[this] { barStepped(); }};      // how much of the bar shows, from 0 to 1
     bool cornerHovered_ = false;
 };
 

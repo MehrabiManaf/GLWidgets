@@ -151,15 +151,14 @@ struct SplitterStyle {
     float thickness = 6;            // what can be dragged
 };
 
-// Docked panels: each stack an island (a layer with rounded corners) on the window, gaps between them; the tab shown,
-// among others, raised and joined to its content as Fusion's (alone, on a pill); where a dragged tab would go.
+// Docked panels: each stack an island (a layer with rounded corners) on the window, gaps between them; the tab shown
+// raised and joined to its content as Fusion's; where a dragged tab would go.
 struct DockStyle {
     Color background;               // of a stack: its tabs and the content of the panel shown
     Color border;                   // around a stack
     Color separator;                // between a stack's tabs and its content
     StateColor tab;                 // behind a tab: a pill, under the mouse
-    Color activeTab;                // ... behind the tab shown, alone in its stack
-    Color selectedTab;              // the tab shown among others: its top (it fades to the background at its bottom)
+    Color selectedTab;              // the tab shown: its top (it fades to the background at its bottom)
     Color selectedTabBorder;
     Color selectedTabHighlight;     // the light line inside along its top
     Color activeLine;               // the guides and the outline of where a dragged tab would go

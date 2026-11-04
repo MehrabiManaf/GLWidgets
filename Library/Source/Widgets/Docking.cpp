@@ -9,6 +9,7 @@
 #include <GLWidgets/Widgets/DockingHost.hpp>
 #include <GLWidgets/Widgets/Label.hpp>
 #include <GLWidgets/Widgets/Layout.hpp>
+#include <GLWidgets/Widgets/Menu.hpp>
 #include <GLWidgets/Widgets/UiRoot.hpp>
 #include <GLWidgets/Widgets/WindowFrame.hpp>
 
@@ -68,9 +69,9 @@ protected:
         paint::Painter& p = context.painter;
         const Rect r{0, 0, size().width, size().height};
         const VisualState state{.hovered = hovered(), .pressed = pressed_ && hovered()};
-        if (active_ && owner_.count() > 1) {
-            // among others, as Fusion's: raised over the bar, lit at its top, its edge around it but under it, where it
-            // joins its content (its lower corners and edge below the bar, cut)
+        if (active_) {
+            // as Fusion's: raised over the bar, lit at its top, its edge around it but under it, where it joins its
+            // content (its lower corners and edge below the bar, cut)
             const Rect shape{0, selectedTabTop, r.width, r.height - selectedTabTop + s.cornerRadius};
             const float radius = std::min(s.cornerRadius, 4.0f);
             p.pushClip(r);
@@ -80,7 +81,7 @@ protected:
             p.popClip();
             p.fillRect({1, r.height - 1, r.width - 2, 1}, s.background);     // the hairline under the bar open under it
         } else {
-            p.fillRoundedRect(r.inflated(-3), 4, active_ ? s.activeTab : s.tab.resolve(state));
+            p.fillRoundedRect(r.inflated(-3), 4, s.tab.resolve(state));
         }
         label_->setColor(active_ || hovered() ? s.text : s.mutedText);
         if (closable_ && (hovered() || active_)) {
@@ -93,10 +94,37 @@ protected:
         }
     }
 
+    // What can be done with its panel: floated (or docked again), its stack's tab bar hidden (a stack of one panel,
+    // docked), closed.
+    void showTabMenu(Point at) {
+        DockArea* area = owner_.area();
+        if (!area)
+            return;
+        DockTabs* owner = &owner_;
+        const std::string id = owner_.panelId(index_);
+        std::vector<MenuItem> items;
+        const UiContext* ui = context();
+        if (ui && ui->docking)
+            items.push_back({.text = area->floating() ? tr("Dock") : tr("Float"), .onTriggered = [area, id] { area->toggleFloating(id); }});
+        items.push_back({.text = tr("Hide the tab bar"),
+                         .onTriggered = [owner] { owner->setTabBarHidden(true); },
+                         .enabled = owner_.count() == 1 && !area->floating()});
+        if (closable_) {
+            items.push_back(MenuItem::separatorItem());
+            items.push_back({.text = tr("Close"), .onTriggered = [area, id] { area->closePanel(id); }});
+        }
+        showContextMenu(*this, at, std::move(items));
+    }
+
     void onMouse(MouseEvent& event) override {
         DockArea* area = owner_.area();
         switch (event.type) {
         case MouseEventType::Press:
+            if (event.button == platform::MouseButton::Right) {
+                event.handled = true;
+                showTabMenu(event.position);
+                return;
+            }
             if (event.button != platform::MouseButton::Left)
                 return;
             event.handled = true;
@@ -363,14 +391,6 @@ void floatIcon(PaintContext& context, const Rect& r, Color color) {
     p.drawLine({r.right(), r.y}, {r.right(), r.y + 5}, 1.2f, color);
 }
 
-// The hide button's icon: a box with the corner the bar goes back to.
-void hideIcon(PaintContext& context, const Rect& r, Color color) {
-    paint::Painter& p = context.painter;
-    p.strokeRoundedRect({r.x + 0.5f, r.y + 0.5f, r.width - 1, r.height - 1}, 1.5f, 1.2f, color);
-    const Point corner[] = {{r.x + 2, r.y + 2}, {r.x + r.width * 0.55f, r.y + 2}, {r.x + 2, r.y + r.height * 0.55f}};
-    p.fillConvexPolygon(corner, color);
-}
-
 void dockIcon(PaintContext& context, const Rect& r, Color color) {
     paint::Painter& p = context.painter;
     p.strokeRoundedRect({r.x + 0.5f, r.y + 0.5f, r.width - 1, r.height - 1}, 1.5f, 1.2f, color);
@@ -561,6 +581,7 @@ DockTabs::DockTabs() {
     tools->setHitTestVisible(false);        // between the buttons: the stack
     tools->setPadding({2, 0, 4, 0});
     tools_ = &addChild(std::move(tools));
+    barShown_.set(1);
 }
 
 DockArea* DockTabs::area() const {
@@ -634,9 +655,6 @@ void DockTabs::rebuildTools() {
         return;
     for (const DockButton& button : entries_[active_].buttons)
         tools_->add(std::make_unique<DockToolButton>(button.icon, button.onClick));
-    // one panel, docked (a floating window's bar is its title): its tab bar may be hidden
-    if (const DockArea* a = area(); entries_.size() == 1 && a && !a->floating())
-        tools_->add(std::make_unique<DockToolButton>(hideIcon, [this] { setTabBarHidden(true); }));
     // the float button, where there are windows to float in
     const UiContext* ui = context();
     if (!ui || !ui->docking)
@@ -664,8 +682,8 @@ void DockTabs::rebuildBar() {
 
 Size DockTabs::measureContent(Size available) {
     const float bar = barHeight();
-    bar_->measure({available.width, bar});
-    tools_->measure({unbounded, bar});
+    bar_->measure({available.width, style().tabHeight});
+    tools_->measure({unbounded, style().tabHeight});
     Size content;
     for (const Entry& e : entries_) {
         if (e.content->visible())
@@ -676,16 +694,18 @@ Size DockTabs::measureContent(Size available) {
 
 void DockTabs::arrangeContent(const Rect& content) {
     const float bar = barHeight();
+    const float full = style().tabHeight;
     const bool rtl = rightToLeft();
-    // the bar: what the window buttons leave (a floating window's), the tools at its end, the tabs before them
+    // the bar: what the window buttons leave (a floating window's), the tools at its end, the tabs before them; going or
+    // coming back, it slides up out of the stack (cut by it)
     const float reserve = std::min(reserve_, content.width);
-    const Rect line{reserveLeft_ ? content.x + reserve : content.x, content.y, content.width - reserve, bar};
-    const float tools = std::min(tools_->measure({unbounded, bar}).width, line.width);
-    arrangeInCell(*tools_, {rtl ? line.x : line.right() - tools, line.y, tools, bar}, rtl);
+    const Rect line{reserveLeft_ ? content.x + reserve : content.x, content.y - (full - bar), content.width - reserve, full};
+    const float tools = std::min(tools_->measure({unbounded, full}).width, line.width);
+    arrangeInCell(*tools_, {rtl ? line.x : line.right() - tools, line.y, tools, full}, rtl);
     // a window's title keeps a little room after its tabs, to drag the window by
     const float grip = title_ ? std::min(titleGrip, line.width - tools) : 0.0f;
     const float tabs = std::max(0.0f, line.width - tools - grip);
-    arrangeInCell(*bar_, {rtl ? line.right() - tabs : line.x, line.y, tabs, bar}, rtl);
+    arrangeInCell(*bar_, {rtl ? line.right() - tabs : line.x, line.y, tabs, full}, rtl);
     const Rect below{content.x, content.y + bar, content.width, std::max(0.0f, content.height - bar)};
     for (const Entry& e : entries_) {
         if (e.content->visible())
@@ -718,12 +738,12 @@ void DockTabs::paint(PaintContext& context) {
     const Rect r{0, 0, size().width, size().height};
     context.painter.fillRoundedRect(r, s.cornerRadius, s.background);
     context.painter.strokeRoundedRect(r, s.cornerRadius, 1, s.border);
-    if (!barHidden_)
-        context.painter.fillRect({s.cornerRadius / 2, s.tabHeight - 1, std::max(0.0f, r.width - s.cornerRadius), 1}, s.separator);
+    if (const float bar = barHeight(); bar >= 1)
+        context.painter.fillRect({s.cornerRadius / 2, bar - 1, std::max(0.0f, r.width - s.cornerRadius), 1}, s.separator);
 }
 
 float DockTabs::barHeight() const {
-    return barHidden_ ? 0.0f : style().tabHeight;
+    return style().tabHeight * barShown_.value();
 }
 
 void DockTabs::setTabBarHidden(bool hidden) {
@@ -733,9 +753,25 @@ void DockTabs::setTabBarHidden(bool hidden) {
         return;
     barHidden_ = hidden;
     cornerHovered_ = false;
-    bar_->setVisible(!hidden);
-    tools_->setVisible(!hidden);
+    // eased away or back (the theme's motion), its tabs shown meanwhile
+    bar_->setVisible(true);
+    tools_->setVisible(true);
+    const UiContext* ui = context();
+    barShown_.animateTo(scheduler(), hidden ? 0.0f : 1.0f, ui ? Duration(ui->theme.motion.normal) : Duration::zero(), Easing::InOutCubic);
+    barStepped();
+}
+
+void DockTabs::barStepped() {
+    if (barHidden_ && !barShown_.running() && barShown_.value() <= 0) {
+        bar_->setVisible(false);    // gone: out of the way of the mouse and the focus
+        tools_->setVisible(false);
+    }
     invalidateLayout();
+    invalidatePaint();
+}
+
+bool DockTabs::barGone() const {
+    return barHidden_ && !barShown_.running();
 }
 
 Rect DockTabs::revealCorner() const {
@@ -744,7 +780,7 @@ Rect DockTabs::revealCorner() const {
 }
 
 void DockTabs::paintOver(PaintContext& context) {
-    if (!barHidden_)
+    if (!barGone())
         return;
     // the corner the bar went to: a little triangle, the accent's under the mouse
     const Rect c = revealCorner();
@@ -757,7 +793,7 @@ void DockTabs::paintOver(PaintContext& context) {
 }
 
 void DockTabs::onPreviewMouse(MouseEvent& event) {
-    if (!barHidden_)
+    if (!barGone())
         return;
     const bool over = revealCorner().contains(event.position);
     if (over != cornerHovered_) {

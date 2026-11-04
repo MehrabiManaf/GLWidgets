@@ -121,7 +121,6 @@ Theme Theme::fromPalette(const Palette& p) {
     t.dock.border = dark ? withAlpha(black, 0.35f) : withAlpha(black, 0.10f);
     t.dock.separator = dark ? withAlpha(black, 0.30f) : withAlpha(black, 0.07f);
     t.dock.tab = {.normal = clear, .hovered = p.hover, .pressed = p.pressed};
-    t.dock.activeTab = dark ? mix(p.layer, p.surface, 0.8f) : lit(p.surface, 0.6f);
     t.dock.selectedTab = dark ? lit(p.layer, 0.09f) : lit(p.layer, 0.7f);
     t.dock.selectedTabBorder = dark ? withAlpha(black, 0.45f) : withAlpha(black, 0.16f);
     t.dock.selectedTabHighlight = withAlpha(white, dark ? 0.08f : 0.9f);

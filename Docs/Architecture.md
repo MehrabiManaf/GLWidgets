@@ -334,10 +334,10 @@ The edges of controls are darker than what they are on; one accent: amber (a war
 dark theme, azure with white ones in the light. What has the focus has an edge of the accent and a soft glow of it
 around (`paintFocusGlow`), both eased in. A check box's box fills with the accent as it is checked, its mark drawn
 stroke by stroke; the item chosen in a menu is in the accent. Corners are 4 dips on controls and 6 on panels. Docked
-stacks are islands on the window with gaps between them; the tab shown is, among others, raised over the bar and joined
-to its content as Fusion's (alone, on a pill), and a selected row is on a pill of the accent's tint: no bars or lines
-mark them. Text is 13 dips, tabs 28 high. The painter fills and strokes boxes in vertical gradients
-(`fillRoundedRect(rect, radius, top, bottom)`), with no more vertices than a flat box.
+stacks are islands on the window with gaps between them; the tab shown is raised over the bar and joined to its content
+as Fusion's, and a selected row is on a pill of the accent's tint: no bars or lines mark them. Text is 13 dips, tabs 28
+high. The painter fills and strokes boxes in vertical gradients (`fillRoundedRect(rect, radius, top, bottom)`), with no
+more vertices than a flat box.
 
 - **A style is a typed struct** (`ButtonStyle`, `LineEditStyle`, `CardStyle`, `TitleBarStyle`...) of colors and measures.
   Colors that change with the widget's state are `StateColor`s: a normal color, and optional ones for hovered, pressed,
@@ -605,9 +605,12 @@ In a dock area:
 - **Buttons at the end of a stack's tab bar**: those of the panel shown (`DockPanel::buttons`: an icon drawn by the
   application, and what a click does), then the float button, which floats the panel shown by its stack's place, or,
   in a floating window, docks it back in its area. The float button is there only with a docking host.
-- **A stack of one panel can hide its tab bar** (its hide button, `DockTabs::setTabBarHidden`), as Unreal Engine's "hide
-  tab well": the panel takes all of the stack, and a little triangle in its start corner shows the bar again. It comes back
-  by itself when another panel joins the stack; a floating window keeps its bar, which is its title. Saved layouts keep it.
+- **A tab's menu** (the right button on it): Float (or Dock, in a floating window; with a docking host), Hide the tab bar,
+  Close (when the panel can be closed).
+- **A stack of one panel can hide its tab bar** (by its tab's menu, `DockTabs::setTabBarHidden`), as Unreal Engine's "hide
+  tab well": the bar slides up out of the stack (the theme's normal motion, 167 ms) and the panel takes all of it; a little
+  triangle in its start corner shows the bar again, sliding back. It comes back by itself when another panel joins the
+  stack; a floating window keeps its bar, which is its title. Saved layouts keep it.
 - **`addPanel(panel, nextTo, side, share)`** builds a layout in code: beside a stack on its Start, End, Top or Bottom
   side, or in it.
 
