@@ -32,6 +32,7 @@
 // serialize them, without a line written for each widget.
 #include <GLWidgets/Widgets/Button.hpp>
 #include <GLWidgets/Widgets/CheckBox.hpp>
+#include <GLWidgets/Widgets/CollapsiblePanel.hpp>
 #include <GLWidgets/Widgets/ComboBox.hpp>
 #include <GLWidgets/Widgets/Label.hpp>
 #include <GLWidgets/Widgets/Layout.hpp>
@@ -210,6 +211,15 @@ inline Element<glw::LineEdit> LineEdit(glw::LineEdit::Props props) {
 
 inline Element<glw::CheckBox> CheckBox(glw::CheckBox::Props props) {
     return make<glw::CheckBox>(std::move(props));
+}
+
+// Its items go into its content.
+template <class... C>
+Element<glw::CollapsiblePanel> CollapsiblePanel(glw::CollapsiblePanel::Props props, C&&... items) {
+    auto panel = std::make_unique<glw::CollapsiblePanel>(std::move(props));
+    for (std::unique_ptr<Widget>& item : children(std::forward<C>(items)...))
+        panel->content().addChild(std::move(item));
+    return Element<glw::CollapsiblePanel>(std::move(panel));
 }
 
 inline Element<glw::ComboBox> ComboBox(glw::ComboBox::Props props) {

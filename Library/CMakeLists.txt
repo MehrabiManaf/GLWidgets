@@ -33,6 +33,7 @@ add_library(GLWidgets ${GLW_LIB_TYPE}
     Source/Widgets/Button.cpp
     Source/Widgets/Canvas.cpp
     Source/Widgets/CheckBox.cpp
+    Source/Widgets/CollapsiblePanel.cpp
     Source/Widgets/ComboBox.cpp
     Source/Widgets/Dialog.cpp
     Source/Widgets/Docking.cpp

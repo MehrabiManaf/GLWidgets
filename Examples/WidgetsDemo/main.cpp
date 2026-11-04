@@ -14,6 +14,8 @@
 #include <GLWidgets/Widgets/Dialog.hpp>
 #include <GLWidgets/Widgets/ListView.hpp>
 #include <GLWidgets/Widgets/Menu.hpp>
+#include <GLWidgets/Paint/Painter.hpp>
+#include <GLWidgets/Widgets/ToolBar.hpp>
 #include <GLWidgets/Widgets/TableView.hpp>
 
 #include <algorithm>
@@ -80,6 +82,16 @@ constexpr const char* persianCatalog = R"({
     "What is not saved is lost.": "آنچه ذخیره نشده از دست می‌رود.",
     "Every widget, in the other theme's colors": "همه‌ی ویجت‌ها، با رنگ‌های پوسته‌ی دیگر",
     "Asks first": "اول می‌پرسد",
+    "Appearance": "ظاهر",
+    "Variables": "متغیرها",
+    "Advanced": "پیشرفته",
+    "Show the grid": "شبکه دیده شود",
+    "Snap to the grid": "چسبیدن به شبکه",
+    "Adds a variable": "یک متغیر اضافه می‌کند",
+    "Variable {n}": "متغیر {n}",
+    "Its value": "مقدارش",
+    "Undo steps": "گام‌های واگرد",
+    "Click a header to open or close it; + adds a variable.": "روی سرتیتری کلیک کنید تا باز یا بسته شود؛ + یک متغیر اضافه می‌کند.",
     "A modal dialog: the window waits for it": "یک گفتگوی مودال: پنجره منتظرش می‌ماند"
   }
 })";
@@ -108,6 +120,7 @@ struct Page {
     glw::Widget* buttons = nullptr;
     glw::Widget* cards = nullptr;
     glw::Button* menuButton = nullptr;
+    int variableCount = 0;
     bool light = false;
 
     // The form on one side; on the other a list of a million items over a table of a million rows; handles between them.
@@ -185,8 +198,46 @@ struct Page {
                                             .current = 1,
                                             .onChanged = [this](std::size_t i) { chosen(i == 0 ? tr("Small") : i == 1 ? tr("Medium") : tr("Large")); }})),
                    ui::HStack({.spacing = 12}, card(1, tr("a share")), card(2, tr("two shares")), card(1, tr("a share"))).bind(cards),
+                   ui::Label({.text = tr("Click a header to open or close it; + adds a variable."), .muted = true, .wrap = true}),
+                   panels(),
                    ui::Label({.text = tr("Close it with its button, Alt+F4, or the one above."), .fontSize = 12, .muted = true}))
             .padding(glw::Insets::all(28));
+    }
+
+    // Panels that open and close, as a details panel has: the second adds a row by the + in its header.
+    std::unique_ptr<glw::Widget> panels() {
+        auto variables = std::make_unique<glw::CollapsiblePanel>(glw::CollapsiblePanel::Props{.title = tr("Variables"), .expanded = true});
+        glw::CollapsiblePanel* list = variables.get();
+        auto add = std::make_shared<glw::Action>(tr("Adds a variable"), [this, list] {
+            ++variableCount;
+            list->addContent(ui::HStack({.spacing = 10},
+                                        ui::Label({.text = tr("Variable {n}").arg("n", std::to_string(variableCount))})
+                                            .alignment(glw::Alignment::Start, glw::Alignment::Center)
+                                            .minimumSize({110, 0}),
+                                        ui::LineEdit({.placeholder = tr("Its value")}).stretch(1))
+                                 .build());
+            list->setExpanded(true);
+        });
+        add->setIcon(glw::Icon::fromPainter([](glw::paint::Painter& p, const glw::Rect& r, glw::Color c) {
+            const glw::Point m = r.center();
+            p.drawLine({m.x - r.width * 0.32f, m.y}, {m.x + r.width * 0.32f, m.y}, 1.6f, c);
+            p.drawLine({m.x, m.y - r.height * 0.32f}, {m.x, m.y + r.height * 0.32f}, 1.6f, c);
+        }));
+        variables->addAction(add);
+        for (int i = 0; i < 2; ++i)
+            add->trigger();
+        return ui::VStack({.spacing = 8},
+                          ui::CollapsiblePanel({.title = tr("Appearance"), .expanded = true},
+                                               ui::CheckBox({.text = tr("Show the grid"), .checked = true}),
+                                               ui::CheckBox({.text = tr("Snap to the grid")}),
+                                               ui::HStack({.spacing = 10},
+                                                          ui::Label({.text = tr("Size")}).alignment(glw::Alignment::Start, glw::Alignment::Center),
+                                                          ui::ComboBox({.items = {tr("Small"), tr("Medium"), tr("Large")}, .current = 1}))),
+                          std::move(variables),
+                          ui::CollapsiblePanel({.title = tr("Advanced")},
+                                               ui::HStack({.spacing = 10},
+                                                          ui::Label({.text = tr("Undo steps")}).alignment(glw::Alignment::Start, glw::Alignment::Center),
+                                                          ui::LineEdit({.text = "100"}).stretch(1))));
     }
 
     static ui::Element<glw::Card> card(float stretch, glw::LocalizedText text) {

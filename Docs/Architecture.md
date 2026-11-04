@@ -513,6 +513,14 @@ it paints and waits as `nextDeadline` says. Measured with `GLW_LOG_FRAMES` (the 
 an idle window draws none; a hover draws about five frames (83 ms at 60 Hz) and its tooltip one; a caret two a second for
 ten seconds, then none.
 
+A `CollapsiblePanel` (`Widgets/CollapsiblePanel.hpp`) is a header over a column of content that opens and closes, as the
+sections of a details panel do. Its height eases between the header's and the header's with all of its content (the
+theme's `motion.slow`, 250 ms, in and out), its content laid out at its full height and cut to what shows, the header's
+arrow turning with it; so the widgets under it move with it, laid out again at each step. Closed all the way, its content
+is hidden (not painted, not under the mouse, not in the order of the focus); the focus in it goes to the header as it
+closes. A click on the header, Enter or Space toggle it, Right and Left open and close it (mirrored in right to left);
+buttons at the header's end trigger actions (a + that adds an item). `ui::CollapsiblePanel` takes its content as children.
+
 Still to come in the widget core: mouse cursors (the resize cursor
 over a splitter's handle and a table header's edge), and the native extras of the chrome (Windows 11 shadow, rounded corners and snap layouts).
 

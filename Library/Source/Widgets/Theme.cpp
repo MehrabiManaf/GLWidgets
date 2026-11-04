@@ -115,6 +115,13 @@ Theme Theme::fromPalette(const Palette& p) {
     t.majorTab.mutedText = p.mutedText;
     t.majorTab.insertion = p.accent;
 
+    t.collapsiblePanel.header = {.normal = p.layer, .hovered = over(p.layer, p.hover), .pressed = over(p.layer, p.pressed)};
+    t.collapsiblePanel.content = p.window;
+    t.collapsiblePanel.border = p.border;
+    t.collapsiblePanel.title = p.text;
+    t.collapsiblePanel.arrow = p.mutedText;
+    t.collapsiblePanel.focusRing = p.accent;
+    t.collapsiblePanel.cornerRadius = t.cornerRadius + 2;
     t.menuBar.background = p.titleBar;
     t.menuBar.text = p.text;
     t.menuBar.title = {.normal = {0, 0, 0, 0}, .hovered = p.hover, .pressed = p.pressed};

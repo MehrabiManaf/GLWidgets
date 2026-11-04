@@ -43,7 +43,8 @@ Then, in `build/<preset>/bin`:
 - `widgets_demo` is an application made of widgets, written with the declarative builders (`glw::ui`): a window with its
   own chrome, split in two by a handle, a form (text field, check boxes, buttons; Tab moves the focus) and, over each
   other, a list of a million items and a table of a million rows of fifty columns (only what shows is widgets); a menu
-  (with a submenu, check marks, shortcuts), a combo box, and dialogs (a form; the Close button asks first); buttons switch to Persian (the window is mirrored) and to the light
+  (with a submenu, check marks, shortcuts), a combo box, dialogs (a form; the Close button asks first), and panels that
+  open and close, eased (a + in one's header adds a row); buttons switch to Persian (the window is mirrored) and to the light
   theme. `--language fa` and `--light` start it so.
 - `node_editor` is a node editor on a `Canvas`: nodes with pins and fields for their values, links drawn as curves,
   dragged from pin to pin; nodes moved, selected by a rectangle, framed (F), deleted; comments that carry their nodes;

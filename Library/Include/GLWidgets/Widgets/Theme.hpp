@@ -173,6 +173,20 @@ struct CardStyle {
     float cornerRadius = 8;
 };
 
+// A header over content that opens and closes (CollapsiblePanel), as Fluent's expander: a card.
+struct CollapsiblePanelStyle {
+    StateColor header;              // under the mouse, pressed
+    Color content;                  // behind the content, under the header
+    Color border;
+    Color title;
+    Color arrow;
+    Color focusRing;
+    float headerHeight = 36;
+    Insets padding{14, 8, 14, 12};  // around the content
+    float spacing = 8;              // between the content's widgets
+    float cornerRadius = 6;
+};
+
 struct MenuBarStyle {
     Color background;               // in a row of its own (in the title bar, the title bar's)
     Color text;
@@ -308,6 +322,7 @@ struct Theme {
     CardStyle card;
     CanvasStyle canvas;
     MenuStyle menu;
+    CollapsiblePanelStyle collapsiblePanel;
     MenuBarStyle menuBar;
     ToolBarStyle toolBar;
     TextEditStyle textEdit;
