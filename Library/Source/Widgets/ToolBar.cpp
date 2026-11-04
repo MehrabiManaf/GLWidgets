@@ -3,6 +3,7 @@
 #include <GLWidgets/Widgets/ToolBar.hpp>
 
 #include <GLWidgets/Paint/Painter.hpp>
+#include <GLWidgets/Widgets/Bevel.hpp>
 #include <GLWidgets/Widgets/Label.hpp>
 #include <GLWidgets/Widgets/Layout.hpp>
 #include <GLWidgets/Widgets/Menu.hpp>
@@ -96,11 +97,15 @@ void ToolButton::paint(PaintContext& context) {
     const bool enabled = enabledInTree();
     const VisualState state{.hovered = hovered() && enabled, .pressed = pressed_ && hovered(), .disabled = !enabled};
     Color background = s.button.resolve(state);
-    if (action_->checked() && !state.pressed)
-        background = state.hovered ? Color{s.checked.r, s.checked.g, s.checked.b, std::min(1.0f, s.checked.a * 1.5f)} : s.checked;
-    background_.to(scheduler(), background, context.ui.theme.motion.fast);
+    const bool checked = action_->checked() && !state.pressed;
+    if (checked)
+        background = state.hovered ? withAlpha(s.checked, std::min(1.0f, s.checked.a * 1.5f)) : s.checked;
+    // flat until the mouse is over it, then raised (pressed or checked, sunk)
+    const Duration fast = context.ui.theme.motion.fast;
+    background_.to(scheduler(), background, fast);
+    outline_.to(scheduler(), state.hovered || state.pressed || checked ? s.outline : withAlpha(s.outline, 0), fast);
     const Rect r{0, 0, size().width, size().height};
-    p.fillRoundedRect(r, s.cornerRadius, background_.value());
+    paintRaised(p, r, s.cornerRadius, background_.value(), outline_.value(), s.bevel, state.pressed || checked);
     const Color ink = enabled ? s.icon : s.disabledIcon;
     if (!action_->icon().empty()) {
         // its icon, in the middle (or at the start, before its text)

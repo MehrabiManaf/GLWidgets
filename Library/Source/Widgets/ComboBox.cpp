@@ -3,6 +3,7 @@
 #include <GLWidgets/Widgets/ComboBox.hpp>
 
 #include <GLWidgets/Paint/Painter.hpp>
+#include <GLWidgets/Widgets/Bevel.hpp>
 #include <GLWidgets/Text/Font.hpp>
 #include <GLWidgets/Text/TextLayout.hpp>
 #include <GLWidgets/Widgets/Label.hpp>
@@ -91,9 +92,9 @@ void ComboBox::paint(PaintContext& context) {
     paint::Painter& p = context.painter;
     const Rect r{0, 0, size().width, size().height};
     background_.to(scheduler(), s.background.resolve(v), context.ui.theme.motion.fast);
-    p.fillRoundedRect(r, s.cornerRadius, background_.value());
-    if (s.borderWidth > 0)
-        p.strokeRoundedRect(r, s.cornerRadius, s.borderWidth, s.border.resolve(v));
+    glow_.to(scheduler(), v.focused && !open_ ? s.focusRing : withAlpha(s.focusRing, 0), context.ui.theme.motion.normal);
+    paintFocusGlow(p, r, s.cornerRadius, glow_.value());
+    paintRaised(p, r, s.cornerRadius, background_.value(), s.borderWidth > 0 ? s.border.resolve(v) : Color{0, 0, 0, 0}, s.bevel, v.pressed);
     label_->setColor(s.text.resolve(v));
     // a chevron down, at the end side
     const float x = rightToLeft() ? arrowRoom / 2 : r.width - arrowRoom / 2, y = r.height / 2;
@@ -101,12 +102,7 @@ void ComboBox::paint(PaintContext& context) {
     p.drawPolyline(points, 1.4f, s.text.resolve(v));
 }
 
-void ComboBox::paintOver(PaintContext& context) {
-    if (!hasFocus() || open_)
-        return;
-    const ButtonStyle& s = style();
-    context.painter.strokeRoundedRect(Rect{0, 0, size().width, size().height}.inflated(2), s.cornerRadius + 2, 1.5f, s.focusRing);
-}
+void ComboBox::paintOver(PaintContext&) {}
 
 void ComboBox::onMouse(MouseEvent& event) {
     if (event.button != platform::MouseButton::Left || event.type == MouseEventType::Wheel)

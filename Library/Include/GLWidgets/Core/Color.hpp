@@ -13,4 +13,15 @@ struct Color {
     friend bool operator==(const Color&, const Color&) = default;
 };
 
+// `a` taken toward `b` by `t` (0: `a`, 1: `b`), every channel and alpha.
+constexpr Color mix(const Color& a, const Color& b, float t) {
+    return {a.r + (b.r - a.r) * t, a.g + (b.g - a.g) * t, a.b + (b.b - a.b) * t, a.a + (b.a - a.a) * t};
+}
+
+// `c` with an alpha of `alpha`.
+constexpr Color withAlpha(Color c, float alpha) {
+    c.a = alpha;
+    return c;
+}
+
 } // namespace glw

@@ -13,7 +13,7 @@
 // at the end of a stack's tab bar floats its panel (docks it back, in a floating window); the Search panel has one more,
 // which clears its field. Tabs that do not fit scroll: by the wheel, or by the thin bar along their bottom.
 //
-//   docking_demo [--frames N] [--language fa] [--workspace FILE]
+//   docking_demo [--frames N] [--language fa] [--light] [--workspace FILE]
 //
 // --frames N draws N frames and exits: a smoke test. --workspace FILE starts with the windows FILE has (if it is there),
 // and saves them there when the demo ends: the windows, the scripts in each, where every panel is.
@@ -251,6 +251,7 @@ int main(int argc, char** argv) {
     int frames = -1;
     std::string language = "en";
     std::string workspace;
+    bool light = false;
     for (int i = 1; i < argc; ++i) {
         const std::string_view arg(argv[i]);
         if (arg == "--frames" && i + 1 < argc)
@@ -259,11 +260,15 @@ int main(int argc, char** argv) {
             language = argv[++i];
         else if (arg == "--workspace" && i + 1 < argc)
             workspace = argv[++i];
+        else if (arg == "--light")
+            light = true;
     }
     try {
         glw::Application app;
         app.translator().loadCatalog(persianCatalog);
         app.setLanguage(language);
+        if (light)
+            app.setTheme(glw::Theme::light());
 
         Studio studio{app};
         bool restored = false;

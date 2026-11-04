@@ -79,7 +79,7 @@ TEST(addPanelMakesTheTree) {
     CHECK(right->children()[0].get() == d.graph && right->children()[1].get() == d.output);
     CHECK(d.output->count() == 2 && d.output->panelId(1) == "search" && d.output->active() == 1);
     // the shares
-    CHECK(near(d.palette->bounds().width, (800 - 6) * 0.25f));
+    CHECK(near(d.palette->bounds().width, (800 - tests::testContext().theme.dock.splitter.thickness) * 0.25f));
     CHECK(d.palette->mapToRoot({}).x < d.graph->mapToRoot({}).x);
     CHECK((d.area->panelIds() == std::vector<std::string>{"palette", "graph", "output", "search"}));
 }

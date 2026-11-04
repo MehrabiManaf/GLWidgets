@@ -206,3 +206,27 @@ TEST(bezierCurvesAreFlattenedToTheirTolerance) {
         middle = middle || (std::abs(p.x - 50) < 1 && std::abs(p.y - 50) < 1);
     CHECK(middle);
 }
+
+TEST(aBoxInAGradientHasItsColorsAtItsTopAndBottom) {
+    paint::DrawList list;
+    {
+        paint::Painter p(list, {0, 0, 200, 200}, 1);
+        p.fillRoundedRect({10, 10, 100, 100}, 4, Color{1, 0, 0, 1}, Color{0, 0, 1, 1});
+        p.fillRoundedRect({10, 120, 100, 20}, 4, Color{0, 1, 0, 1});
+    }
+    // four vertices each, the quad a pixel larger than the box: its colors carried on past its edges
+    CHECK(list.vertices.size() == 8);
+    const auto red = [](std::uint32_t c) { return c & 0xff; };
+    const auto blue = [](std::uint32_t c) { return (c >> 16) & 0xff; };
+    CHECK(red(list.vertices[0].color) == 255 && blue(list.vertices[0].color) == 0);
+    CHECK(blue(list.vertices[2].color) == 255 && red(list.vertices[2].color) == 0);
+    CHECK(list.vertices[4].color == list.vertices[6].color);
+    // fading to transparent: premultiplied, so its color is kept, not faded toward black
+    list.clear();
+    {
+        paint::Painter p(list, {0, 0, 200, 200}, 1);
+        p.fillRoundedRect({0, 10, 100, 100}, 0, Color{1, 1, 1, 1}, Color{1, 1, 1, 0});
+    }
+    CHECK(red(list.vertices[0].color) == 255 && (list.vertices[0].color >> 24) == 255);
+    CHECK((list.vertices[2].color >> 24) == 0);
+}

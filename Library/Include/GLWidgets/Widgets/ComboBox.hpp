@@ -59,6 +59,7 @@ private:
     bool open_ = false;
     bool pressed_ = false;
     ColorTransition background_{[this] { invalidatePaint(); }};
+    ColorTransition glow_{[this] { invalidatePaint(); }};
 };
 
 } // namespace glw

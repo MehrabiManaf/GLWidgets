@@ -58,7 +58,8 @@ private:
     Rect box_;
     bool pressed_ = false;
     // the box eases to its state's color, the mark fades in and out
-    ColorTransition fill_{[this] { invalidatePaint(); }};
+    ColorTransition fill_{[this] { invalidatePaint(); }};      // checked
+    ColorTransition glow_{[this] { invalidatePaint(); }};
     Animation mark_{[this] { invalidatePaint(); }};
     bool markShown_ = false;
 };

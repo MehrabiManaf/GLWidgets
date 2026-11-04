@@ -46,12 +46,13 @@ struct StateColor {
     }
 };
 
-// The colors everything is made of, in layers as Fluent 2 (Windows 11) has them: the title bar the darkest, the window's
-// background over it, panels (layers, the islands of docked panels) over that, controls on them.
+// The colors everything is made of, in layers: the title bar the darkest, the window's background over it, panels (layers,
+// the islands of docked panels) over that, raised controls on them; fields sunk into them.
 struct Palette {
     Color window;           // the background of windows
     Color layer;            // a panel on it: a dock stack, a card
-    Color surface;          // what stands on that: buttons, fields
+    Color surface;          // what stands on that: buttons
+    Color base;             // what is sunk into it: fields, the box of a check box
     Color titleBar;
     Color text;
     Color mutedText;
@@ -59,6 +60,7 @@ struct Palette {
     Color accent;
     Color onAccent;         // text and marks on the accent
     Color border;           // a hairline: low contrast, so things are told apart by their layers more than by lines
+    Color outline;          // the edge of a control: darker than what it is on, so it stands out of it
     Color hover;            // laid over a surface the mouse is on
     Color pressed;
     Color selection;        // behind selected text
@@ -68,14 +70,24 @@ struct Palette {
     GLW_EXPORT static Palette light();
 };
 
+// How a control stands out of what it is on, lit from above. Raised (a button): its background lighter at its top, a light
+// line inside along its top that fades down its sides, a soft shadow under it; pressed, it sinks. Sunken (a field): a
+// shadow inside along its top, a light line along its bottom edge. paintRaised and paintSunken (Widgets/Bevel.hpp) draw it.
+struct Bevel {
+    float gradient = 0;             // the background mixed toward white by this at its top, toward black by half of it at its bottom
+    Color highlight;                // raised: the line inside, at the top; sunken: the line under its bottom edge
+    Color shadow;                   // raised: under it; sunken: inside, along its top
+};
+
 struct ButtonStyle {
     StateColor background;
-    StateColor border;
+    StateColor border;              // focused: the accent
     StateColor text;
+    Bevel bevel;
     float borderWidth = 1;
     float cornerRadius = 4;
     Insets padding{12, 5, 12, 5};
-    Color focusRing;
+    Color focusRing;                // a glow around it while it has the focus
 };
 
 struct LineEditStyle {
@@ -85,10 +97,12 @@ struct LineEditStyle {
     Color placeholder;
     Color selection;
     Color caret;
-    Color focusLine;                // along its bottom while it has the focus
+    Color focusLine;                // along its bottom while it has the focus (if focusLineWidth)
+    Color focusRing;                // a glow around it while it has the focus
+    Bevel bevel;                    // sunken
     float borderWidth = 1;
     float cornerRadius = 4;
-    float focusLineWidth = 2;
+    float focusLineWidth = 0;
     Insets padding{10, 5, 10, 5};
     float width = 220;              // what it asks for: fields are usually stretched
 };
@@ -97,11 +111,14 @@ struct CheckBoxStyle {
     StateColor background;          // of the box, unchecked
     StateColor border;
     StateColor checkedBackground;
+    Color checkedBorder;
     Color check;                    // the mark
+    Bevel bevel;                    // unchecked: sunken
+    Bevel checkedBevel;             // checked: raised
     float size = 16;
-    float cornerRadius = 4;
+    float cornerRadius = 3;
     float spacing = 8;              // between the box and the text
-    Color focusRing;
+    Color focusRing;                // a glow around the box while it has the focus
 };
 
 struct ScrollBarStyle {
@@ -111,12 +128,12 @@ struct ScrollBarStyle {
     float minimumThumb = 24;        // the thumb's length, however long the content
 };
 
-// The rows of item views (ListView): a pill under the mouse; the one selected marked by a soft background and a short bar at
-// its start, as Fluent's lists; the current one ringed while the view has the focus.
+// The rows of item views (ListView): a pill under the mouse, the one selected a pill of the accent's tint; the current one,
+// when it is not the one selected, ringed while the view has the focus.
 struct ItemViewStyle {
     StateColor row;                 // behind a row: under the mouse, pressed
     Color selected;                 // behind the one selected
-    Color indicator;                // the bar at its start
+    Color indicator;                // a table header's edge, under the mouse or dragged
     Color focusRing;
     Color expander;                 // a tree's arrow, by a node with children
     Color headerText;               // a table's column headers
@@ -134,14 +151,18 @@ struct SplitterStyle {
     float thickness = 6;            // what can be dragged
 };
 
-// Docked panels: each stack an island (a layer with rounded corners) on the window, gaps between them; the tab shown
-// marked by a short bar under its title; where a dragged tab would go.
+// Docked panels: each stack an island (a layer with rounded corners) on the window, gaps between them; the tab shown,
+// among others, raised and joined to its content as Fusion's (alone, on a pill); where a dragged tab would go.
 struct DockStyle {
     Color background;               // of a stack: its tabs and the content of the panel shown
     Color border;                   // around a stack
     Color separator;                // between a stack's tabs and its content
     StateColor tab;                 // behind a tab: a pill, under the mouse
-    Color activeLine;               // under the title of the tab shown
+    Color activeTab;                // ... behind the tab shown, alone in its stack
+    Color selectedTab;              // the tab shown among others: its top (it fades to the background at its bottom)
+    Color selectedTabBorder;
+    Color selectedTabHighlight;     // the light line inside along its top
+    Color activeLine;               // the guides and the outline of where a dragged tab would go
     Color text;
     Color mutedText;                // the titles of the tabs not shown
     Color dropZone;
@@ -176,6 +197,7 @@ struct CardStyle {
 // A header over content that opens and closes (CollapsiblePanel), as Fluent's expander: a card.
 struct CollapsiblePanelStyle {
     StateColor header;              // under the mouse, pressed
+    Bevel bevel;                    // of the header
     Color content;                  // behind the content, under the header
     Color border;
     Color title;
@@ -201,6 +223,8 @@ struct ToolBarStyle {
     Color separator;
     StateColor button;              // a button's background: under the mouse, pressed
     Color checked;                  // ... a checked one's
+    Color outline;                  // around a button under the mouse, pressed or checked
+    Bevel bevel;                    // ... raised (pressed, sunk)
     Color icon;                     // a monochrome icon's color
     Color disabledIcon;
     float buttonSize = 32;          // its buttons are square
@@ -214,6 +238,7 @@ struct MenuStyle {
     Color background;
     Color border;
     Color highlight;                // the item under the mouse, or chosen by the keys
+    Color highlightText;            // ... its text and marks
     Color text;
     Color shortcut;
     Color disabledText;

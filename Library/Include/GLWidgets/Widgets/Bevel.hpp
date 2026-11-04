@@ -1,0 +1,35 @@
+// SPDX-FileCopyrightText: 2026 Abdolmanaf Mehrabi Sisakht
+// SPDX-License-Identifier: MIT
+#pragma once
+// The look of the theme's controls, for widgets of one's own to look like them: a raised control (a button), a sunken one
+// (a field), the glow of the focus. Each paints in `rect`, of the widget's coordinates, what its Bevel says.
+//
+//   paintFocusGlow(p, r, s.cornerRadius, focused ? s.focusRing : Color{});    // first: what is drawn next covers its inside
+//   paintRaised(p, r, s.cornerRadius, s.background.resolve(state), s.border.resolve(state), s.bevel, state.pressed);
+#include <GLWidgets/Core/Color.hpp>
+#include <GLWidgets/Core/Geometry.hpp>
+#include <GLWidgets/Export.hpp>
+#include <GLWidgets/Widgets/Theme.hpp>
+
+namespace glw {
+
+namespace paint {
+class Painter;
+}
+
+// `c` mixed toward white by `amount` (toward black when it is negative), its alpha kept.
+GLW_EXPORT Color lit(Color c, float amount);
+
+// A control standing out of what it is on: its shadow (when its background is opaque), its background lighter at its top,
+// the light line inside along its top, `outline` around it. Pressed, sunk: darker at its top, a shadow inside instead.
+GLW_EXPORT void paintRaised(paint::Painter& painter, const Rect& rect, float radius, Color background, Color outline,
+                            const Bevel& bevel, bool pressed = false);
+// A control sunk into what it is on: the light line under its bottom edge, its background, a shadow inside along its top,
+// `outline` around it.
+GLW_EXPORT void paintSunken(paint::Painter& painter, const Rect& rect, float radius, Color background, Color outline,
+                            const Bevel& bevel);
+// The soft glow around a control that has the focus, `glow` its color (transparent: none). It is painted before the
+// control, which covers its inside.
+GLW_EXPORT void paintFocusGlow(paint::Painter& painter, const Rect& rect, float radius, Color glow);
+
+} // namespace glw

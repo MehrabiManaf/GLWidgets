@@ -324,11 +324,20 @@ from markup.
 How widgets look is in `Theme` (`Widgets/Theme.hpp`): a `Palette` (the colors everything is made of) and a style for each
 kind of widget, made from the palette by `Theme::fromPalette` (`Theme::dark()`, `Theme::light()`).
 
-The look is Fluent 2's (Windows 11), compact: neutral grays in layers (the title bar the darkest, the window's background,
-panels over it, controls on them) told apart more by their layers than by lines, hairlines of low contrast, one accent
-(with dark marks on it in the dark theme, as Windows 11 has), corners of 4 dips on controls and 8 on panels. Docked
-stacks are islands on the window with gaps between them; the tab shown is marked by a short rounded bar under its title;
-a field with the focus has a line of the accent along its bottom. Text is 13 dips, tabs 28 high.
+The look is GLWidgets' own, of the family of Qt's Fusion, compact and softer: neutral grays with a little blue in them,
+in layers (the title bar the darkest, the window's background, panels over it), controls that stand out of them lit from
+above. A raised control (a button, a combo box, a panel's header; a tool button under the mouse) is lighter at its top,
+has a light line inside along its top that fades down its sides and a soft shadow under it, and sinks when pressed; a
+sunken one (a field, an unchecked box) is darker than what is around it, with a shadow inside along its top and a light
+line under it (`Bevel`, painted by `paintRaised` and `paintSunken` of `Widgets/Bevel.hpp`, for widgets of one's own).
+The edges of controls are darker than what they are on; one accent: amber (a warm orange) with dark marks on it in the
+dark theme, azure with white ones in the light. What has the focus has an edge of the accent and a soft glow of it
+around (`paintFocusGlow`), both eased in. A check box's box fills with the accent as it is checked, its mark drawn
+stroke by stroke; the item chosen in a menu is in the accent. Corners are 4 dips on controls and 6 on panels. Docked
+stacks are islands on the window with gaps between them; the tab shown is, among others, raised over the bar and joined
+to its content as Fusion's (alone, on a pill), and a selected row is on a pill of the accent's tint: no bars or lines
+mark them. Text is 13 dips, tabs 28 high. The painter fills and strokes boxes in vertical gradients
+(`fillRoundedRect(rect, radius, top, bottom)`), with no more vertices than a flat box.
 
 - **A style is a typed struct** (`ButtonStyle`, `LineEditStyle`, `CardStyle`, `TitleBarStyle`...) of colors and measures.
   Colors that change with the widget's state are `StateColor`s: a normal color, and optional ones for hovered, pressed,
@@ -390,8 +399,7 @@ its whole height). Rows are all of one height (where a row is, is a product: no 
 widget measures, estimated until it shows, in a Fenwick tree of doubles (where a row starts and which row is at a place,
 in O(log n)); what shows stays in place as estimates are corrected, and a view scrolled to its end stays at it. With a
 million items (or a hundred million), laying out, painting, scrolling a step and jumping to the middle each take less
-than a millisecond (`glw_benchmarks`). A ListView has a current item, selected in Single mode (a soft background and a
-short bar at its start, as Fluent's lists), chosen by the mouse and the keys, activated by a double click or Enter; a
+than a millisecond (`glw_benchmarks`). A ListView has a current item, selected in Single mode (a pill of the accent's tint), chosen by the mouse and the keys, activated by a double click or Enter; a
 `StringListModel` shows its texts by itself.
 
 A `TreeView` is a ListView of the nodes that show: the top level's and, in order, the children of those expanded (an
@@ -505,8 +513,8 @@ next timer is due (`nextDeadline`); only while an animation runs does it draw, a
 it), and then only the windows whose widgets an animation changed: each step calls the animation's `onStep`, where a
 widget invalidates its paint. When the last animation ends, the frames stop. A widget does not say when its state
 changes, only what it shows now: `ColorTransition::to(color)` in `paint` eases from what it showed to that color (at
-once the first time). Buttons, check boxes (their box filling, their mark fading in) and combo boxes ease to their
-states' colors for the theme's `motion.fast` (83 ms, Fluent's); a field's caret blinks half a second each way and rests,
+once the first time). Buttons, check boxes, fields, tool buttons and combo boxes ease to their states' colors for the
+theme's `motion.fast` (83 ms), the glow of the focus for `motion.normal` (167 ms), as a check mark is drawn; a field's caret blinks half a second each way and rests,
 shown, after twenty, so a field no one types in draws nothing. Animations can be turned off (`setAnimationsEnabled`:
 reduced motion; the tests); the tests run on a clock of their own. An engine driving its own roots calls `tick()` before
 it paints and waits as `nextDeadline` says. Measured with `GLW_LOG_FRAMES` (the frames drawn, each second that had some):

@@ -57,29 +57,42 @@ void Painter::fillRect(const Rect& rect, Color color) {
 
 void Painter::fillRoundedRect(const Rect& rect, float radius, Color color) {
     const Transform& t = transform();
-    box(t.map(rect), radius * t.scale, 0, 0, color);
+    box(t.map(rect), radius * t.scale, 0, 0, color, color);
+}
+
+void Painter::fillRoundedRect(const Rect& rect, float radius, Color top, Color bottom) {
+    const Transform& t = transform();
+    box(t.map(rect), radius * t.scale, 0, 0, top, bottom);
+}
+
+void Painter::strokeRoundedRect(const Rect& rect, float radius, float width, Color top, Color bottom) {
+    const Transform& t = transform();
+    box(t.map(rect), radius * t.scale, std::max(width * t.scale, 1e-3f), 0, top, bottom);
 }
 
 void Painter::strokeRoundedRect(const Rect& rect, float radius, float width, Color color) {
     const Transform& t = transform();
-    box(t.map(rect), radius * t.scale, std::max(width * t.scale, 1e-3f), 0, color);
+    box(t.map(rect), radius * t.scale, std::max(width * t.scale, 1e-3f), 0, color, color);
 }
 
 void Painter::drawShadow(const Rect& rect, float radius, float blur, Color color) {
     const Transform& t = transform();
-    box(t.map(rect), radius * t.scale, 0, blur * t.scale, color);
+    box(t.map(rect), radius * t.scale, 0, blur * t.scale, color, color);
 }
 
 void Painter::fillCircle(Point center, float radius, Color color) {
-    fillRoundedRect({center.x - radius, center.y - radius, 2 * radius, 2 * radius}, radius, color);
+    const Transform& t = transform();
+    box(t.map(Rect{center.x - radius, center.y - radius, 2 * radius, 2 * radius}), radius * t.scale, 0, 0, color, color);
 }
 
 void Painter::strokeCircle(Point center, float radius, float width, Color color) {
-    strokeRoundedRect({center.x - radius, center.y - radius, 2 * radius, 2 * radius}, radius, width, color);
+    const Transform& t = transform();
+    box(t.map(Rect{center.x - radius, center.y - radius, 2 * radius, 2 * radius}), radius * t.scale,
+        std::max(width * t.scale, 1e-3f), 0, color, color);
 }
 
-void Painter::box(const Rect& rect, float radius, float border, float blur, Color color) {
-    if (rect.empty() || color.a <= 0)
+void Painter::box(const Rect& rect, float radius, float border, float blur, Color top, Color bottom) {
+    if (rect.empty() || (top.a <= 0 && bottom.a <= 0))
         return;
     // room around the box for its blur and its anti-aliased edge
     const Rect quad = rect.inflated(blur + 1.0f / pixelsPerDip_);
@@ -88,7 +101,22 @@ void Painter::box(const Rect& rect, float radius, float border, float blur, Colo
     const Point center = rect.center();
     const Point half{rect.width / 2, rect.height / 2};
     radius = std::clamp(radius, 0.0f, std::min(half.x, half.y));
-    const std::uint32_t packed = packColor(color);
+    // the gradient carried on to the quad's edges, past the box's by its margin (vertex colors are interpolated)
+    const bool flat = top == bottom;
+    const auto at = [&](float y) {
+        if (flat)
+            return packColor(top);
+        const float f = (y - rect.top()) / rect.height;
+        // premultiplied, as the shader interpolates: a color fading to transparent keeps its hue
+        const Color a{top.r * top.a, top.g * top.a, top.b * top.a, top.a};
+        const Color b{bottom.r * bottom.a, bottom.g * bottom.a, bottom.b * bottom.a, bottom.a};
+        Color c = mix(a, b, std::clamp(f, -1.0f, 2.0f));
+        c.a = std::clamp(c.a, 0.0f, 1.0f);
+        if (c.a > 0)
+            c = {c.r / c.a, c.g / c.a, c.b / c.a, c.a};
+        return packColor(c);
+    };
+    const std::uint32_t topColor = at(quad.top()), bottomColor = at(quad.bottom());
 
     DrawCommand& cmd = command(whiteTexture, true);
     const auto base = static_cast<std::uint32_t>(list_.vertices.size());
@@ -102,7 +130,7 @@ void Painter::box(const Rect& rect, float radius, float border, float blur, Colo
         v.border = border;
         v.kind = boxKind;
         v.blur = blur;
-        v.color = packed;
+        v.color = corner.y < center.y ? topColor : bottomColor;
         list_.vertices.push_back(v);
     }
     list_.indices.insert(list_.indices.end(), {base, base + 1, base + 2, base, base + 2, base + 3});

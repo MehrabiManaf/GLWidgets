@@ -3,6 +3,7 @@
 #include <GLWidgets/Widgets/CollapsiblePanel.hpp>
 
 #include <GLWidgets/Paint/Painter.hpp>
+#include <GLWidgets/Widgets/Bevel.hpp>
 #include <GLWidgets/Widgets/Label.hpp>
 #include <GLWidgets/Widgets/Layout.hpp>
 #include <GLWidgets/Widgets/ToolBar.hpp>
@@ -146,11 +147,15 @@ void CollapsiblePanel::paint(PaintContext& context) {
     p.fillRoundedRect(all, s.cornerRadius, s.content);
     const VisualState state{.hovered = headerHovered_, .pressed = pressed_ && headerHovered_};
     headerColor_.to(scheduler(), s.header.resolve(state), context.ui.theme.motion.fast);
-    p.fillRoundedRect(head, s.cornerRadius, headerColor_.value());
-    if (all.height > head.height + 0.5f) {
-        // open, even a little: the header's lower corners square, a line under it
-        p.fillRect({0, head.bottom() - s.cornerRadius, head.width, s.cornerRadius}, headerColor_.value());
+    const bool open = all.height > head.height + 0.5f;
+    if (open) {
+        // open, even a little: the header's lower corners square (cut out of a taller box), a line under it
+        p.pushClip(head);
+        paintRaised(p, {0, 0, head.width, head.height + s.cornerRadius}, s.cornerRadius, headerColor_.value(), {0, 0, 0, 0}, s.bevel);
+        p.popClip();
         p.fillRect({0, head.bottom() - 1, head.width, 1}, s.border);
+    } else {
+        paintRaised(p, head, s.cornerRadius, headerColor_.value(), {0, 0, 0, 0}, s.bevel);
     }
     p.strokeRoundedRect(all, s.cornerRadius, 1, s.border);
     // the arrow: toward the end side closed, down open, turning between

@@ -59,6 +59,7 @@ private:
     // what it shows eases to its state's colors
     ColorTransition background_{[this] { invalidatePaint(); }};
     ColorTransition border_{[this] { invalidatePaint(); }};
+    ColorTransition glow_{[this] { invalidatePaint(); }};
 };
 
 } // namespace glw

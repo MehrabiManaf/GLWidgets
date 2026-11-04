@@ -275,10 +275,9 @@ void ListView::layRows() {
 // ---- painting ----
 
 void ListView::paint(PaintContext& context) {
-    // behind the rows: under the mouse, pressed, selected (a soft background, a short bar at its start)
+    // behind the rows: under the mouse, pressed, selected (a pill of the accent's tint)
     const ItemViewStyle& s = style();
     paint::Painter& p = context.painter;
-    const bool rtl = rightToLeft();
     p.pushClip(viewport_);
     for (const Row& row : rows_) {
         const std::optional<Rect> rect = itemRect(row.index);
@@ -286,14 +285,13 @@ void ListView::paint(PaintContext& context) {
             continue;
         const Rect r{rect->x + s.inset, rect->y + 1, rect->width - 2 * s.inset, rect->height - 2};
         const VisualState state{.hovered = hovered_ == row.index, .pressed = pressed_ == row.index && hovered_ == row.index};
-        if (isSelected(row.index)) {
+        const bool selected = isSelected(row.index);
+        if (selected)
             p.fillRoundedRect(r, s.cornerRadius, s.selected);
-            const float bar = std::min(16.0f, r.height - 8);
-            p.fillRoundedRect({rtl ? r.right() - 4 : r.x + 1, r.center().y - bar / 2, 3, bar}, 1.5f, s.indicator);
-        } else if (state.hovered) {
+        else if (state.hovered)
             p.fillRoundedRect(r, s.cornerRadius, s.row.resolve(state));
-        }
-        if (hasFocus() && current_ == row.index)
+        // the current row ringed, unless the selection already shows it
+        if (hasFocus() && current_ == row.index && !selected)
             p.strokeRoundedRect(r, s.cornerRadius, 1.5f, s.focusRing);
     }
     p.popClip();

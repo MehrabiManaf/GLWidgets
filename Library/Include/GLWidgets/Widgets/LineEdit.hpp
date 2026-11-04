@@ -104,6 +104,8 @@ private:
     // The caret shown again and blinking from now (it moved, the field got the focus); it rests, shown, after a while.
     void restartBlink();
     Timer blink_;
+    ColorTransition border_{[this] { invalidatePaint(); }};
+    ColorTransition glow_{[this] { invalidatePaint(); }};
     bool caretShown_ = true;
     int blinks_ = 0;
 };

@@ -3,6 +3,7 @@
 #include <GLWidgets/Widgets/LineEdit.hpp>
 
 #include <GLWidgets/Paint/Painter.hpp>
+#include <GLWidgets/Widgets/Bevel.hpp>
 #include <GLWidgets/Text/Font.hpp>
 #include <GLWidgets/Widgets/UiRoot.hpp>
 
@@ -449,9 +450,11 @@ void LineEdit::paint(PaintContext& context) {
     paint::Painter& p = context.painter;
     const VisualState state{.hovered = hovered(), .focused = hasFocus(), .disabled = !enabledInTree()};
     const Rect r{0, 0, size().width, size().height};
-    p.fillRoundedRect(r, s.cornerRadius, s.background.resolve(state));
-    if (s.borderWidth > 0)
-        p.strokeRoundedRect(r, s.cornerRadius, s.borderWidth, s.border.resolve(state));
+    const Duration fast = context.ui.theme.motion.fast;
+    border_.to(scheduler(), s.borderWidth > 0 ? s.border.resolve(state) : Color{0, 0, 0, 0}, fast);
+    glow_.to(scheduler(), state.focused ? s.focusRing : withAlpha(s.focusRing, 0), context.ui.theme.motion.normal);
+    paintFocusGlow(p, r, s.cornerRadius, glow_.value());
+    paintSunken(p, r, s.cornerRadius, s.background.resolve(state), border_.value(), s.bevel);
     if (state.focused && s.focusLineWidth > 0) {
         // along the bottom, within the rounded corners
         p.pushClip(r);

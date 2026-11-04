@@ -32,6 +32,7 @@ namespace {
 constexpr float dragThreshold = 6;      // dips the mouse moves with a tab before it is dragged
 constexpr Size centerMinimum{160, 100}; // what an area's center keeps at least
 constexpr float draggedOpacity = 0.6f;  // of a window dragged by its only tab
+constexpr float selectedTabTop = 3;     // dips between the bar's top and the top of the tab shown, among others
 constexpr float tearReach = 24;         // dips above and below a stack's tab bar where a tab dragged from it stays in it
 constexpr float wheelStep = 40;         // dips the tabs scroll by a step of the wheel
 constexpr float thumbZone = 7;          // dips along the bottom of a tab bar where a press is on its scroll bar
@@ -67,12 +68,19 @@ protected:
         paint::Painter& p = context.painter;
         const Rect r{0, 0, size().width, size().height};
         const VisualState state{.hovered = hovered(), .pressed = pressed_ && hovered()};
-        if (!active_)
-            p.fillRoundedRect(r.inflated(-3), 4, s.tab.resolve(state));
-        if (active_) {
-            // a short rounded bar under the title, as Fluent's tab lists
-            const Rect title = label_->bounds();
-            p.fillRoundedRect({title.x, r.height - 4, title.width, 3}, 1.5f, s.activeLine);
+        if (active_ && owner_.count() > 1) {
+            // among others, as Fusion's: raised over the bar, lit at its top, its edge around it but under it, where it
+            // joins its content (its lower corners and edge below the bar, cut)
+            const Rect shape{0, selectedTabTop, r.width, r.height - selectedTabTop + s.cornerRadius};
+            const float radius = std::min(s.cornerRadius, 4.0f);
+            p.pushClip(r);
+            p.fillRoundedRect(shape, radius, s.selectedTab, s.background);
+            p.strokeRoundedRect(shape.inflated(-1), radius - 1, 1, s.selectedTabHighlight, withAlpha(s.selectedTabHighlight, 0));
+            p.strokeRoundedRect(shape, radius, 1, s.selectedTabBorder);
+            p.popClip();
+            p.fillRect({1, r.height - 1, r.width - 2, 1}, s.background);     // the hairline under the bar open under it
+        } else {
+            p.fillRoundedRect(r.inflated(-3), 4, active_ ? s.activeTab : s.tab.resolve(state));
         }
         label_->setColor(active_ || hovered() ? s.text : s.mutedText);
         if (closable_ && (hovered() || active_)) {

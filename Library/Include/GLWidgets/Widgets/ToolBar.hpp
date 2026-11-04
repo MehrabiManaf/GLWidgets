@@ -47,6 +47,7 @@ private:
     Label* label_ = nullptr;
     bool pressed_ = false;
     ColorTransition background_{[this] { invalidatePaint(); }};
+    ColorTransition outline_{[this] { invalidatePaint(); }};
 };
 
 class GLW_EXPORT ToolBar : public Widget {

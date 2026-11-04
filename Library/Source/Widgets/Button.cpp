@@ -3,6 +3,7 @@
 #include <GLWidgets/Widgets/Button.hpp>
 
 #include <GLWidgets/Paint/Painter.hpp>
+#include <GLWidgets/Widgets/Bevel.hpp>
 #include <GLWidgets/Widgets/UiRoot.hpp>
 
 #include <utility>
@@ -103,19 +104,14 @@ void Button::paint(PaintContext& context) {
     const Rect r{0, 0, size().width, size().height};
     const Duration fast = context.ui.theme.motion.fast;
     background_.to(scheduler(), s.background.resolve(v), fast);
-    border_.to(scheduler(), s.border.resolve(v), fast);
-    context.painter.fillRoundedRect(r, s.cornerRadius, background_.value());
-    if (s.borderWidth > 0)
-        context.painter.strokeRoundedRect(r, s.cornerRadius, s.borderWidth, border_.value());
+    border_.to(scheduler(), s.borderWidth > 0 ? s.border.resolve(v) : Color{0, 0, 0, 0}, fast);
+    glow_.to(scheduler(), v.focused ? s.focusRing : withAlpha(s.focusRing, 0), context.ui.theme.motion.normal);
+    paintFocusGlow(context.painter, r, s.cornerRadius, glow_.value());
+    paintRaised(context.painter, r, s.cornerRadius, background_.value(), border_.value(), s.bevel, v.pressed);
     // the label paints after this, in the color of the state
     label_->setColor(s.text.resolve(v));
 }
 
-void Button::paintOver(PaintContext& context) {
-    if (!hasFocus())
-        return;
-    const ButtonStyle& s = style();
-    context.painter.strokeRoundedRect(Rect{0, 0, size().width, size().height}.inflated(2), s.cornerRadius + 2, 1.5f, s.focusRing);
-}
+void Button::paintOver(PaintContext&) {}
 
 } // namespace glw

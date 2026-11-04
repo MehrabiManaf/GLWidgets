@@ -3,6 +3,7 @@
 #include <GLWidgets/Widgets/Menu.hpp>
 
 #include <GLWidgets/Paint/Painter.hpp>
+#include <GLWidgets/Widgets/Bevel.hpp>
 #include <GLWidgets/Widgets/Label.hpp>
 #include <GLWidgets/Widgets/Layout.hpp>
 #include <GLWidgets/Widgets/UiRoot.hpp>
@@ -108,15 +109,22 @@ protected:
                 p.fillRect({textInset, row.y + separatorHeight / 2, width - 2 * textInset, 1}, s.separator);
                 continue;
             }
-            if (current_ == i && item.enabled)
-                p.fillRoundedRect({s.padding, row.y, width - 2 * s.padding, row.height}, s.cornerRadius, s.highlight);
-            const Color mark = item.enabled ? s.mark : s.disabledText;
+            const bool chosen = current_ == i && item.enabled;
+            if (chosen)
+                p.fillRoundedRect({s.padding, row.y, width - 2 * s.padding, row.height}, s.cornerRadius, lit(s.highlight, 0.06f),
+                                  lit(s.highlight, -0.04f));
+            // the texts paint after this, in the colors of the state
+            if (row.text)
+                row.text->setColor(!item.enabled ? s.disabledText : chosen ? s.highlightText : s.text);
+            if (row.shortcut)
+                row.shortcut->setColor(!item.enabled ? s.disabledText : chosen ? withAlpha(s.highlightText, 0.8f) : s.shortcut);
+            const Color mark = !item.enabled ? s.disabledText : chosen ? s.highlightText : s.mark;
             const float middle = row.y + row.height / 2;
             if (!item.icon.empty()) {
                 // its icon where the mark goes; checked, on a soft square
                 const float x = rtl ? width - textInset - markRoom / 2 : textInset + markRoom / 2 - 2;
                 if (item.checked.value_or(false))
-                    p.fillRoundedRect({x - 10, middle - 10, 20, 20}, s.cornerRadius, s.highlight);
+                    p.fillRoundedRect({x - 10, middle - 10, 20, 20}, s.cornerRadius, chosen ? withAlpha(s.highlightText, 0.22f) : withAlpha(s.highlight, 0.30f));
                 item.icon.draw(context, {x - 8, middle - 8, 16, 16}, mark);
             } else if (item.checked.value_or(false)) {
                 const float x = rtl ? width - textInset - markRoom / 2 + 2 : textInset + markRoom / 2 - 2;

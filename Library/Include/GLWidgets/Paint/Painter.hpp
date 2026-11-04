@@ -35,6 +35,9 @@ public:
     void fillRoundedRect(const Rect& rect, float radius, Color color);
     // A border `width` wide inside `rect`.
     void strokeRoundedRect(const Rect& rect, float radius, float width, Color color);
+    // ... in a vertical gradient: `top` along the rectangle's top, `bottom` along its bottom, eased linearly between.
+    void fillRoundedRect(const Rect& rect, float radius, Color top, Color bottom);
+    void strokeRoundedRect(const Rect& rect, float radius, float width, Color top, Color bottom);
     // A blurred rounded rectangle: the shadow of something of that shape (offset the rectangle to cast it).
     void drawShadow(const Rect& rect, float radius, float blur, Color color);
     void fillCircle(Point center, float radius, Color color);
@@ -77,7 +80,7 @@ private:
     // does not read the texture (a box), so any command with the clip in effect will do.
     DrawCommand& command(TextureId texture, bool anyTexture);
     // A box in the target's dips.
-    void box(const Rect& rect, float radius, float border, float blur, Color color);
+    void box(const Rect& rect, float radius, float border, float blur, Color top, Color bottom);
     // A textured quad in the target's dips.
     void quad(const Rect& rect, TextureId texture, Color color, const Rect& uv, VertexKind kind);
     bool culled(const Rect& bounds) const;
