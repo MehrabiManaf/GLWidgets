@@ -99,6 +99,7 @@ TitleBar::TitleBar() {
     title->setMargin({12, 0, 12, 0});
     title_ = title.get();
     center_ = &addChild(std::move(title));
+    start_ = &addChild(std::make_unique<Widget>());
 
     auto buttons = std::make_unique<Widget>();
     buttons->setLayout(std::make_unique<StackLayout>(Orientation::Horizontal));
@@ -117,6 +118,12 @@ void TitleBar::setCenter(std::unique_ptr<Widget> center) {
     removeChild(*center_);
     title_ = nullptr;
     center_ = center ? &addChild(std::move(center), 0) : &addChild(std::make_unique<Widget>(), 0);
+}
+
+void TitleBar::setStart(std::unique_ptr<Widget> start) {
+    removeChild(*start_);
+    start_ = &addChild(start ? std::move(start) : std::make_unique<Widget>());
+    invalidateLayout();
 }
 
 void TitleBar::onRootChanged() {
@@ -148,10 +155,11 @@ void TitleBar::onStyleChanged() {
 Size TitleBar::measureContent(Size available) {
     const UiContext* ui = context();
     const Size buttons = buttons_->measure(available);
+    const Size start = start_->measure({std::max(0.0f, available.width - buttons.width), available.height});
     const Insets m = center_->margin();
-    const Size center = center_->measure({std::max(0.0f, available.width - buttons.width - m.horizontal()), available.height});
-    const float height = std::max({ui ? ui->theme.titleBar.height : 40.0f, buttons.height, center.height + m.vertical()});
-    return {buttons.width + center.width + m.horizontal(), height};
+    const Size center = center_->measure({std::max(0.0f, available.width - buttons.width - start.width - m.horizontal()), available.height});
+    const float height = std::max({ui ? ui->theme.titleBar.height : 40.0f, buttons.height, start.height, center.height + m.vertical()});
+    return {buttons.width + start.width + center.width + m.horizontal(), height};
 }
 
 void TitleBar::arrangeContent(const Rect& content) {
@@ -163,7 +171,13 @@ void TitleBar::arrangeContent(const Rect& content) {
     const float width = std::min(buttons_->desiredSize().width, content.width);
     const Rect buttons{left ? content.x : content.right() - width, content.y, width, content.height};
     arrangeInCell(*buttons_, buttons, rtl);
-    const Rect rest{left ? content.x + width : content.x, content.y, content.width - width, content.height};
+    Rect rest{left ? content.x + width : content.x, content.y, content.width - width, content.height};
+    // its start: at the start side of what the buttons leave
+    const float start = std::min(start_->desiredSize().width, rest.width);
+    start_->arrange({rtl ? rest.right() - start : rest.x, rest.y, start, rest.height});
+    rest.width -= start;
+    if (!rtl)
+        rest.x += start;
     arrangeInCell(*center_, rest, rtl);
 }
 
@@ -187,6 +201,39 @@ void WindowFrame::setContent(std::unique_ptr<Widget> content) {
     content->setStretch(1);     // all that the title bar leaves
     content_ = &addChild(std::move(content));
     onStyleChanged();
+}
+
+MenuBar& WindowFrame::setMenuBar(std::unique_ptr<MenuBar> menuBar, MenuBarPlacement placement) {
+    // out of where it was
+    if (menuBar_) {
+        if (menuBar_->parent() == titleBar_)
+            titleBar_->setStart(nullptr);
+        else
+            removeChild(*menuBar_);
+        menuBar_ = nullptr;
+    }
+    if (!menuBar)
+        menuBar = std::make_unique<MenuBar>();
+    MenuBar& bar = *menuBar;
+    if (placement == MenuBarPlacement::TitleBar) {
+        titleBar_->setStart(std::move(menuBar));
+    } else {
+        bar.setAlignment(Alignment::Stretch, Alignment::Start);
+        addChild(std::move(menuBar), 1);            // under the title bar
+    }
+    menuBar_ = &bar;
+    return bar;
+}
+
+ToolBar& WindowFrame::setToolBar(std::unique_ptr<ToolBar> toolBar) {
+    if (toolBar_)
+        removeChild(*toolBar_);
+    if (!toolBar)
+        toolBar = std::make_unique<ToolBar>();
+    // under the title bar and the menu bar in its row
+    const std::size_t at = menuBar_ && menuBar_->parent() == this ? 2 : 1;
+    toolBar_ = &static_cast<ToolBar&>(addChild(std::move(toolBar), at));
+    return *toolBar_;
 }
 
 void WindowFrame::onRootChanged() {

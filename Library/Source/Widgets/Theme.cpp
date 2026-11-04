@@ -115,6 +115,17 @@ Theme Theme::fromPalette(const Palette& p) {
     t.majorTab.mutedText = p.mutedText;
     t.majorTab.insertion = p.accent;
 
+    t.menuBar.background = p.titleBar;
+    t.menuBar.text = p.text;
+    t.menuBar.title = {.normal = {0, 0, 0, 0}, .hovered = p.hover, .pressed = p.pressed};
+    t.menuBar.cornerRadius = t.cornerRadius;
+    t.toolBar.background = p.window;
+    t.toolBar.separator = Color{p.text.r, p.text.g, p.text.b, 0.12f};
+    t.toolBar.button = {.normal = {0, 0, 0, 0}, .hovered = p.hover, .pressed = p.pressed};
+    t.toolBar.checked = Color{p.accent.r, p.accent.g, p.accent.b, 0.22f};
+    t.toolBar.icon = p.text;
+    t.toolBar.disabledIcon = p.disabledText;
+    t.toolBar.cornerRadius = t.cornerRadius;
     t.menu.background = p.layer;
     t.menu.border = Color{p.text.r, p.text.g, p.text.b, 0.14f};
     t.menu.highlight = p.hover;

@@ -52,7 +52,8 @@ Then, in `build/<preset>/bin`:
   The wheel zooms, the middle or right button pans. `--nodes N` adds N more (thousands: only what shows is painted),
   `--rtl` mirrors it.
 - `code_editor` edits C++ (highlighted, line numbers, the system's monospace font) over a log it appends to; Persian in
-  strings and comments is shaped in lines that stay left to right. `code_editor FILE` edits a file, `--lines N` adds N
+  strings and comments is shaped in lines that stay left to right. Its menu bar (in the title bar; `--menu-below` puts it
+  under it) and toolbar share their actions, with SVG icons and shortcuts. `code_editor FILE` edits a file, `--lines N` adds N
   lines (a million: only what shows is laid out).
 - `hello_window` opens two windows drawn by one GPU device.
 - `GLW_LOG_FRAMES=1` makes any of them say how many frames it draws, each second that has some: idle, none.

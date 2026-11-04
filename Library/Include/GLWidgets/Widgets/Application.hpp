@@ -16,6 +16,8 @@
 #include <GLWidgets/Paint/Renderer.hpp>
 #include <GLWidgets/Platform/Platform.hpp>
 #include <GLWidgets/Rhi/Device.hpp>
+#include <GLWidgets/Widgets/MenuBar.hpp>
+#include <GLWidgets/Widgets/ToolBar.hpp>
 #include <GLWidgets/Widgets/UiRoot.hpp>
 #include <GLWidgets/Widgets/Widget.hpp>
 
@@ -51,6 +53,9 @@ public:
     platform::WindowId id() const;
     UiRoot& ui() { return root_; }
     WindowFrame* frame() const { return frame_; }       // with custom chrome
+    // Its menu bar: in its title bar (custom chrome) or under it; its toolbar, under them.
+    MenuBar& setMenuBar(std::unique_ptr<MenuBar> menuBar, MenuBarPlacement placement = MenuBarPlacement::TitleBar);
+    ToolBar& setToolBar(std::unique_ptr<ToolBar> toolBar);
     void setTitle(LocalizedText title);
     // Closes it once the event being handled is done: a button may close the window it is in.
     void close() { closing_ = true; }
@@ -77,6 +82,8 @@ private:
     Window(Application& app, const WindowOptions& options, std::unique_ptr<Widget> content, Window* owner = nullptr,
            bool overlay = false, bool focus = true);
     void languageChanged();
+    // With the system's chrome: what holds the bars over its content (made when there is one).
+    Widget& bars();
 
     Application& app_;
     LocalizedText title_;
@@ -84,6 +91,7 @@ private:
     std::unique_ptr<rhi::Surface> surface_;             // after the window: destroyed before it
     UiRoot root_;
     WindowFrame* frame_ = nullptr;
+    Widget* bars_ = nullptr;
     paint::DrawList list_;
     paint::RenderBuffers buffers_;
     Window* owner_ = nullptr;                           // a tool window's, a popup's

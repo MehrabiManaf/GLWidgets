@@ -79,6 +79,10 @@ public:
     // The caret at `caret`, the selection from `anchor` (the caret's place: none), scrolled to it.
     void select(TextPosition anchor, TextPosition caret);
     void selectAll();
+    // The selection to the clipboard (cut: and out of the text, unless read only); the clipboard's text over it.
+    void cut();
+    void copy();
+    void paste();
 
     // ---- undo ----
 

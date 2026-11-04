@@ -286,6 +286,24 @@ void TextEdit::selectAll() {
     invalidatePaint();
 }
 
+void TextEdit::copy() {
+    UiHost* host = root() ? root()->host() : nullptr;
+    if (host && hasSelection())
+        host->setClipboardText(text(selection()));
+}
+
+void TextEdit::cut() {
+    copy();
+    if (!readOnly_ && hasSelection())
+        edit(selection(), "", false);
+}
+
+void TextEdit::paste() {
+    UiHost* host = root() ? root()->host() : nullptr;
+    if (host && !readOnly_)
+        typed(host->clipboardText());
+}
+
 void TextEdit::moveTo(TextPosition p, bool extend, bool keepColumn) {
     caret_ = clamped(p);
     if (!extend)
@@ -786,7 +804,6 @@ void TextEdit::onKey(KeyEvent& event) {
     const bool shift = platform::hasAny(event.modifiers, platform::KeyModifiers::Shift);
     const bool byWord = platform::hasAny(event.modifiers, platform::wordModifier);
     const bool shortcut = platform::hasAny(event.modifiers, platform::shortcutModifier);
-    UiHost* host = root() ? root()->host() : nullptr;
     const TextRange sel = selection();
     switch (event.key) {
     case Key::Left:
@@ -855,17 +872,15 @@ void TextEdit::onKey(KeyEvent& event) {
     case Key::X:
         if (!shortcut)
             return;
-        if (hasSelection() && host) {
-            host->setClipboardText(text(sel));
-            if (event.key == Key::X && !readOnly_)
-                edit(sel, "", false);
-        }
+        if (event.key == Key::X)
+            cut();
+        else
+            copy();
         break;
     case Key::V:
         if (!shortcut || readOnly_)
             return;
-        if (host)
-            typed(host->clipboardText());
+        paste();
         break;
     case Key::Z:
         if (!shortcut || readOnly_)

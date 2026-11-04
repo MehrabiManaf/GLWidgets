@@ -27,6 +27,7 @@ add_library(GLWidgets ${GLW_LIB_TYPE}
     Source/Text/Font.cpp
     Source/Text/GlyphAtlas.cpp
     Source/Text/TextLayout.cpp
+    Source/Widgets/Action.cpp
     Source/Widgets/Animation.cpp
     Source/Widgets/Application.cpp
     Source/Widgets/Button.cpp
@@ -36,6 +37,7 @@ add_library(GLWidgets ${GLW_LIB_TYPE}
     Source/Widgets/Dialog.cpp
     Source/Widgets/Docking.cpp
     Source/Widgets/Highlighter.cpp
+    Source/Widgets/Icon.cpp
     Source/Widgets/ItemModel.cpp
     Source/Widgets/Json.cpp
     Source/Widgets/Label.cpp
@@ -43,6 +45,7 @@ add_library(GLWidgets ${GLW_LIB_TYPE}
     Source/Widgets/LineEdit.cpp
     Source/Widgets/ListView.cpp
     Source/Widgets/Menu.cpp
+    Source/Widgets/MenuBar.cpp
     Source/Widgets/Localization.cpp
     Source/Widgets/MajorTabs.cpp
     Source/Widgets/Panel.cpp
@@ -51,6 +54,7 @@ add_library(GLWidgets ${GLW_LIB_TYPE}
     Source/Widgets/SearchPopup.cpp
     Source/Widgets/Splitter.cpp
     Source/Widgets/Theme.cpp
+    Source/Widgets/ToolBar.cpp
     Source/Widgets/TableView.cpp
     Source/Widgets/TextEdit.cpp
     Source/Widgets/TreeView.cpp
@@ -80,4 +84,4 @@ target_include_directories(GLWidgets
     PRIVATE
         Source)
 target_compile_features(GLWidgets PUBLIC cxx_std_20)
-target_link_libraries(GLWidgets PRIVATE ${GLW_SDL3_TARGET} glw_freetype glw_harfbuzz glw_sheenbidi glw_unibreak)
+target_link_libraries(GLWidgets PRIVATE ${GLW_SDL3_TARGET} glw_freetype glw_harfbuzz glw_sheenbidi glw_unibreak glw_thorvg)

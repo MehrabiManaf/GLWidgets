@@ -66,7 +66,7 @@ void ComboBox::open() {
     open_ = showMenu(*this, {0, 0, size().width, size().height}, std::move(menu), [this] {
         open_ = false;
         invalidatePaint();
-    });
+    }) != nullptr;
     invalidatePaint();
 }
 

@@ -29,8 +29,10 @@ const MenuStyle& menuStyle(const Widget& widget) {
 // The content of a menu's popup: its items, in rows.
 class MenuView final : public Widget {
 public:
-    MenuView(std::vector<MenuItem> items, MenuView* parent, float minimumWidth, std::function<void()> onClosed)
-        : items_(std::move(items)), parent_(parent), minimumWidth_(minimumWidth), onClosed_(std::move(onClosed)) {
+    MenuView(std::vector<MenuItem> items, MenuView* parent, float minimumWidth, std::function<void()> onClosed,
+             std::function<void(int)> onAcross = {})
+        : items_(std::move(items)), parent_(parent), minimumWidth_(minimumWidth), onClosed_(std::move(onClosed)),
+          onAcross_(std::move(onAcross)) {
         setFocusable(true);
         for (const MenuItem& item : items_) {
             Row row;
@@ -44,7 +46,7 @@ public:
                     row.shortcut->setAlignment(Alignment::Start, Alignment::Center);
                 }
             }
-            marks_ = marks_ || item.checked.has_value();
+            marks_ = marks_ || item.checked.has_value() || !item.icon.empty();
             arrows_ = arrows_ || !item.items.empty();
             rows_.push_back(row);
         }
@@ -110,7 +112,13 @@ protected:
                 p.fillRoundedRect({s.padding, row.y, width - 2 * s.padding, row.height}, s.cornerRadius, s.highlight);
             const Color mark = item.enabled ? s.mark : s.disabledText;
             const float middle = row.y + row.height / 2;
-            if (item.checked.value_or(false)) {
+            if (!item.icon.empty()) {
+                // its icon where the mark goes; checked, on a soft square
+                const float x = rtl ? width - textInset - markRoom / 2 : textInset + markRoom / 2 - 2;
+                if (item.checked.value_or(false))
+                    p.fillRoundedRect({x - 10, middle - 10, 20, 20}, s.cornerRadius, s.highlight);
+                item.icon.draw(context, {x - 8, middle - 8, 16, 16}, mark);
+            } else if (item.checked.value_or(false)) {
                 const float x = rtl ? width - textInset - markRoom / 2 + 2 : textInset + markRoom / 2 - 2;
                 const Point points[] = {{x - 5, middle}, {x - 1.5f, middle + 3.5f}, {x + 5, middle - 4}};
                 p.drawPolyline(points, 1.5f, mark);
@@ -180,6 +188,8 @@ protected:
                 openSubmenu(*current_, true);
             else if (out && parent_)
                 close();
+            else if ((in || out) && !parent_ && onAcross_)
+                onAcross_(in ? 1 : -1);
             else
                 return;
         }
@@ -314,6 +324,7 @@ private:
     MenuView* parent_;
     float minimumWidth_;
     std::function<void()> onClosed_;
+    std::function<void(int)> onAcross_;
     bool marks_ = false;
     bool arrows_ = false;
     std::optional<std::size_t> current_;
@@ -322,27 +333,58 @@ private:
     bool pressed_ = false;
 };
 
-bool open(Widget& from, const Rect& anchor, std::vector<MenuItem> items, float minimumWidth, std::function<void()> onClosed) {
+// What an item shows from its action where it says nothing of its own, its text without its mnemonic's &, and so on in its
+// submenu: the texts translated here, once (a menu is open a moment).
+void resolve(std::vector<MenuItem>& items, const Translator& translator) {
+    for (MenuItem& item : items) {
+        if (const std::shared_ptr<Action> action = item.action) {
+            if (item.text.source.empty())
+                item.text = action->text();
+            if (item.icon.empty())
+                item.icon = action->icon();
+            if (item.shortcut.source.empty() && !action->shortcut().empty())
+                item.shortcut = LocalizedText(action->shortcut().text());
+            item.enabled = item.enabled && action->enabled();
+            if (action->checkable() && !item.checked)
+                item.checked = action->checked();
+            if (!item.onTriggered)
+                item.onTriggered = [action] { action->trigger(); };
+        }
+        if (!item.text.source.empty())
+            item.text = LocalizedText(withoutMnemonic(translator.resolve(item.text)));
+        resolve(item.items, translator);
+    }
+}
+
+UiRoot* open(Widget& from, const Rect& anchor, std::vector<MenuItem> items, float minimumWidth, MenuOptions options) {
     UiRoot* root = from.root();
     UiHost* host = root ? root->host() : nullptr;
     if (!host)
-        return false;
-    UiRoot* opened = host->openPopup({.content = std::make_unique<MenuView>(std::move(items), nullptr, minimumWidth, std::move(onClosed)),
+        return nullptr;
+    resolve(items, root->context().translator);
+    UiRoot* opened = host->openPopup({.content = std::make_unique<MenuView>(std::move(items), nullptr, minimumWidth, std::move(options.onClosed),
+                                                                          std::move(options.onAcross)),
                                       .anchor = from.transformToRoot().map(anchor)});
     if (!opened)
-        return false;
+        return nullptr;
     opened->content()->focus();
-    return true;
+    if (options.selectFirst)
+        static_cast<MenuView*>(opened->content())->selectFirst();
+    return opened;
 }
 
 } // namespace
 
-bool showContextMenu(Widget& from, Point at, std::vector<MenuItem> items, std::function<void()> onClosed) {
-    return open(from, {at.x, at.y, 0, 0}, std::move(items), 0, std::move(onClosed));
+UiRoot* showContextMenu(Widget& from, Point at, std::vector<MenuItem> items, std::function<void()> onClosed) {
+    return open(from, {at.x, at.y, 0, 0}, std::move(items), 0, {.onClosed = std::move(onClosed)});
 }
 
-bool showMenu(Widget& from, const Rect& anchor, std::vector<MenuItem> items, std::function<void()> onClosed) {
-    return open(from, anchor, std::move(items), from.transformToRoot().map(anchor).width, std::move(onClosed));
+UiRoot* showMenu(Widget& from, const Rect& anchor, std::vector<MenuItem> items, std::function<void()> onClosed) {
+    return open(from, anchor, std::move(items), from.transformToRoot().map(anchor).width, {.onClosed = std::move(onClosed)});
+}
+
+UiRoot* showMenu(Widget& from, const Rect& anchor, std::vector<MenuItem> items, MenuOptions options) {
+    return open(from, anchor, std::move(items), from.transformToRoot().map(anchor).width, std::move(options));
 }
 
 } // namespace glw

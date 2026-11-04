@@ -4,6 +4,7 @@
 
 #include <GLWidgets/Core/Assert.hpp>
 #include <GLWidgets/Paint/Painter.hpp>
+#include <GLWidgets/Widgets/Action.hpp>
 #include <GLWidgets/Widgets/Label.hpp>
 #include <GLWidgets/Widgets/Layout.hpp>
 
@@ -74,6 +75,18 @@ UiRoot::UiRoot(const UiContext& context, UiHost* host) : context_(context), host
 
 UiRoot::~UiRoot() {
     hideToolTip(false);
+    content_.reset();       // its widgets first, while what they may tell it (shortcuts) is whole
+}
+
+// ---- shortcuts ----
+
+void UiRoot::addShortcuts(const void* owner, std::vector<std::shared_ptr<Action>> actions) {
+    removeShortcuts(owner);
+    shortcuts_.emplace_back(owner, std::move(actions));
+}
+
+void UiRoot::removeShortcuts(const void* owner) {
+    std::erase_if(shortcuts_, [&](const auto& s) { return s.first == owner; });
 }
 
 // ---- tooltips ----
@@ -342,6 +355,17 @@ void UiRoot::dispatch(const platform::Event& event) {
                            hideToolTip(true);
                        KeyEvent key{e.key, e.modifiers, e.pressed, e.repeat};
                        routeKey(key);
+                       // not taken: a shortcut
+                       if (!key.handled && e.pressed) {
+                           for (const auto& [owner, actions] : std::vector(shortcuts_)) {
+                               for (const std::shared_ptr<Action>& action : actions) {
+                                   if (!key.handled && action->enabled() && action->shortcut().matches(e.key, e.modifiers)) {
+                                       key.handled = true;
+                                       action->trigger();
+                                   }
+                               }
+                           }
+                       }
                        // Tab moves the focus when the focused widget does not take it
                        if (!key.handled && e.pressed && e.key == platform::Key::Tab)
                            focusNext(platform::hasAny(e.modifiers, platform::KeyModifiers::Shift));

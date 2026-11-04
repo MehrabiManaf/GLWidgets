@@ -10,6 +10,7 @@ application that ships GLWidgets ships them too, and must include these notices 
 | HarfBuzz | 14.6.0 | MIT ("Old MIT") | https://github.com/harfbuzz/harfbuzz |
 | SheenBidi | 3.0.0 | Apache License 2.0 | https://github.com/Tehreer/SheenBidi |
 | libunibreak | 8.0 | zlib | https://github.com/adah1972/libunibreak |
+| ThorVG | 1.1.3 | MIT | https://github.com/thorvg/thorvg |
 | Vazirmatn (font) | 33.003 | SIL Open Font License 1.1 | https://github.com/rastikerdar/vazirmatn |
 
 The license texts are in each library's sources (fetched into the build directory, `_deps/<name>-src`), and the font's in

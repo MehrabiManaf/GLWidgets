@@ -450,6 +450,21 @@ of buttons at its end (the default one in the accent color); a button closes it 
 default button (a field without its own Enter handler leaves Enter to it), Escape closes it without a choice; the focus
 starts on its first field. `showMessage` is a dialog of a wrapped text.
 
+**What the user can do is an `Action`** (`Widgets/Action.hpp`), once for every place it is offered: a text (a & before
+its mnemonic), an icon, a shortcut, a tooltip, enabled or not, checkable; what shows it follows it (an Undo disabled in the
+menu and in the toolbar at once). A menu's item shows its action (`MenuItem::action`: its text, icon, shortcut, state) and
+triggers it. A key the focused widget does not take triggers the first enabled action of the root it is the shortcut of
+(`UiRoot::addShortcuts`, by owner: a menu bar, a toolbar, the application). A `MenuBar` holds a window's menus by their
+titles: a click opens one under its title, the mouse over another title while one is open opens that one, Left and Right
+go across, Alt and a mnemonic or F10 open them; it goes in the title bar (`TitleBar::setStart`, before the title or the
+tabs) or in a row under it (`MenuBarPlacement`). A `ToolBar` is a row of actions as `ToolButton`s (an icon, a text if
+asked, pressed while checked, the action's tooltip or its text and shortcut), separators and any widgets; what does not fit
+goes into a menu at its end. `Window::setMenuBar` and `setToolBar` put them in the window, with its custom chrome or the
+system's. **Icons** (`Widgets/Icon.hpp`) come from SVG, parsed and rasterized by ThorVG (its CPU rasterizer), at the size in pixels they show at,
+once, into an RGBA atlas every window shares (`UiContext::icons`, uploaded with the glyph atlas), or are painted by a
+function. A monochrome icon is its shapes' coverage in the color it is given (the theme's text: it follows the theme);
+another keeps its colors.
+
 **A `TextEdit` holds a text of many lines** (`Widgets/TextEdit.hpp`): code, a log appended to, a field of several lines.
 Its lines are kept apart (positions are lines and bytes in them), and only those that show are laid out (one
 `TextLayout` each, kept while it does not change, those far from what shows let go) and painted; a line's height is the

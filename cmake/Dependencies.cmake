@@ -7,6 +7,7 @@
 #   glw_harfbuzz      HarfBuzz       shaping
 #   glw_sheenbidi     SheenBidi      the bidirectional algorithm, script runs
 #   glw_unibreak      libunibreak    line and grapheme breaks
+#   glw_thorvg        ThorVG         SVG icons
 include(FetchContent)
 
 # ---- SDL3 (zlib): windows, events, input, clipboard, GPU (Vulkan / Direct3D 12 / Metal) ----
@@ -81,3 +82,39 @@ foreach(source unibreakbase unibreakdef linebreak linebreakdata linebreakdef eas
     target_sources(glw_unibreak PRIVATE ${libunibreak_SOURCE_DIR}/src/${source}.c)
 endforeach()
 target_include_directories(glw_unibreak SYSTEM PUBLIC ${libunibreak_SOURCE_DIR}/src)
+
+# ---- ThorVG 1.1.3 (MIT): SVG icons parsed and rasterized. Its own build is Meson's: the parts used (the core, the CPU
+# rasterizer, the SVG loader) are built here, with the config.h Meson would write. No dependency of its own. ----
+FetchContent_Declare(thorvg
+    URL      https://github.com/thorvg/thorvg/archive/refs/tags/v1.1.3.tar.gz
+    URL_HASH SHA256=BA9957AEEADB4151D4486F11C638AE118C00210FA4906DAA7B30143AA341E690
+    DOWNLOAD_EXTRACT_TIMESTAMP ON
+    SOURCE_SUBDIR none)
+FetchContent_MakeAvailable(thorvg)
+set(GLW_THORVG_CONFIG ${CMAKE_CURRENT_BINARY_DIR}/thorvg-config)
+file(WRITE ${GLW_THORVG_CONFIG}/config.h
+    "#pragma once\n"
+    "#define THORVG_VERSION_STRING \"1.1.3\"\n"
+    "#define THORVG_CPU_ENGINE_SUPPORT 1\n"
+    "#define THORVG_SVG_LOADER_SUPPORT 1\n"
+    "#ifndef WIN32_LEAN_AND_MEAN\n#define WIN32_LEAN_AND_MEAN 1\n#endif\n")
+set(GLW_THORVG_SRC ${thorvg_SOURCE_DIR}/src)
+file(GLOB GLW_THORVG_SOURCES
+    ${GLW_THORVG_SRC}/common/*.cpp
+    ${GLW_THORVG_SRC}/renderer/*.cpp
+    ${GLW_THORVG_SRC}/renderer/cpu_engine/*.cpp
+    ${GLW_THORVG_SRC}/loaders/svg/*.cpp
+    ${GLW_THORVG_SRC}/loaders/raw/*.cpp)
+# its SIMD raster is built with SIMD flags or not at all (Meson's way)
+list(REMOVE_ITEM GLW_THORVG_SOURCES ${GLW_THORVG_SRC}/renderer/cpu_engine/tvgSwRasterSimd.cpp)
+add_library(glw_thorvg STATIC ${GLW_THORVG_SOURCES})
+target_include_directories(glw_thorvg SYSTEM PUBLIC ${thorvg_SOURCE_DIR}/inc)
+target_include_directories(glw_thorvg PRIVATE ${GLW_THORVG_CONFIG} ${GLW_THORVG_SRC}/common ${GLW_THORVG_SRC}/renderer
+    ${GLW_THORVG_SRC}/renderer/cpu_engine ${GLW_THORVG_SRC}/loaders ${GLW_THORVG_SRC}/loaders/svg ${GLW_THORVG_SRC}/loaders/raw)
+target_compile_definitions(glw_thorvg PUBLIC TVG_STATIC PRIVATE $<$<PLATFORM_ID:Windows>:NOMINMAX>)
+target_compile_features(glw_thorvg PRIVATE cxx_std_14)
+if(MSVC)
+    target_compile_options(glw_thorvg PRIVATE /W0 /utf-8)
+else()
+    target_compile_options(glw_thorvg PRIVATE -w)
+endif()

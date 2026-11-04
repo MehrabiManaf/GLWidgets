@@ -7,6 +7,8 @@
 #include <GLWidgets/Text/Font.hpp>
 #include <GLWidgets/Text/GlyphAtlas.hpp>
 #include <GLWidgets/Widgets/DockingHost.hpp>
+#include <GLWidgets/Widgets/Icon.hpp>
+#include <GLWidgets/Widgets/Layout.hpp>
 #include <GLWidgets/Widgets/WindowFrame.hpp>
 
 #include <algorithm>
@@ -83,6 +85,7 @@ struct Application::Impl final : DockingHost {
     std::unique_ptr<paint::Renderer> renderer;
     std::unique_ptr<text::FontLibrary> fonts;
     std::unique_ptr<text::GlyphAtlas> atlas;
+    std::unique_ptr<IconAtlas> icons;
     std::unique_ptr<Translator> translator;
     std::unique_ptr<UiContext> context;
     Scheduler scheduler;                                // before the windows: their timers go first
@@ -303,11 +306,14 @@ struct Application::Impl final : DockingHost {
         for (Window* w : which)
             w->root_.paint(w->list_);       // paint fills the glyph atlas: before the atlas goes to the GPU
         auto commands = device->beginCommands();
-        if (atlas->upload(*device, *commands, *renderer)) {
-            // the atlas was full and started again: what was painted with it, again
+        const bool glyphsAgain = atlas->upload(*device, *commands, *renderer);
+        const bool iconsAgain = icons->upload(*device, *commands, *renderer);
+        if (glyphsAgain || iconsAgain) {
+            // an atlas was full and started again: what was painted with it, again
             for (Window* w : which)
                 w->root_.paint(w->list_);
             atlas->upload(*device, *commands, *renderer);
+            icons->upload(*device, *commands, *renderer);
         }
         bool all = true;
         for (Window* w : which) {
@@ -643,6 +649,47 @@ Window::~Window() {
     window_->setHitTest(nullptr);       // it asks the root, which goes first
 }
 
+MenuBar& Window::setMenuBar(std::unique_ptr<MenuBar> menuBar, MenuBarPlacement placement) {
+    if (frame_)
+        return frame_->setMenuBar(std::move(menuBar), placement);
+    Widget& box = bars();
+    if (!box.children().empty() && dynamic_cast<MenuBar*>(box.children().front().get()))
+        box.removeChild(*box.children().front());
+    auto& bar = static_cast<MenuBar&>(box.addChild(menuBar ? std::move(menuBar) : std::make_unique<MenuBar>(), 0));
+    bar.setAlignment(Alignment::Stretch, Alignment::Start);
+    return bar;
+}
+
+ToolBar& Window::setToolBar(std::unique_ptr<ToolBar> toolBar) {
+    if (frame_)
+        return frame_->setToolBar(std::move(toolBar));
+    Widget& box = bars();
+    for (const auto& child : box.children()) {
+        if (dynamic_cast<ToolBar*>(child.get())) {
+            box.removeChild(*child);
+            break;
+        }
+    }
+    const bool menu = !box.children().empty() && dynamic_cast<MenuBar*>(box.children().front().get());
+    return static_cast<ToolBar&>(box.addChild(toolBar ? std::move(toolBar) : std::make_unique<ToolBar>(), menu ? 1 : 0));
+}
+
+Widget& Window::bars() {
+    if (!bars_) {
+        // the content under a column of bars
+        std::unique_ptr<Widget> content = root_.takeContent();
+        auto box = std::make_unique<Widget>();
+        box->setLayout(std::make_unique<StackLayout>(Orientation::Vertical));
+        if (content) {
+            content->setStretch(1);
+            box->addChild(std::move(content));
+        }
+        bars_ = box.get();
+        root_.setContent(std::move(box));
+    }
+    return *bars_;
+}
+
 platform::WindowId Window::id() const {
     return window_->id();
 }
@@ -715,8 +762,9 @@ Application::Application() : impl_(std::make_unique<Impl>(*this)) {
     d.renderer = std::make_unique<paint::Renderer>(*d.device);
     d.fonts = std::make_unique<text::FontLibrary>();
     d.atlas = std::make_unique<text::GlyphAtlas>(d.renderer->addTexture());
+    d.icons = std::make_unique<IconAtlas>(d.renderer->addTexture());
     d.translator = std::make_unique<Translator>();
-    d.context = std::make_unique<UiContext>(UiContext{*d.fonts, *d.atlas, *d.translator, Theme::dark(), &d, &d.scheduler});
+    d.context = std::make_unique<UiContext>(UiContext{*d.fonts, *d.atlas, *d.translator, Theme::dark(), &d, &d.scheduler, d.icons.get()});
 #ifdef _MSC_VER
 #pragma warning(push)
 #pragma warning(disable : 4996)     // getenv: read, not kept

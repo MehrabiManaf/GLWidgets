@@ -13,14 +13,19 @@
 //       {.text = "Add", .items = {{.text = "Node", .onTriggered = ...}, {.text = "Comment", .onTriggered = ...}}},
 //   });
 #include <GLWidgets/Export.hpp>
+#include <GLWidgets/Widgets/Action.hpp>
+#include <GLWidgets/Widgets/Icon.hpp>
 #include <GLWidgets/Widgets/Localization.hpp>
 #include <GLWidgets/Widgets/Widget.hpp>
 
 #include <functional>
+#include <memory>
 #include <optional>
 #include <vector>
 
 namespace glw {
+
+class UiRoot;
 
 struct MenuItem {
     LocalizedText text;
@@ -33,6 +38,10 @@ struct MenuItem {
     // A submenu, opened beside it.
     std::vector<MenuItem> items;
     bool separator = false;
+    Icon icon;                              // at its start, where a check mark would be
+    // What it does, and what it shows where it says nothing of its own: its text, icon, shortcut, whether it is enabled
+    // and checked (a checkable action).
+    std::shared_ptr<Action> action;
 
     static MenuItem separatorItem() {
         MenuItem item;
@@ -41,10 +50,19 @@ struct MenuItem {
     }
 };
 
-// A menu of `items` at `at` (the widget's coordinates: where the mouse was pressed). False where the widget's window has no
-// popups.
-GLW_EXPORT bool showContextMenu(Widget& from, Point at, std::vector<MenuItem> items, std::function<void()> onClosed = {});
+struct MenuOptions {
+    std::function<void()> onClosed;
+    // Left or Right where the menu has no submenu to go into, or none to go out of: -1 toward the start side, 1 toward the
+    // end side (a menu bar opens the menu beside).
+    std::function<void(int)> onAcross;
+    bool selectFirst = false;               // its first item chosen (opened by the keys)
+};
+
+// A menu of `items` at `at` (the widget's coordinates: where the mouse was pressed): its popup's root, none where the
+// widget's window has no popups.
+GLW_EXPORT UiRoot* showContextMenu(Widget& from, Point at, std::vector<MenuItem> items, std::function<void()> onClosed = {});
 // A menu of `items` under `anchor` (the widget's coordinates: a button), at least as wide as it.
-GLW_EXPORT bool showMenu(Widget& from, const Rect& anchor, std::vector<MenuItem> items, std::function<void()> onClosed = {});
+GLW_EXPORT UiRoot* showMenu(Widget& from, const Rect& anchor, std::vector<MenuItem> items, std::function<void()> onClosed = {});
+GLW_EXPORT UiRoot* showMenu(Widget& from, const Rect& anchor, std::vector<MenuItem> items, MenuOptions options);
 
 } // namespace glw

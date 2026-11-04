@@ -13,6 +13,9 @@
 #include <memory>
 #include <string>
 
+#include <GLWidgets/Widgets/MenuBar.hpp>
+#include <GLWidgets/Widgets/ToolBar.hpp>
+
 namespace glw {
 
 class Label;
@@ -44,6 +47,9 @@ public:
     // drags the window where the center's widgets are not under the mouse.
     void setCenter(std::unique_ptr<Widget> center);
     Widget* center() const { return center_; }
+    // What it shows at its start, before its center (a menu bar); none: nothing.
+    void setStart(std::unique_ptr<Widget> start);
+    Widget* start() const { return start_; }
 
 protected:
     Size measureContent(Size available) override;
@@ -54,6 +60,7 @@ protected:
 
 private:
     Widget* center_ = nullptr;
+    Widget* start_ = nullptr;
     Widget* buttons_ = nullptr;
     Label* title_ = nullptr;
 };
@@ -65,6 +72,11 @@ public:
     TitleBar& titleBar() { return *titleBar_; }
     void setContent(std::unique_ptr<Widget> content);
     Widget* content() const { return content_; }
+    // Its menu bar, in its title bar or under it (none: none); its toolbar, under them.
+    MenuBar& setMenuBar(std::unique_ptr<MenuBar> menuBar, MenuBarPlacement placement = MenuBarPlacement::TitleBar);
+    MenuBar* menuBar() const { return menuBar_; }
+    ToolBar& setToolBar(std::unique_ptr<ToolBar> toolBar);
+    ToolBar* toolBar() const { return toolBar_; }
 
 protected:
     void paint(PaintContext& context) override;
@@ -76,6 +88,8 @@ protected:
 private:
     TitleBar* titleBar_ = nullptr;
     Widget* content_ = nullptr;
+    MenuBar* menuBar_ = nullptr;
+    ToolBar* toolBar_ = nullptr;
 };
 
 } // namespace glw

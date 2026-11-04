@@ -28,7 +28,9 @@ class GlyphAtlas;
 
 namespace glw {
 
+class Action;
 class DockingHost;
+class IconAtlas;
 
 // What every root of an application shares.
 struct UiContext {
@@ -38,6 +40,7 @@ struct UiContext {
     Theme theme;
     DockingHost* docking = nullptr;         // the windows, for docking across them; none: in its window only
     Scheduler* scheduler = nullptr;         // timers and animations; none: things happen at once, no tooltips
+    IconAtlas* icons = nullptr;             // where SVG icons are rasterized; none: they draw nothing
 };
 
 class UiRoot;
@@ -127,6 +130,11 @@ public:
     // may go while it goes on). Nothing when no button is down.
     void captureMouse(Widget& widget);
 
+    // The actions whose shortcuts work in this root, those of `owner` (a menu bar, a toolbar, the application): a key that
+    // the focused widget does not take triggers the first enabled one it is the shortcut of.
+    void addShortcuts(const void* owner, std::vector<std::shared_ptr<Action>> actions);
+    void removeShortcuts(const void* owner);
+
     Widget* focusWidget() const { return focus_; }
     void setFocus(Widget* widget);
     // The next (or previous) widget that can have the focus, in the order of the tree.
@@ -196,6 +204,8 @@ private:
     platform::KeyModifiers modifiers_ = platform::KeyModifiers::None;
     int dispatching_ = 0;
     std::vector<std::function<void()>> deferred_;
+
+    std::vector<std::pair<const void*, std::vector<std::shared_ptr<Action>>>> shortcuts_;
 
     Widget* tipFor_ = nullptr;          // the widget whose tooltip shows, or waits to
     UiRoot* tip_ = nullptr;             // the tooltip's popup

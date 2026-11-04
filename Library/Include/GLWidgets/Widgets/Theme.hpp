@@ -173,6 +173,29 @@ struct CardStyle {
     float cornerRadius = 8;
 };
 
+struct MenuBarStyle {
+    Color background;               // in a row of its own (in the title bar, the title bar's)
+    Color text;
+    StateColor title;               // behind a menu's title: under the mouse, open
+    float height = 32;              // in a row of its own
+    float padding = 10;             // around a title's text
+    float cornerRadius = 4;
+};
+
+struct ToolBarStyle {
+    Color background;
+    Color separator;
+    StateColor button;              // a button's background: under the mouse, pressed
+    Color checked;                  // ... a checked one's
+    Color icon;                     // a monochrome icon's color
+    Color disabledIcon;
+    float buttonSize = 32;          // its buttons are square
+    float iconSize = 16;
+    float padding = 4;              // around its buttons
+    float spacing = 2;              // between them
+    float cornerRadius = 4;
+};
+
 struct MenuStyle {
     Color background;
     Color border;
@@ -285,6 +308,8 @@ struct Theme {
     CardStyle card;
     CanvasStyle canvas;
     MenuStyle menu;
+    MenuBarStyle menuBar;
+    ToolBarStyle toolBar;
     TextEditStyle textEdit;
     ToolTipStyle toolTip;
     MotionStyle motion;
