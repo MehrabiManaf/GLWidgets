@@ -67,19 +67,19 @@ TEST(aCollapsiblePanelsHeightEasesOpenAndClosed) {
     Animated on;
     Panelled p;
     CHECK(near(p.height(), 36) && !p.panel->content().visible());
-    // open: its content shows at once, cut to a height that eases (the theme's slow motion, 250 ms)
+    // open: its content shows at once, cut to a height that eases (the theme's slow motion, 300 ms)
     p.panel->setExpanded(true);
     CHECK(p.panel->content().visible() && tests::testScheduler().animating());
-    tests::advance(125ms);
+    tests::advance(150ms);
     const float half = p.height();
     CHECK(half > 60 && half < 120);
-    tests::advance(125ms);
+    tests::advance(150ms);
     CHECK(near(p.height(), 144) && !tests::testScheduler().animating());
     // closed: back to its header, its content hidden at the end, not before
     p.panel->setExpanded(false);
     tests::advance(100ms);
     CHECK(p.panel->content().visible() && p.height() > 36);
-    tests::advance(150ms);
+    tests::advance(200ms);
     CHECK(near(p.height(), 36) && !p.panel->content().visible());
     // at once
     p.panel->setExpanded(true, false);

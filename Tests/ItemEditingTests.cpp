@@ -671,3 +671,40 @@ TEST(aTreeOfColumnsShowsThemUnderAHeaderAndSortsByThem) {
     t.root.layout();
     CHECK(t.tree->headerShown() && top() == under);
 }
+
+TEST(aColumnFitsWhatItShowsByADoubleClickOnItsHeadersEdge) {
+    Peopled p;
+    p.table->setColumnWidth(0, 300);
+    p.root.layout();
+    // the widest of its cells, and its header's
+    float widest = 0;
+    for (std::size_t row = 0; row < 4; ++row)
+        widest = std::max(widest, p.table->cellWidget(row, 0)->measure({unbounded, 100}).width);
+    widest = std::max(widest, p.table->headerWidget(0)->measure({unbounded, 100}).width);
+    const float fitted = p.table->contentWidth(0);
+    CHECK(fitted >= widest && fitted < 300);
+    // a double click on its edge
+    const Widget* h = p.table->headerWidget(0);
+    const Point edge = h->mapToRoot({h->size().width, h->size().height / 2});
+    click(p.root, edge);
+    click(p.root, edge, 2);
+    CHECK(p.table->columnWidth(0) == fitted && !p.table->sortColumn());
+    // a longer name: wider
+    p.people->names[2] = "Mina Mohammadzadeh Tabrizi";
+    p.people->changed(2);
+    p.root.layout();
+    CHECK(p.table->contentWidth(0) > fitted);
+    // of more rows than it measures: those that show, and some across them
+    p.table->setFitRows(2);
+    CHECK(p.table->contentWidth(0) > fitted);
+}
+
+TEST(aTreesColumnFitsItsNodesWithTheirIndentsAndArrows) {
+    Filed t;
+    float widest = 0;
+    for (std::size_t row = 0; row < t.tree->shownCount(); ++row)
+        widest = std::max(widest, t.tree->table().cellWidget(row, 0)->measure({unbounded, 100}).width);
+    t.tree->fitColumn(0);
+    t.root.layout();
+    CHECK(t.tree->columnWidth(0) >= widest && t.tree->columnWidth(0) < 150);
+}

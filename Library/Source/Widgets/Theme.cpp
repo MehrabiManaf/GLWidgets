@@ -102,18 +102,22 @@ Theme Theme::fromPalette(const Palette& p) {
     t.checkBox.bevel = sunken;
     t.checkBox.checkedBevel = {.gradient = 0.12f, .highlight = withAlpha(white, 0.22f), .shadow = withAlpha(black, dark ? 0.30f : 0.12f)};
     t.checkBox.focusRing = glow;
+    t.checkBox.cornerRadius = t.cornerRadius;
 
     t.scrollBar.track = clear;
+    t.scrollBar.cornerRadius = t.cornerRadius;
     t.scrollBar.thumb = {.normal = withAlpha(p.text, 0.22f), .hovered = withAlpha(p.text, 0.38f), .pressed = withAlpha(p.text, 0.52f)};
 
     t.itemView.row = {.normal = clear, .hovered = p.hover, .pressed = p.pressed};
-    t.itemView.selected = withAlpha(p.accent, dark ? 0.40f : 0.16f);
+    // a tint of the accent strong enough to stay orange on the dark (fainter, it reads as brown)
+    t.itemView.selected = withAlpha(p.accent, dark ? 0.58f : 0.16f);
     t.itemView.indicator = p.accent;
     t.itemView.focusRing = withAlpha(p.accent, 0.75f);
     t.itemView.expander = p.mutedText;
     t.itemView.headerText = p.mutedText;
     t.itemView.headerLine = withAlpha(p.text, 0.10f);
     t.itemView.gridLine = withAlpha(p.text, dark ? 0.08f : 0.10f);
+    t.itemView.cornerRadius = t.cornerRadius;
     t.itemView.rowLines = true;         // lists and trees: a line between their rows
     // tables: the cells' borders, as a spreadsheet's
     t.table = t.itemView;
@@ -137,13 +141,14 @@ Theme Theme::fromPalette(const Palette& p) {
     t.dock.mutedText = p.mutedText;
     t.dock.dropZone = withAlpha(p.accent, 0.22f);
     t.dock.scrollThumb = withAlpha(p.mutedText, 0.55f);
-    t.dock.cornerRadius = 6;
+    t.dock.cornerRadius = t.cornerRadius;
 
     t.majorTab.background = {.normal = clear, .hovered = p.hover, .pressed = p.pressed};
     t.majorTab.active = p.window;
     t.majorTab.text = p.text;
     t.majorTab.mutedText = p.mutedText;
     t.majorTab.insertion = p.accent;
+    t.majorTab.cornerRadius = t.cornerRadius;
 
     // a raised header over its content, sunk a little into the panel
     t.collapsiblePanel.header = {.normal = mix(p.layer, p.surface, 0.45f),
@@ -155,7 +160,7 @@ Theme Theme::fromPalette(const Palette& p) {
     t.collapsiblePanel.title = p.text;
     t.collapsiblePanel.arrow = p.mutedText;
     t.collapsiblePanel.focusRing = withAlpha(p.accent, 0.9f);
-    t.collapsiblePanel.cornerRadius = t.cornerRadius + 1;
+    t.collapsiblePanel.cornerRadius = t.cornerRadius;
 
     t.menuBar.background = p.titleBar;
     t.menuBar.text = p.text;
@@ -184,7 +189,7 @@ Theme Theme::fromPalette(const Palette& p) {
     t.menu.disabledText = p.disabledText;
     t.menu.mark = p.text;
     t.menu.separator = withAlpha(p.text, 0.10f);
-    t.menu.cornerRadius = t.cornerRadius - 1;
+    t.menu.cornerRadius = t.cornerRadius;
     // code: the colors of the editors people know (Visual Studio Code's Dark+ and Light+)
     t.textEdit.background = p.window;
     t.textEdit.text = p.text;
@@ -212,7 +217,7 @@ Theme Theme::fromPalette(const Palette& p) {
     t.canvas.majorGrid = Color{p.text.r, p.text.g, p.text.b, 0.08f};
     t.card.background = p.layer;
     t.card.border = dark ? withAlpha(black, 0.35f) : withAlpha(black, 0.10f);
-    t.card.cornerRadius = t.cornerRadius + 2;
+    t.card.cornerRadius = t.cornerRadius;
 
     t.titleBar.background = p.titleBar;
     t.titleBar.title = p.text;

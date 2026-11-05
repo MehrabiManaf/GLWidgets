@@ -55,7 +55,7 @@ void paintFocusGlow(paint::Painter& p, const Rect& rect, float radius, Color glo
         p.drawShadow(rect.inflated(1), radius + 1, 2.5f, glow);
 }
 
-void paintScrollThumb(paint::Painter& p, const Rect& thumb, bool vertical, bool outerAtEnd, float wide, Color color) {
+void paintScrollThumb(paint::Painter& p, const Rect& thumb, bool vertical, bool outerAtEnd, float wide, Color color, float radius) {
     constexpr float margin = 2;
     const float across = vertical ? thumb.width : thumb.height;
     const float full = std::max(1.0f, across - 2 * margin);
@@ -69,7 +69,7 @@ void paintScrollThumb(paint::Painter& p, const Rect& thumb, bool vertical, bool 
         const float y = outerAtEnd ? thumb.bottom() - margin - thickness : thumb.y + margin;
         r = {thumb.x + margin, y, std::max(0.0f, thumb.width - 2 * margin), thickness};
     }
-    p.fillRoundedRect(r, std::min(r.width, r.height) / 2, color);
+    p.fillRoundedRect(r, std::min(radius, std::min(r.width, r.height) / 2), color);
 }
 
 } // namespace glw

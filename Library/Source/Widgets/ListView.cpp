@@ -753,7 +753,7 @@ void ListView::paintOver(PaintContext& context) {
     context.painter.fillRect(scrollTrack(), s.track);
     const VisualState state{.hovered = barHovered_ || thumbGrab_, .pressed = thumbGrab_.has_value()};
     barWide_.animateTo(scheduler(), state.hovered ? 1.0f : 0.0f, context.ui.theme.motion.fast);
-    paintScrollThumb(context.painter, scrollThumb(), true, !rightToLeft(), barWide_.value(), s.thumb.resolve(state));
+    paintScrollThumb(context.painter, scrollThumb(), true, !rightToLeft(), barWide_.value(), s.thumb.resolve(state), s.cornerRadius);
 }
 
 // ---- events ----

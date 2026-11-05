@@ -194,6 +194,55 @@ TEST(splitterSharesAndDragging) {
     CHECK(near(right->bounds().width, 120));
 }
 
+TEST(aSplitterHandleDoubleClickedSharesItsPanesRoomEqually) {
+    UiRoot root(tests::testContext());
+    const float t = tests::testContext().theme.splitter.thickness;
+    root.setSize({400 + t, 100});
+    Widget* left = nullptr;
+    Widget* right = nullptr;
+    Splitter* splitter = nullptr;
+    root.setContent(ui::Splitter({}, ui::make<Block>(Size{}).bind(left), ui::make<Block>(Size{120, 0}).bind(right)).bind(splitter));
+    root.layout();
+    const auto twice = [&](Point at) {
+        root.dispatch(press(at));
+        root.dispatch(press(at, false));
+        root.dispatch(platform::MouseButtonChanged{1, platform::MouseButton::Left, true, 2, at});
+        root.dispatch(platform::MouseButtonChanged{1, platform::MouseButton::Left, false, 2, at});
+        root.layout();
+    };
+    // dragged aside, then shared equally again
+    const Point handle = splitter->handles()[0].center();
+    root.dispatch(press(handle));
+    root.dispatch(platform::MouseMoved{1, {handle.x + 100, handle.y}});
+    root.dispatch(press({handle.x + 100, handle.y}, false));
+    root.layout();
+    CHECK(near(left->bounds().width, 280) && near(right->bounds().width, 120));
+    twice(splitter->handles()[0].center());
+    CHECK(near(left->bounds().width, 200) && near(right->bounds().width, 200));
+    // ... kept as it is resized
+    root.setSize({800 + t, 100});
+    root.layout();
+    CHECK(near(left->bounds().width, 400) && near(right->bounds().width, 400));
+    // no shorter than a pane's minimum
+    root.setSize({200 + t, 100});
+    root.layout();
+    twice(splitter->handles()[0].center());
+    CHECK(near(left->bounds().width, 80) && near(right->bounds().width, 120));
+
+    // a pane that is a splitter the same way (docks in nested splits): its pane by the handle shares, the others keep
+    // theirs
+    root.setSize({600 + 3 * t, 100});
+    Widget* a = nullptr;
+    Widget* b = nullptr;
+    Widget* c = nullptr;
+    root.setContent(ui::Splitter({}, ui::make<Block>(Size{}).bind(a),
+                                 ui::Splitter({}, ui::make<Block>(Size{}).bind(b), ui::make<Block>(Size{}).bind(c))).bind(splitter));
+    root.layout();
+    CHECK(near(a->bounds().width, 300 + t) && near(b->bounds().width, 150) && near(c->bounds().width, 150));
+    twice(splitter->handles()[0].center());
+    CHECK(near(a->bounds().width, 225 + t / 2) && near(b->bounds().width, 225 + t / 2) && near(c->bounds().width, 150));
+}
+
 TEST(wrappedTextInASplitterPane) {
     // a splitter measures its panes along without bounds; the text of a narrow pane must still get the lines it wraps to
     UiRoot root(tests::testContext());

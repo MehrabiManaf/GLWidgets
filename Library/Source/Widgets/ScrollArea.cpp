@@ -214,7 +214,7 @@ void ScrollArea::paintOver(PaintContext& context) {
         wide.animateTo(scheduler(), over ? 1.0f : 0.0f, fast);
         const VisualState state{.hovered = hoveredPart_ == thumb || dragging_ == thumb, .pressed = dragging_ == thumb};
         const bool vertical = thumb == Part::VerticalThumb;
-        paintScrollThumb(p, bar.thumb, vertical, !vertical || !rightToLeft(), wide.value(), s.thumb.resolve(state));
+        paintScrollThumb(p, bar.thumb, vertical, !vertical || !rightToLeft(), wide.value(), s.thumb.resolve(state), s.cornerRadius);
     };
     if (const auto bar = verticalBar())
         draw(*bar, Part::VerticalThumb, Part::VerticalTrack, wideVertical_);

@@ -74,7 +74,7 @@ void CollapsiblePanel::setExpanded(bool expanded, bool animated) {
         focus();                            // what had the focus goes: the header has it
     if (animated)
         progress_.animateTo(scheduler(), expanded ? 1.0f : 0.0f,
-                            context() ? Duration(context()->theme.motion.slow) : Duration(std::chrono::milliseconds(250)), Easing::InOutCubic);
+                            context() ? Duration(context()->theme.motion.slow) : Duration(std::chrono::milliseconds(300)), Easing::InOutCubic);
     else
         progress_.set(expanded ? 1.0f : 0.0f);
     stepped();

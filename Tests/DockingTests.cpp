@@ -417,8 +417,8 @@ TEST(aTabBarSlidesAwayAndBack) {
     const float full = palette.barHeight();
     palette.setTabBarHidden(true);
     CHECK(palette.tabBarHidden() && near(palette.barHeight(), full));
-    // halfway (the theme's normal motion, 167 ms): half of it, the panel under it moved up with it
-    tests::advance(std::chrono::milliseconds(84));
+    // halfway (the theme's normal motion, 200 ms): half of it, the panel under it moved up with it
+    tests::advance(std::chrono::milliseconds(100));
     d.root.layout();
     const float half = palette.barHeight();
     CHECK(half > full * 0.3f && half < full * 0.7f);

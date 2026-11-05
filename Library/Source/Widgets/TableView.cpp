@@ -235,6 +235,9 @@ void TableView::setModel(std::shared_ptr<TableModel> model) {
 }
 
 void TableView::setDelegate(std::unique_ptr<TableDelegate> delegate) {
+    for (const auto& [kind, widget] : measurers_)
+        removeChild(*widget);
+    measurers_.clear();
     delegate_ = std::move(delegate);
     list_->setDelegate(std::make_unique<RowDelegate>(*this));       // its rows made again, with the new delegate's cells
 }
@@ -377,6 +380,86 @@ void TableView::setSortIndicator(std::optional<std::size_t> column, SortOrder or
     indicatorColumn_ = column;
     indicatorOrder_ = order;
     invalidatePaint();
+}
+
+// ---- fitting a column to what it shows ----
+
+Widget& TableView::measurer(std::size_t kind) {
+    for (const auto& [k, widget] : measurers_) {
+        if (k == kind)
+            return *widget;
+    }
+    Widget& made = addChild(delegate_->makeCell(kind));
+    made.setHitTestVisible(false);
+    made.arrange({parkedAt, 0, 0, 0});
+    measurers_.emplace_back(kind, &made);
+    return made;
+}
+
+float TableView::contentWidth(std::size_t column) {
+    if (!model_ || column >= model_->columnCount())
+        return minimumColumnWidth;
+    const float height = rowHeight_ && *rowHeight_ > 0 ? *rowHeight_ : style().rowHeight;
+    float width = minimumColumnWidth;
+    const auto measure = [&](Widget& cell, float more) {
+        const Size s = cell.measure({unbounded, height});
+        width = std::max(width, s.width + cell.margin().horizontal() + more);
+    };
+    if (headerVisible_) {
+        if (!headerMeasurer_) {
+            headerMeasurer_ = &addChild(makeTextCell());
+            headerMeasurer_->setHitTestVisible(false);
+            headerMeasurer_->arrange({parkedAt, 0, 0, 0});
+        }
+        static_cast<Label&>(*headerMeasurer_).setText(model_->header(column));
+        measure(*headerMeasurer_, model_->sortable(column) ? 14.0f : 0.0f);      // the arrow after the title
+    }
+    if (delegate_) {
+        Widget& cell = measurer(delegate_->cellKind(column));
+        const std::size_t count = list_->shownCount();
+        const auto at = [&](std::size_t position) {
+            delegate_->bindCell(cell, list_->modelIndex(position), column);
+            measure(cell, 0);
+        };
+        if (!fitRows_ || count <= *fitRows_) {
+            for (std::size_t position = 0; position < count; ++position)
+                at(position);
+        } else {
+            // those that show, and some spread across all of them
+            const auto [first, last] = list_->shownItems();
+            for (std::size_t position = first; position < last; ++position)
+                at(position);
+            // spread by the golden ratio, not evenly: rows that repeat in a period (a folder and its files) are not
+            // missed by a sample of the same period
+            double place = 0;
+            for (std::size_t k = 0; k < *fitRows_; ++k) {
+                at(std::min(count - 1, static_cast<std::size_t>(place * static_cast<double>(count))));
+                place += 0.6180339887498949;
+                place -= std::floor(place);
+            }
+            at(count - 1);
+        }
+    }
+    return std::ceil(width);
+}
+
+void TableView::fitColumn(std::size_t column) {
+    if (column >= widths_.size())
+        return;
+    fitting_ = Fit{column, columnWidth(column), contentWidth(column)};
+    fitted_.set(0);
+    fitted_.animateTo(scheduler(), 1.0f, context() ? Duration(context()->theme.motion.normal) : Duration(std::chrono::milliseconds(200)),
+                      Easing::InOutCubic);
+    fitStepped();
+}
+
+void TableView::fitStepped() {
+    if (!fitting_)
+        return;
+    const Fit fit = *fitting_;
+    setColumnWidth(fit.column, fit.from + (fit.to - fit.from) * fitted_.value());
+    if (!fitted_.running())
+        fitting_.reset();
 }
 
 // ---- editing ----
@@ -643,7 +726,7 @@ void TableView::paintOver(PaintContext& context) {
     context.painter.fillRect(barTrack(), s.track);
     const VisualState state{.hovered = barHovered_ || thumbGrab_, .pressed = thumbGrab_.has_value()};
     barWide_.animateTo(scheduler(), state.hovered ? 1.0f : 0.0f, context.ui.theme.motion.fast);
-    paintScrollThumb(context.painter, barThumb(), false, true, barWide_.value(), s.thumb.resolve(state));
+    paintScrollThumb(context.painter, barThumb(), false, true, barWide_.value(), s.thumb.resolve(state), s.cornerRadius);
 }
 
 // ---- events ----
@@ -729,6 +812,12 @@ void TableView::onPreviewMouse(MouseEvent& event) {
         }
         if (const std::optional<std::size_t> edge = edgeAt(event.position)) {
             event.handled = true;
+            if (event.clicks == 2) {
+                fitColumn(*edge);
+                return;
+            }
+            fitted_.set(0);                 // a drag takes over from the easing
+            fitting_.reset();
             resizing_ = Resize{*edge, event.position.x, shownWidth(*edge)};
             invalidatePaint();
             return;

@@ -85,7 +85,7 @@ struct ButtonStyle {
     StateColor text;
     Bevel bevel;
     float borderWidth = 1;
-    float cornerRadius = 4;
+    float cornerRadius = 0;
     Insets padding{12, 5, 12, 5};
     Color focusRing;                // a glow around it while it has the focus
 };
@@ -101,7 +101,7 @@ struct LineEditStyle {
     Color focusRing;                // a glow around it while it has the focus
     Bevel bevel;                    // sunken
     float borderWidth = 1;
-    float cornerRadius = 4;
+    float cornerRadius = 0;
     float focusLineWidth = 0;
     Insets padding{10, 5, 10, 5};
     float width = 220;              // what it asks for: fields are usually stretched
@@ -116,7 +116,7 @@ struct CheckBoxStyle {
     Bevel bevel;                    // unchecked: sunken
     Bevel checkedBevel;             // checked: raised
     float size = 16;
-    float cornerRadius = 3;
+    float cornerRadius = 0;
     float spacing = 8;              // between the box and the text
     Color focusRing;                // a glow around the box while it has the focus
 };
@@ -126,9 +126,10 @@ struct ScrollBarStyle {
     StateColor thumb;
     float width = 8;
     float minimumThumb = 24;        // the thumb's length, however long the content
+    float cornerRadius = 0;         // of the thumb (at most half as much as it is thick: a pill)
 };
 
-// The rows of item views (ListView): a pill under the mouse, the one selected a pill of the accent's tint; the current one,
+// The rows of item views (ListView): a box under the mouse, the one selected a box of the accent's tint; the current one,
 // when it is not the one selected, ringed while the view has the focus. With the cells' borders (rowLines, columnLines),
 // a line between the rows and between a table's columns, and the rows' backgrounds fill their cells.
 struct ItemViewStyle {
@@ -140,7 +141,7 @@ struct ItemViewStyle {
     Color headerText;               // a table's column headers
     Color headerLine;               // under them, and between them
     float rowHeight = 28;
-    float cornerRadius = 4;
+    float cornerRadius = 0;
     float inset = 3;                // rows drawn this much in from the view's sides
     float indent = 16;              // a tree's, for each level
     float columnWidth = 140;        // a table's, until it is set
@@ -163,7 +164,7 @@ struct DockStyle {
     Color background;               // of a stack: its tabs and the content of the panel shown
     Color border;                   // around a stack
     Color separator;                // between a stack's tabs and its content
-    StateColor tab;                 // behind a tab: a pill, under the mouse
+    StateColor tab;                 // behind a tab, under the mouse
     Color selectedTab;              // the tab shown: its top (it fades to the background at its bottom)
     Color selectedTabBorder;
     Color selectedTabHighlight;     // the light line inside along its top
@@ -173,7 +174,7 @@ struct DockStyle {
     Color dropZone;
     Color scrollThumb;              // the thin bar that scrolls the tabs, when they do not fit
     SplitterStyle splitter;         // between stacks: a gap, a line only under the mouse
-    float cornerRadius = 8;
+    float cornerRadius = 0;
     float tabHeight = 28;
     float tabMinimumWidth = 56;     // a tab is as wide as its title, between these (a longer title is cut with …)
     float tabMaximumWidth = 200;
@@ -188,7 +189,7 @@ struct MajorTabStyle {
     Color insertion;                // where a dragged tab would go
     float minimumWidth = 90;
     float maximumWidth = 220;
-    float cornerRadius = 8;
+    float cornerRadius = 0;
     float topGap = 6;               // above the tabs: the caption, to drag the window by
 };
 
@@ -196,7 +197,7 @@ struct CardStyle {
     Color background;
     Color border;
     float borderWidth = 1;
-    float cornerRadius = 8;
+    float cornerRadius = 0;
 };
 
 // A header over content that opens and closes (CollapsiblePanel), as Fluent's expander: a card.
@@ -211,7 +212,7 @@ struct CollapsiblePanelStyle {
     float headerHeight = 36;
     Insets padding{14, 8, 14, 12};  // around the content
     float spacing = 8;              // between the content's widgets
-    float cornerRadius = 6;
+    float cornerRadius = 0;
 };
 
 struct MenuBarStyle {
@@ -220,7 +221,7 @@ struct MenuBarStyle {
     StateColor title;               // behind a menu's title: under the mouse, open
     float height = 32;              // in a row of its own
     float padding = 10;             // around a title's text
-    float cornerRadius = 4;
+    float cornerRadius = 0;
 };
 
 struct ToolBarStyle {
@@ -236,7 +237,7 @@ struct ToolBarStyle {
     float iconSize = 16;
     float padding = 4;              // around its buttons
     float spacing = 2;              // between them
-    float cornerRadius = 4;
+    float cornerRadius = 0;
 };
 
 struct MenuStyle {
@@ -251,7 +252,7 @@ struct MenuStyle {
     Color separator;
     float itemHeight = 28;
     float padding = 4;              // around the items
-    float cornerRadius = 4;         // of the highlight
+    float cornerRadius = 0;         // of the highlight
     float minimumWidth = 160;
 };
 
@@ -279,9 +280,9 @@ struct TextEditStyle {
 
 // How long things take to change (Fluent's durations): a hover or a press, what opens, what moves far.
 struct MotionStyle {
-    std::chrono::milliseconds fast{83};
-    std::chrono::milliseconds normal{167};
-    std::chrono::milliseconds slow{250};
+    std::chrono::milliseconds fast{100};
+    std::chrono::milliseconds normal{200};
+    std::chrono::milliseconds slow{300};
     std::chrono::milliseconds scroll{180};      // a turn of the wheel, a page: eased to where it goes (a faster wheel
                                                 // goes further: SmoothScroll::boosted)
 };
@@ -342,7 +343,7 @@ struct WindowFrameStyle {
 struct Theme {
     Palette palette;
     float fontSize = 13;
-    float cornerRadius = 4;
+    float cornerRadius = 0;
     ButtonStyle button;
     LineEditStyle lineEdit;
     CheckBoxStyle checkBox;

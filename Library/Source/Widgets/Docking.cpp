@@ -76,22 +76,22 @@ protected:
         if (active_) {
             // as Fusion's: raised over the bar, lit at its top, its edge around it but under it, where it joins its
             // content (its lower corners and edge below the bar, cut)
-            const Rect shape{0, selectedTabTop, r.width, r.height - selectedTabTop + s.cornerRadius};
+            const Rect shape{0, selectedTabTop, r.width, r.height - selectedTabTop + std::max(s.cornerRadius, 2.0f)};
             const float radius = std::min(s.cornerRadius, 4.0f);
             p.pushClip(r);
             p.fillRoundedRect(shape, radius, s.selectedTab, s.background);
-            p.strokeRoundedRect(shape.inflated(-1), radius - 1, 1, s.selectedTabHighlight, withAlpha(s.selectedTabHighlight, 0));
+            p.strokeRoundedRect(shape.inflated(-1), std::max(0.0f, radius - 1), 1, s.selectedTabHighlight, withAlpha(s.selectedTabHighlight, 0));
             p.strokeRoundedRect(shape, radius, 1, s.selectedTabBorder);
             p.popClip();
             p.fillRect({1, r.height - 1, r.width - 2, 1}, s.background);     // the hairline under the bar open under it
         } else {
-            p.fillRoundedRect(r.inflated(-3), 4, s.tab.resolve(state));
+            p.fillRoundedRect(r.inflated(-3), s.cornerRadius, s.tab.resolve(state));
         }
         label_->setColor(active_ || hovered() ? s.text : s.mutedText);
         if (closable_ && (hovered() || active_)) {
             const Rect c = closeRect();
             if (closeHovered_)
-                p.fillRoundedRect(c, 4, context.ui.theme.palette.hover);
+                p.fillRoundedRect(c, s.cornerRadius, context.ui.theme.palette.hover);
             const Point m = c.center();
             p.drawLine({m.x - 4, m.y - 4}, {m.x + 4, m.y + 4}, 1.2f, s.text);
             p.drawLine({m.x - 4, m.y + 4}, {m.x + 4, m.y - 4}, 1.2f, s.text);
@@ -295,7 +295,7 @@ protected:
         if (maxOffset() <= 0 || !(hovered() || grab_))
             return;
         const Rect t = thumb();
-        context.painter.fillRoundedRect(t, t.height / 2, context.ui.theme.dock.scrollThumb);
+        context.painter.fillRoundedRect(t, std::min(t.height / 2, context.ui.theme.dock.cornerRadius), context.ui.theme.dock.scrollThumb);
     }
 
     // the bar along the bottom before the tab there: dragged, or pressed beside its thumb to go there
@@ -394,7 +394,7 @@ protected:
         const Palette& palette = context.ui.theme.palette;
         const Rect r{0, 0, size().width, size().height};
         if (hovered())
-            context.painter.fillRoundedRect(r, 4, pressed_ ? palette.pressed : palette.hover);
+            context.painter.fillRoundedRect(r, context.ui.theme.dock.cornerRadius, pressed_ ? palette.pressed : palette.hover);
         const DockStyle& s = context.ui.theme.dock;
         if (icon_)
             icon_(context, {r.center().x - 6, r.center().y - 6, 12, 12}, hovered() ? s.text : s.mutedText);
@@ -1625,8 +1625,8 @@ void DockArea::paintOver(PaintContext& context) {
                             indicatorFrom_.width + (indicatorTo_.width - indicatorFrom_.width) * t,
                             indicatorFrom_.height + (indicatorTo_.height - indicatorFrom_.height) * t}
                            .inflated(-4);
-        p.fillRoundedRect(r, 6, withAlpha(s.dropZone, s.dropZone.a * alpha));
-        p.strokeRoundedRect(r, 6, 1.5f, withAlpha(s.activeLine, s.activeLine.a * alpha));
+        p.fillRoundedRect(r, s.cornerRadius, withAlpha(s.dropZone, s.dropZone.a * alpha));
+        p.strokeRoundedRect(r, s.cornerRadius, 1.5f, withAlpha(s.activeLine, s.activeLine.a * alpha));
     }
     if (!guides_)
         return;
@@ -1641,8 +1641,8 @@ void DockArea::paintOver(PaintContext& context) {
         const Rect local = guideOf(node, side);
         const Rect g{local.x + offset.x, local.y + offset.y, local.width, local.height};
         const bool lit = guides_->hovered == side;
-        p.fillRoundedRect(g, 4, lit ? s.activeLine : palette.surface);
-        p.strokeRoundedRect(g, 4, 1, s.activeLine);
+        p.fillRoundedRect(g, s.cornerRadius, lit ? s.activeLine : palette.surface);
+        p.strokeRoundedRect(g, s.cornerRadius, 1, s.activeLine);
         const Color ink = lit ? palette.window : s.activeLine;
         Rect picture = g.inflated(-g.width * 0.22f);
         p.strokeRoundedRect(picture, 1, 1, ink);

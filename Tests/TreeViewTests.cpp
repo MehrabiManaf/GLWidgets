@@ -114,7 +114,7 @@ TEST(aNodesChildrenComeOutFromUnderItAndGoBack) {
     Treed t;
     const float h = tests::testContext().theme.itemView.rowHeight;
     CHECK(rowTop(*t.tree, 1) == h);                                 // b, under a
-    // opened: its two children come out from under it, b going down with them (the theme's normal motion, 167 ms)
+    // opened: its two children come out from under it, b going down with them (the theme's normal motion, 200 ms)
     t.tree->setExpanded({t.a}, true);
     t.root.layout();
     CHECK(t.shown() == "a .a1 .a2 b");

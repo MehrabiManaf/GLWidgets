@@ -85,6 +85,13 @@ public:
     // As set (the theme's until then); the last one shows wider when there is room left.
     float columnWidth(std::size_t column) const;
     void setColumnWidth(std::size_t column, float width);
+    // As wide as its header and its cells need, eased there; a double click on its header's edge does it.
+    void fitColumn(std::size_t column);
+    // ... that width: its header's (with room for the arrow, when it sorts) and its widest cell's, measured in a cell of
+    // its kind bound to each row. Those of the rows that show are measured and, of more rows than `fitRows`, that many
+    // spread across them (none: all of them; a thousand by default).
+    float contentWidth(std::size_t column);
+    void setFitRows(std::optional<std::size_t> rows) { fitRows_ = rows; }
     // The last column takes the room the others leave (true by default).
     void setStretchLastColumn(bool stretch);
     void setHeaderVisible(bool visible);
@@ -211,6 +218,8 @@ private:
     // the next editable cell after `column` in `row` (Tab), or before it (Shift+Tab)
     std::optional<std::size_t> nextEditable(std::size_t row, std::size_t column, bool backwards) const;
     void placeEditor();
+    Widget& measurer(std::size_t kind);     // a cell of the kind, out of sight, that measures cells
+    void fitStepped();
 
     std::shared_ptr<TableModel> model_;
     std::unique_ptr<TableDelegate> delegate_;
@@ -240,6 +249,16 @@ private:
         float startWidth;
     };
     std::optional<Resize> resizing_;
+    std::vector<std::pair<std::size_t, Widget*>> measurers_;    // by kind
+    Widget* headerMeasurer_ = nullptr;
+    std::optional<std::size_t> fitRows_ = 1000;
+    struct Fit {
+        std::size_t column;
+        float from;
+        float to;
+    };
+    std::optional<Fit> fitting_;            // a column eased to the width it needs
+    Animation fitted_{[this] { fitStepped(); }};
     bool barHovered_ = false;
     std::optional<double> thumbGrab_;       // the thumb dragged: where it was pressed, along it
     std::function<void(std::size_t)> onHeaderClicked_;

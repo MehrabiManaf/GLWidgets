@@ -312,6 +312,26 @@ private:
 };
 
 // The feed in a table, sorted, a thousand of its changes at a time (then a frame painted): what each costs, in microseconds.
+// A column fitted to its cells (a double click on its header's edge): the rows that show and a thousand across them, or
+// every row.
+void aColumnFittedInATableView(glw::UiContext& ui, std::size_t rows) {
+    glw::UiRoot root(ui);
+    root.setSize({1200, 800});
+    auto made = std::make_unique<glw::TableView>();
+    glw::TableView& table = *made;
+    table.setModel(std::make_shared<Cells>(rows, 10));
+    table.setDelegate(std::make_unique<glw::TableTextDelegate>(
+        [](std::size_t row, std::size_t column) { return glw::LocalizedText(std::to_string(Cells::value(row, column) * row)); }));
+    root.setContent(std::move(made));
+    root.layout();
+    float width = 0;
+    const double sampled = best(5, [&] { width = table.contentWidth(1); });
+    table.setFitRows(std::nullopt);
+    float every = 0;
+    const double all = once([&] { every = table.contentWidth(1); });
+    std::printf("%9zu | %8.2f | %10.1f | %7.0f | %6.0f\n", rows, sampled, all, width, every);
+}
+
 void aLiveFeedInATableView(glw::UiContext& ui, std::size_t rows) {
     glw::UiRoot root(ui);
     root.setSize({800, 600});
@@ -559,6 +579,12 @@ int main(int argc, char** argv) {
     std::printf("     rows | columns |    build |   layout |    paint |   scroll |   across |     jump |     sort |   filter |  widgets\n");
     cellsInATableView(ui, 1'000'000, 100);
     cellsInATableView(ui, 100'000'000, 1000);
+
+    std::printf("\nA column fitted to its cells in a table view: a thousand rows and those that show, or all; milliseconds, "
+                "then the widths\n");
+    std::printf("     rows |  sampled |        all | sampled |    all\n");
+    for (std::size_t count : {std::size_t{10'000}, std::size_t{100'000}, std::size_t{1'000'000}})
+        aColumnFittedInATableView(ui, count);
 
     std::printf("\nA live feed in a table view, sorted by price: sorting in milliseconds, then each change in microseconds\n");
     std::printf("     rows |     sort |   change |   append | at first |   oldest | filtered\n");

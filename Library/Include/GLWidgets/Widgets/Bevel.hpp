@@ -35,6 +35,8 @@ GLW_EXPORT void paintFocusGlow(paint::Painter& painter, const Rect& rect, float 
 // A scroll bar's thumb in `thumb` (its place along the bar, the bar's width across): rounded, thin by the bar's outer edge
 // (the end side's when `outerAtEnd`: the right of a vertical bar in left to right, the bottom of a horizontal one) while
 // `wide` is 0, as wide as the bar less a margin at 1 (the mouse over the bar, the thumb dragged), eased between.
-GLW_EXPORT void paintScrollThumb(paint::Painter& painter, const Rect& thumb, bool vertical, bool outerAtEnd, float wide, Color color);
+// Its corners `radius` round, at most half as much as it is thick (a pill).
+GLW_EXPORT void paintScrollThumb(paint::Painter& painter, const Rect& thumb, bool vertical, bool outerAtEnd, float wide, Color color,
+                                 float radius = 0);
 
 } // namespace glw

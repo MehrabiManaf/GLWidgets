@@ -745,7 +745,7 @@ void TextEdit::paintOver(PaintContext& context) {
     context.painter.fillRect(verticalTrack(), s.track);
     const VisualState state{.hovered = barHovered_ || thumbGrab_, .pressed = thumbGrab_.has_value()};
     barWide_.animateTo(scheduler(), state.hovered ? 1.0f : 0.0f, context.ui.theme.motion.fast);
-    paintScrollThumb(context.painter, verticalThumb(), true, true, barWide_.value(), s.thumb.resolve(state));
+    paintScrollThumb(context.painter, verticalThumb(), true, true, barWide_.value(), s.thumb.resolve(state), s.cornerRadius);
 }
 
 // ---- the caret's blink, the input method ----

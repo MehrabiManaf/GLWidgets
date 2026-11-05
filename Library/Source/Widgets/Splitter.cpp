@@ -146,6 +146,14 @@ void Splitter::onMouse(MouseEvent& event) {
         const int handle = event.button == platform::MouseButton::Left ? handleAt(event.position) : -1;
         if (handle < 0)
             return;
+        event.handled = true;
+        if (event.clicks == 2) {
+            shareEqually(static_cast<std::size_t>(handle));
+            return;
+        }
+        // a drag takes over from the easing
+        shared_.set(0);
+        sharing_.reset();
         dragging_ = handle;
         grab_ = along(event.position) - (starts_[handle] + lengths_[handle]);
         event.handled = true;
@@ -184,6 +192,102 @@ void Splitter::onMouse(MouseEvent& event) {
     case MouseEventType::Wheel:
         break;
     }
+}
+
+namespace {
+
+// What a widget holds, when it only holds that (its one child that shows, about as long along `orientation`: a dock
+// area around its split), and so on; a splitter, as it is.
+Widget* heldBy(Widget* widget, Orientation orientation) {
+    const auto along = [orientation](const Widget& w) { return orientation == Orientation::Horizontal ? w.size().width : w.size().height; };
+    while (!dynamic_cast<Splitter*>(widget)) {
+        Widget* only = nullptr;
+        for (const auto& child : widget->children()) {
+            if (!child->visible())
+                continue;
+            if (only)
+                return widget;
+            only = child.get();
+        }
+        if (!only || along(*only) < along(*widget) - 32)
+            return widget;
+        widget = only;
+    }
+    return widget;
+}
+
+} // namespace
+
+std::vector<std::pair<Splitter*, std::size_t>> Splitter::sideOf(std::size_t index, bool beforeHandle) {
+    std::vector<std::pair<Splitter*, std::size_t>> side{{this, index}};
+    Widget* pane = heldBy(panes()[index], orientation_);
+    while (auto* inner = dynamic_cast<Splitter*>(pane)) {
+        const auto list = inner->panes();
+        if (inner->orientation_ != orientation_ || list.empty() || inner->lengths_.size() != list.size())
+            break;
+        const std::size_t k = beforeHandle ? list.size() - 1 : 0;
+        side.emplace_back(inner, k);
+        pane = heldBy(list[k], orientation_);
+    }
+    return side;
+}
+
+void Splitter::shareEqually(std::size_t handle) {
+    const auto list = panes();
+    if (handle + 1 >= list.size() || handle + 1 >= lengths_.size())
+        return;
+    const auto [a, i] = sideOf(handle, true).back();
+    const auto [b, k] = sideOf(handle + 1, false).back();
+    const float both = a->lengths_[i] + b->lengths_[k];
+    if (both <= 0)
+        return;
+    sharing_ = Sharing{list[handle], list[handle + 1], a->lengths_[i] / both};
+    shared_.set(0);
+    shared_.animateTo(scheduler(), 1.0f, context() ? Duration(context()->theme.motion.normal) : Duration(std::chrono::milliseconds(200)),
+                      Easing::InOutCubic);
+    shareStepped();
+}
+
+void Splitter::shareStepped() {
+    if (!sharing_)
+        return;
+    // the two panes still side by side (none removed between them meanwhile)
+    const auto list = panes();
+    const auto at = std::find(list.begin(), list.end(), sharing_->first);
+    if (at == list.end() || at + 1 == list.end() || at[1] != sharing_->second || lengths_.size() != list.size()) {
+        sharing_.reset();
+        shared_.set(0);
+        return;
+    }
+    const auto i = static_cast<std::size_t>(at - list.begin());
+    // the two panes by the handle, in nested splitters maybe: what one gains the other loses, and so do the panes of
+    // the splitters they are in, the others keeping their lengths
+    const auto before = sideOf(i, true);
+    const auto after = sideOf(i + 1, false);
+    const auto [a, ai] = before.back();
+    const auto [b, bi] = after.back();
+    const float both = a->lengths_[ai] + b->lengths_[bi];
+    const float share = sharing_->from + (0.5f - sharing_->from) * shared_.value();
+    const float low = a->minimumOf(*a->panes()[ai]);
+    const float wanted = std::clamp(both * share, low, std::max(low, both - b->minimumOf(*b->panes()[bi])));
+    const float delta = wanted - a->lengths_[ai];
+    for (const auto& [splitter, index] : before)
+        splitter->lengths_[index] += delta;
+    for (const auto& [splitter, index] : after)
+        splitter->lengths_[index] -= delta;
+    // the stretches become the lengths: the proportions stay when the splitters are resized
+    const auto settle = [](Splitter& splitter) {
+        const auto panes = splitter.panes();
+        for (std::size_t p = 0; p < panes.size(); ++p)
+            panes[p]->setStretch(std::max(1.0f, splitter.lengths_[p]));
+    };
+    settle(*this);
+    for (std::size_t n = 1; n < before.size(); ++n)
+        settle(*before[n].first);
+    for (std::size_t n = 1; n < after.size(); ++n)
+        settle(*after[n].first);
+    if (!shared_.running())
+        sharing_.reset();
 }
 
 void Splitter::onHoverChanged(bool hovered) {

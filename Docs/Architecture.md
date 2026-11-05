@@ -339,9 +339,11 @@ line under it (`Bevel`, painted by `paintRaised` and `paintSunken` of `Widgets/B
 The edges of controls are darker than what they are on; one accent: amber (a warm orange) with dark marks on it in the
 dark theme, azure with white ones in the light. What has the focus has an edge of the accent and a soft glow of it
 around (`paintFocusGlow`), both eased in. A check box's box fills with the accent as it is checked, its mark drawn
-stroke by stroke; the item chosen in a menu is in the accent. Corners are 4 dips on controls and 6 on panels. Docked
+stroke by stroke; the item chosen in a menu is in the accent. Everything is square by default: every style's
+`cornerRadius` is the theme's, 0 (a theme of its own rounds them: controls, panels, tabs, scroll thumbs). Docked
 stacks are islands on the window with gaps between them; the tab shown is raised over the bar and joined to its content
-as Fusion's, and a selected row is on a pill of the accent's tint: no bars or lines mark them. Text is 13 dips, tabs 28
+as Fusion's, and a selected row is on the accent's tint (strong enough to stay orange on the dark, not brown): no bars
+mark them. Text is 13 dips, tabs 28
 high. The painter fills and strokes boxes in vertical gradients (`fillRoundedRect(rect, radius, top, bottom)`), with no
 more vertices than a flat box.
 
@@ -383,7 +385,10 @@ Containers:
   - In right to left, the vertical bar is on the left, and the content starts on the right.
 - **`Splitter`** has panes with handles between them. Each pane takes a share of the room by its stretch, and never goes
   below its minimum size. Dragging a handle sets the stretches to the panes' lengths, so a resized splitter keeps its
-  proportions. Side by side panes start on the start side.
+  proportions. A double click on a handle shares the room of the two panes beside it equally, eased (`shareEqually`);
+  a pane that is, or only holds, a splitter the same way gives its pane by the handle, the others keeping theirs, so
+  two docks side by side share their room though they are in nested splits. Side by side panes start on the start
+  side.
 - **`CheckBox`** is a box and its text, toggled by a click or Space. The box is on the start side.
 
 **Only what changed is laid out, only what shows is painted.** `invalidateLayout` marks a widget and its ancestors, not
@@ -405,7 +410,7 @@ its whole height). Rows are all of one height (where a row is, is a product: no 
 widget measures, estimated until it shows, in a Fenwick tree of doubles (where a row starts and which row is at a place,
 in O(log n)); what shows stays in place as estimates are corrected, and a view scrolled to its end stays at it. With a
 million items (or a hundred million), laying out, painting, scrolling a step and jumping to the middle each take less
-than a millisecond (`glw_benchmarks`). A ListView has a current item, selected in Single mode (a pill of the accent's tint), chosen by the mouse and the keys, activated by a double click or Enter; a
+than a millisecond (`glw_benchmarks`). A ListView has a current item, selected in Single mode (on the accent's tint), chosen by the mouse and the keys, activated by a double click or Enter; a
 `StringListModel` shows its texts by itself.
 
 A `TreeView` is a ListView of the nodes that show: the top level's and, in order, the children of those expanded (an
@@ -426,7 +431,11 @@ again (by a row for another column) as the table scrolls down or across. A deleg
 (`cellKind(column)`: cells of one kind show any column of it, so a column of check boxes beside columns of texts is
 reused as such) and shows a cell in it (`bindCell(widget, row, column)`); `TableTextDelegate` shows texts. Columns are
 as wide as set (the theme's until then), where each starts summed once when one changes; the last takes the room the
-others leave. Dragging a header's edge resizes its column (the edge lit in the accent color), a click on a header is
+others leave. Dragging a header's edge resizes its column (the edge lit in the accent color); a double click on it
+fits the column to what it shows, eased (`fitColumn`: its header and its widest cell, measured in a cell of its kind
+bound to each row: the rows that show and a thousand more spread across them by the golden ratio, so rows that repeat
+in a period are not all missed; `setFitRows` for more, or all; a tree's first column with its indents and arrows).
+Measuring a cell costs about 10 µs: a fit takes 9 ms, every row of a million 10 s (`glw_benchmarks`). A click on a header is
 told (to sort by it, say: sorting is the model's), and the table scrolls across with its own bar, the wheel turned with
 Shift or tilted, and Left and Right; in right to left the first column is at the right and scrolling goes left. With a
 million rows of a hundred columns (or a hundred million of a thousand), some 190 widgets show it; painting and scrolling
@@ -585,16 +594,16 @@ it), and then only the windows whose widgets an animation changed: each step cal
 widget invalidates its paint. When the last animation ends, the frames stop. A widget does not say when its state
 changes, only what it shows now: `ColorTransition::to(color)` in `paint` eases from what it showed to that color (at
 once the first time). Buttons, check boxes, fields, tool buttons and combo boxes ease to their states' colors for the
-theme's `motion.fast` (83 ms), the glow of the focus for `motion.normal` (167 ms), as a check mark is drawn; a field's caret blinks half a second each way and rests,
+theme's `motion.fast` (100 ms), the glow of the focus for `motion.normal` (200 ms), as a check mark is drawn; a field's caret blinks half a second each way and rests,
 shown, after twenty, so a field no one types in draws nothing. Animations can be turned off (`setAnimationsEnabled`:
 reduced motion; the tests); the tests run on a clock of their own. An engine driving its own roots calls `tick()` before
 it paints and waits as `nextDeadline` says. Measured with `GLW_LOG_FRAMES` (the frames drawn, each second that had some):
-an idle window draws none; a hover draws about five frames (83 ms at 60 Hz) and its tooltip one; a caret two a second for
+an idle window draws none; a hover draws about six frames (100 ms at 60 Hz) and its tooltip one; a caret two a second for
 ten seconds, then none.
 
 A `CollapsiblePanel` (`Widgets/CollapsiblePanel.hpp`) is a header over a column of content that opens and closes, as the
 sections of a details panel do. Its height eases between the header's and the header's with all of its content (the
-theme's `motion.slow`, 250 ms, in and out), its content laid out at its full height and cut to what shows, the header's
+theme's `motion.slow`, 300 ms, in and out), its content laid out at its full height and cut to what shows, the header's
 arrow turning with it; so the widgets under it move with it, laid out again at each step. Closed all the way, its content
 is hidden (not painted, not under the mouse, not in the order of the focus); the focus in it goes to the header as it
 closes. A click on the header, Enter or Space toggle it, Right and Left open and close it (mirrored in right to left);
@@ -706,7 +715,7 @@ In a dock area:
 - **A tab's menu** (the right button on it): Float (or Dock, in a floating window; with a docking host), Hide the tab bar,
   Close (when the panel can be closed).
 - **A stack of one panel can hide its tab bar** (by its tab's menu, `DockTabs::setTabBarHidden`), as Unreal Engine's "hide
-  tab well": the bar slides up out of the stack (the theme's normal motion, 167 ms) and the panel takes all of it; a little
+  tab well": the bar slides up out of the stack (the theme's normal motion, 200 ms) and the panel takes all of it; a little
   triangle in its start corner shows the bar again, sliding back. It comes back by itself when another panel joins the
   stack; a floating window keeps its bar, which is its title. Saved layouts keep it.
 - **`addPanel(panel, nextTo, side, share)`** builds a layout in code: beside a stack on its Start, End, Top or Bottom

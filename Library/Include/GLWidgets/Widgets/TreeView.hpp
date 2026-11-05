@@ -88,6 +88,9 @@ public:
     // ---- columns ----
     float columnWidth(std::size_t column) const { return table_->columnWidth(column); }
     void setColumnWidth(std::size_t column, float width) { table_->setColumnWidth(column, width); }
+    // As wide as its header and the cells of the nodes that show need (the first one's indents and arrows with them),
+    // eased there; a double click on its header's edge does it.
+    void fitColumn(std::size_t column) { table_->fitColumn(column); }
     // Its header: shown when it has several columns, or a title for its one (true by default); hidden at will.
     void setHeaderVisible(bool visible);
     bool headerVisible() const { return headerVisible_; }

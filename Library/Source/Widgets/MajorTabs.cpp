@@ -69,13 +69,13 @@ protected:
         const VisualState state{.hovered = hovered(), .pressed = pressed_ && hovered()};
         // rounded at the top only: the bottom corners go below the tab and are cut
         p.pushClip(r);
-        p.fillRoundedRect({0, 0, r.width, r.height + s.cornerRadius}, s.cornerRadius, active_ ? s.active : s.background.resolve(state));
+        p.fillRoundedRect({0, 0, r.width, r.height + std::max(s.cornerRadius, 1.0f)}, s.cornerRadius, active_ ? s.active : s.background.resolve(state));
         p.popClip();
         label_->setColor(active_ ? s.text : s.mutedText);
         if (closable_ && (hovered() || active_)) {
             const Rect c = closeRect();
             if (closeHovered_)
-                p.fillRoundedRect(c, 4, context.ui.theme.palette.hover);
+                p.fillRoundedRect(c, s.cornerRadius, context.ui.theme.palette.hover);
             const Point m = c.center();
             p.drawLine({m.x - 4, m.y - 4}, {m.x + 4, m.y + 4}, 1.2f, s.text);
             p.drawLine({m.x - 4, m.y + 4}, {m.x + 4, m.y - 4}, 1.2f, s.text);
@@ -182,7 +182,7 @@ protected:
     void paint(PaintContext& context) override {
         const Rect r{0, 0, size().width, size().height};
         if (hovered())
-            context.painter.fillRoundedRect(r, 6, pressed_ ? context.ui.theme.palette.pressed : context.ui.theme.palette.hover);
+            context.painter.fillRoundedRect(r, context.ui.theme.majorTab.cornerRadius, pressed_ ? context.ui.theme.palette.pressed : context.ui.theme.palette.hover);
         const Point c = r.center();
         const Color color = context.ui.theme.palette.text;
         context.painter.drawLine({c.x - 6, c.y}, {c.x + 6, c.y}, 1.4f, color);
