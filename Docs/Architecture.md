@@ -665,7 +665,8 @@ Two kinds of tabs, as in Slate:
 - **Major tabs** are documents or workspaces: a script, a level, a chart sheet. They live only in the tab strip at the top
   of a window, which is the window's title bar, as in Chrome or Firefox. Dragging a major tab out of its strip makes a new
   window with it. Dropping it on another window's strip moves it there. Dragging the only tab of a window drags the window,
-  so windows merge and split by their tabs.
+  and so does dragging a window by its strip, all its tabs merging into the strip it is dropped on: windows merge and
+  split by their tabs.
 - **Panel tabs** are tools: a node palette, a property inspector, an output log. They dock inside the content area of a
   major tab, in a tree of splits and tab stacks. Dragged out, a panel tab floats in a panel window: a window with a dock
   area of its own, where more panel tabs can be docked. It has no title bar apart from its tabs: the tab bars along its
@@ -742,7 +743,11 @@ The tests use a host of their own, with windows that are only roots at places of
   strip, it goes there and that window comes to the front. Let go anywhere else, it opens in a window of its own where
   it was let go, with a strip and the same handlers (they are given the `MajorTabs` they are for, so + adds to the right
   window). The only tab of a window drags the window instead, and let go over another window's strip, merges it into
-  that window. A window left without tabs closes.
+  that window. So does a window dragged by its strip where it has no tab: let go over another window's strip, all its
+  tabs go there in order, the one it showed shown, and it closes. The strip is the system's caption still (snapped to
+  the screen's edges, maximized by a double click) where nothing could take it: in the gap above its tabs, in a
+  maximized window, and while no other window has a strip; elsewhere it moves the window itself
+  (`Widget::windowAreaAt`), and maximizes it by a double click as the caption does. A window left without tabs closes.
 - **A panel tab** dragged out of its stack's tab bar (by more than a little above or below it) floats at once, as in
   Visual Studio and Unreal Engine, even over its own dock area: its panel goes into a tool window above its area's
   window, with a `DockArea` of its own, and the drag goes on with that window, which follows the mouse. Let go on a

@@ -29,7 +29,7 @@ WindowButton::WindowButton(WindowButtonKind kind) : kind_(kind) {}
 
 Size WindowButton::measureContent(Size) {
     const UiContext* ui = context();
-    return ui ? Size{ui->theme.windowButton.width, ui->theme.titleBar.height} : Size{46, 40};
+    return ui ? Size{ui->theme.windowButton.width, ui->theme.titleBar.height} : Size{46, 32};
 }
 
 void WindowButton::onHoverChanged(bool) {
@@ -158,7 +158,7 @@ Size TitleBar::measureContent(Size available) {
     const Size start = start_->measure({std::max(0.0f, available.width - buttons.width), available.height});
     const Insets m = center_->margin();
     const Size center = center_->measure({std::max(0.0f, available.width - buttons.width - start.width - m.horizontal()), available.height});
-    const float height = std::max({ui ? ui->theme.titleBar.height : 40.0f, buttons.height, start.height, center.height + m.vertical()});
+    const float height = std::max({ui ? ui->theme.titleBar.height : 32.0f, buttons.height, start.height, center.height + m.vertical()});
     return {buttons.width + start.width + center.width + m.horizontal(), height};
 }
 

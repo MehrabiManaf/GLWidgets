@@ -9,7 +9,7 @@
 // share it equally.
 //
 // Across windows: a script's tab dragged out of the title bar opens in a window of its own, and dropped on another
-// window's title bar goes there. A panel's tab dragged out of its stack's tab bar floats at once, in a window of its own
+// window's title bar goes there; a window dragged by its title bar onto another's merges into it, all its scripts. A panel's tab dragged out of its stack's tab bar floats at once, in a window of its own
 // that follows the mouse; that window, dragged by its tab or by its title, docks where it is let go on a guide. The button
 // at the end of a stack's tab bar floats its panel (docks it back, in a floating window); the Search panel has one more,
 // which clears its field. Tabs that do not fit scroll: by the wheel, or by the thin bar along their bottom.
@@ -60,8 +60,8 @@ constexpr const char* persianCatalog = R"({
     "The graph of script {n}": "گراف اسکریپت {n}",
     "Drag a tab onto another stack's tabs, or onto the middle guide it shows, to join them; onto a guide around it to split the stack. Drag the line between two stacks to share their room, or double-click it to share it equally. The + in the title bar adds a script.":
       "یک تب را روی تب‌های پشته‌ای دیگر، یا روی راهنمای وسطی که آن پشته نشان می‌دهد، بکشید تا به آن بپیوندد؛ روی یکی از راهنماهای اطراف آن بکشید تا پشته را تقسیم کند. خط میان دو پشته را بکشید تا جایشان را جابه‌جا کنید، یا روی آن دوبار کلیک کنید تا جا به‌طور مساوی میانشان تقسیم شود. + در نوار عنوان یک اسکریپت می‌افزاید.",
-    "Drag a tab out of its tab bar to float it, and a floating window by its tab or its title onto a guide to dock it. Drag a script's tab out of the title bar to open it in a window of its own.":
-      "یک تب را از نوار تب‌هایش بیرون بکشید تا شناور شود، و یک پنجره‌ی شناور را با تب یا عنوانش روی یک راهنما بکشید تا داک شود. تب یک اسکریپت را از نوار عنوان بیرون بکشید تا در پنجره‌ای جدا باز شود.",
+    "Drag a tab out of its tab bar to float it, and a floating window by its tab or its title onto a guide to dock it. Drag a script's tab out of the title bar to open it in a window of its own, and a window by its title bar onto another's to merge them.":
+      "یک تب را از نوار تب‌هایش بیرون بکشید تا شناور شود، و یک پنجره‌ی شناور را با تب یا عنوانش روی یک راهنما بکشید تا داک شود. تب یک اسکریپت را از نوار عنوان بیرون بکشید تا در پنجره‌ای جدا باز شود، و یک پنجره را با نوار عنوانش روی نوار عنوان پنجره‌ای دیگر بکشید تا یکی شوند.",
     "Files": "فایل‌ها",
     "Log": "گزارش",
     "Opened {file}.": "{file} باز شد.",
@@ -142,7 +142,7 @@ struct Studio {
                                            .wrap = true}),
                                 ui::Label({.text = tr("Drag a tab out of its tab bar to float it, and a floating window by its tab or its title "
                                                       "onto a guide to dock it. Drag a script's tab out of the title bar to open it in a window "
-                                                      "of its own."),
+                                                      "of its own, and a window by its title bar onto another's to merge them."),
                                            .muted = true,
                                            .wrap = true}))
                          .padding(glw::Insets::all(24));

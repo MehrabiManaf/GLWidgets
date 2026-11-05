@@ -172,7 +172,7 @@ Theme Theme::fromPalette(const Palette& p) {
     t.toolBar.separator = withAlpha(p.text, 0.12f);
     t.toolBar.button = {.normal = clear, .hovered = withAlpha(lit(p.surface, dark ? 0.0f : 0.5f), dark ? 0.85f : 0.9f),
                         .pressed = withAlpha(lit(p.surface, -0.06f), 0.85f)};
-    t.toolBar.checked = withAlpha(p.accent, dark ? 0.30f : 0.20f);
+    t.toolBar.checked = withAlpha(p.accent, dark ? 0.58f : 0.20f);   // as a selected row: orange on the dark, not brown
     t.toolBar.outline = withAlpha(black, dark ? 0.45f : 0.20f);
     t.toolBar.bevel = {.gradient = raised.gradient, .highlight = raised.highlight, .shadow = withAlpha(black, dark ? 0.25f : 0.08f)};
     t.toolBar.icon = p.text;

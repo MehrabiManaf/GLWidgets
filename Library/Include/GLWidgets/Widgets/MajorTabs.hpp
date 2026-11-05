@@ -8,7 +8,9 @@
 // Across windows (with a DockingHost: Application): a tab dragged out of its strip goes into a new window of its own;
 // dropped on another window's strip, it goes there. Dragging the only tab of a window drags the window, and dropping it on
 // another window's strip merges them (it is seen through while it moves, the strip under it showing where its tab would
-// go). Where a tab would open a window, an outline shows it. A window left without tabs closes. The new windows' MajorTabs have the same
+// go). So does dragging a window by its strip where it has no tab, when there is another window's strip to drop it on:
+// all its tabs go there, in order, the one it showed shown (else, and above its tabs, and a maximized window, the system
+// drags it: snapped to the screen's edges). Where a tab would open a window, an outline shows it. A window left without tabs closes. The new windows' MajorTabs have the same
 // handlers, which are given the MajorTabs they are for. When the MajorTabs is the center of a window's dock area (of its
 // global panels, Docking.hpp), a new window gets one of the same group around its MajorTabs.
 //
@@ -97,19 +99,26 @@ public:
     MajorTabs* tabs() const { return tabs_; }
 
     // ---- what its tabs call ----
-    void beginDrag(std::size_t index);
+    // `wholeWindow`: the window is dragged by the strip, all its tabs with it.
+    void beginDrag(std::size_t index, bool wholeWindow = false);
     void dragTo(Point point);           // the root's coordinates
     void endDrag(Point point);
     void close(std::size_t index);      // a tab's ×: after the event
     void newTab();                      // the +: after the event
 
+    // Where it has no tab (below its gap at the top), it drags the window itself, to merge it into another window: when
+    // there is another window with a strip, and this one is not maximized; else the system does.
+    platform::HitArea windowAreaAt(Point point) const override;
+
 protected:
     void paintOver(PaintContext& context) override;
     void onRootChanged() override;
     void onStyleChanged() override;
+    void onMouse(MouseEvent& event) override;
 
 private:
     friend class MajorTabs;
+    bool mergesByDrag() const;
     void rebuild();
     void refreshActive();               // the tabs told which one is shown, in place (one may be in its own handler)
     // Where a tab dropped at `point` would go: an index from 0 to the number of tabs, and its x on the strip.
@@ -123,7 +132,10 @@ private:
     MajorTabs* tabs_;
     Widget* row_ = nullptr;
     std::optional<std::size_t> dragging_;
-    bool movingWindow_ = false;         // the only tab dragged: the window follows the mouse
+    bool movingWindow_ = false;         // the only tab dragged, or the strip: the window follows the mouse
+    bool wholeWindow_ = false;          // ... by the strip: all its tabs go where it is dropped
+    bool windowPressed_ = false;        // the strip pressed where it has no tab
+    Point pressPoint_;                  // ... there (the root's)
     Point grab_;                        // the mouse on the screen less the window's position, while it moves
     MajorTabStrip* target_ = nullptr;
     Point targetPoint_;                 // in the target's root

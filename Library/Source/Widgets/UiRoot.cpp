@@ -321,7 +321,7 @@ platform::HitArea UiRoot::windowHitTest(Point point) const {
     if (const auto area = content_->frameHitArea(content_->mapFromRoot(point)))
         return *area;
     const Widget* widget = widgetAt(point);
-    return widget ? widget->windowArea_ : platform::HitArea::Client;
+    return widget ? widget->windowAreaAt(widget->mapFromRoot(point)) : platform::HitArea::Client;
 }
 
 std::vector<Widget*> UiRoot::pathTo(Widget* target) const {

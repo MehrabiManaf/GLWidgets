@@ -222,6 +222,9 @@ public:
     // What it is for the window when it is under the mouse: Caption for what drags a borderless window.
     void setWindowArea(platform::HitArea area) { windowArea_ = area; }
     platform::HitArea windowArea() const { return windowArea_; }
+    // ... at `point` (its coordinates), now: its window area by default (a tab strip: the system drags the window by it,
+    // or it does).
+    virtual platform::HitArea windowAreaAt(Point point) const { return windowArea_; }
 
     // The pointer's shape over it, and over its children that have none: none by default, its parent's (the arrow at the
     // top). A widget whose parts differ (a splitter's handles) says so in cursorAt.

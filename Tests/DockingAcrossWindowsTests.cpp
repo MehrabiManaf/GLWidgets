@@ -314,6 +314,41 @@ TEST(windowDraggedByItsOnlyTabMerges) {
           (titles(*b.tabs) == std::vector<std::string>{"three", "one", "four"}));
 }
 
+TEST(windowDraggedByItsStripMergesAllItsTabs) {
+    Screen screen;
+    Documents a(screen, {0, 0}, {"one", "two"});
+    a.tabs->setActive(1);
+    screen.layout();
+    // alone, its strip is the system's caption (snapped to the screen's edges); with another window's strip to drop it
+    // on, below the gap at its top, its own
+    const Point empty = majorTab(screen, *a.tabs, 1) + Point{200, 0};
+    CHECK(a.window->root->windowHitTest(empty - a.window->position) == platform::HitArea::Caption);
+    Documents b(screen, {1000, 0}, {"three"});
+    screen.layout();
+    CHECK(a.window->root->windowHitTest(empty - a.window->position) == platform::HitArea::Client);
+    CHECK(a.window->root->windowHitTest({empty.x - a.window->position.x, 1}) != platform::HitArea::Client);
+    // a double click: maximized, as the caption does
+    a.window->root->dispatch(platform::MouseButtonChanged{1, platform::MouseButton::Left, true, 2, empty - a.window->position});
+    a.window->root->dispatch(platform::MouseButtonChanged{1, platform::MouseButton::Left, false, 2, empty - a.window->position});
+    CHECK(a.window->host.toggled == 1);
+
+    // dragged by it: the window follows the mouse, seen through
+    screen.press(*a.window, empty);
+    screen.moveTo(*a.window, {empty.x + 10, empty.y});
+    screen.moveTo(*a.window, {empty.x + 100, empty.y + 50});
+    CHECK(a.window->position.x == 90 && a.window->position.y == 50 && a.window->opacity < 1);
+    // let go over b's strip: all its tabs go there in order, the one it showed shown; the window closes
+    const Point onto = majorTab(screen, *b.tabs, 0) + Point{60, 0};
+    screen.moveTo(*a.window, onto);
+    screen.release(*a.window, onto);
+    screen.closeWindows();
+    screen.layout();
+    CHECK(screen.all.size() == 1);
+    CHECK((titles(*b.tabs) == std::vector<std::string>{"three", "one", "two"}));
+    CHECK(b.tabs->active() == 2 && b.tabs->content(2)->visible());
+    CHECK(screen.captures == 0);
+}
+
 TEST(majorTabTornOffIntoANewWindow) {
     Screen screen;
     Documents a(screen, {0, 0}, {"one", "two", "three"});

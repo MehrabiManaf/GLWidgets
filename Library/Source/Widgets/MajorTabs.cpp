@@ -35,6 +35,19 @@ MajorTabStrip* stripAt(const UiRoot& root, Point point) {
     return nullptr;
 }
 
+// Whether there is a tab strip in `widget`, at most `depth` levels down (a window's title bar holds it).
+bool holdsStrip(const Widget& widget, int depth) {
+    if (const auto* strip = dynamic_cast<const MajorTabStrip*>(&widget))
+        return strip->tabs() != nullptr;
+    if (depth == 0)
+        return false;
+    for (const auto& child : widget.children()) {
+        if (child->visible() && holdsStrip(*child, depth - 1))
+            return true;
+    }
+    return false;
+}
+
 void later(const Widget& widget, std::function<void()> call) {
     if (UiRoot* r = widget.root())
         r->defer(std::move(call));
@@ -352,7 +365,7 @@ void MajorTabStrip::onRootChanged() {
 
 void MajorTabStrip::onStyleChanged() {
     const UiContext* ui = context();
-    const float gap = ui ? ui->theme.majorTab.topGap : 6.0f;
+    const float gap = ui ? ui->theme.majorTab.topGap : 4.0f;
     setPadding({8, gap, 8, 0});
 }
 
@@ -409,13 +422,74 @@ std::pair<std::size_t, float> MajorTabStrip::slotAt(Point point) const {
     return {slot, row_->bounds().x + (afterLast ? endEdge : startEdge)};
 }
 
-void MajorTabStrip::beginDrag(std::size_t index) {
+bool MajorTabStrip::mergesByDrag() const {
+    const UiRoot* r = root();
+    DockingHost* host = dockingOf(*this);
+    if (!r || !host || !host->placesWindows() || !tabs_ || tabs_->count() == 0)
+        return false;
+    if (r->host() && r->host()->windowState() == platform::WindowState::Maximized)
+        return false;
+    for (const UiRoot* other : host->windows()) {
+        if (other != r && !host->closing(*other) && other->content() && holdsStrip(*other->content(), 3))
+            return true;
+    }
+    return false;
+}
+
+platform::HitArea MajorTabStrip::windowAreaAt(Point point) const {
+    return point.y >= padding().top && mergesByDrag() ? platform::HitArea::Client : platform::HitArea::Caption;
+}
+
+void MajorTabStrip::onMouse(MouseEvent& event) {
+    // where it has no tab: the window dragged by it (when the system does not: windowAreaAt)
+    switch (event.type) {
+    case MouseEventType::Press:
+        if (event.button != platform::MouseButton::Left)
+            return;
+        event.handled = true;
+        if (event.clicks == 2) {
+            // as the system's caption: maximized, or restored
+            if (UiRoot* r = root(); r && r->host())
+                r->host()->toggleMaximizeWindow();
+            return;
+        }
+        if (tabs_ && tabs_->count() > 0) {
+            windowPressed_ = true;
+            pressPoint_ = mapToRoot(event.position);
+        }
+        break;
+    case MouseEventType::Move: {
+        if (!windowPressed_)
+            return;
+        event.handled = true;
+        const Point at = mapToRoot(event.position);
+        const Point moved = at - pressPoint_;
+        if (!dragging_ && std::hypot(moved.x, moved.y) > dragThreshold && tabs_ && tabs_->count() > 0)
+            beginDrag(tabs_->active(), true);
+        if (dragging_)
+            dragTo(at);
+        break;
+    }
+    case MouseEventType::Release:
+        if (event.button != platform::MouseButton::Left || !std::exchange(windowPressed_, false))
+            return;
+        event.handled = true;
+        if (dragging_)
+            endDrag(mapToRoot(event.position));
+        break;
+    case MouseEventType::Wheel:
+        break;
+    }
+}
+
+void MajorTabStrip::beginDrag(std::size_t index, bool wholeWindow) {
     dragging_ = index;
     const UiRoot* r = root();
     DockingHost* host = dockingOf(*this);
-    // the only tab of a window drags the window (not a maximized one, which stays where it is)
-    movingWindow_ = host && host->placesWindows() && r && tabs_ && tabs_->count() == 1 &&
+    // the only tab of a window, or the strip, drags the window (not a maximized one, which stays where it is)
+    movingWindow_ = host && host->placesWindows() && r && tabs_ && (wholeWindow || tabs_->count() == 1) &&
                     !(r->host() && r->host()->windowState() == platform::WindowState::Maximized);
+    wholeWindow_ = wholeWindow && movingWindow_;
     if (host) {
         host->captureMouse(true);
         if (movingWindow_) {
@@ -485,8 +559,10 @@ void MajorTabStrip::endDrag(Point point) {
     MajorTabStrip* target = target_;
     const Point at = targetPoint_;
     const bool moved = movingWindow_;
+    const bool whole = wholeWindow_;
     dragging_.reset();
     movingWindow_ = false;
+    wholeWindow_ = false;
     setTarget(nullptr, {});
     UiRoot* r = root();
     DockingHost* host = dockingOf(*this);
@@ -511,6 +587,31 @@ void MajorTabStrip::endDrag(Point point) {
     }
     if (!host)
         return;
+    if (target && whole) {
+        // all of them into another window's strip, in order, the one shown here shown there; this window goes
+        MajorTabs* into = target->tabs_;
+        const std::size_t slot = target->slotAt(at).first;
+        later(*this, [tabs = tabs_, into, slot, host, r] {
+            if (!tabs || !into)
+                return;
+            const std::size_t shown = tabs->active();
+            std::size_t place = std::min(slot, into->count());
+            for (std::size_t i = 0; tabs->count() > 0; ++i, ++place) {
+                LocalizedText title = tabs->title(0);
+                const bool closable = tabs->closable(0);
+                std::string id = tabs->tabId(0);
+                std::unique_ptr<Widget> content = tabs->removeTab(0);
+                into->insertTab(place, std::move(title), std::move(content), closable);
+                into->setTabId(place, std::move(id));
+                if (i == shown)
+                    into->setActive(place);
+            }
+            if (const UiRoot* intoRoot = into->root())
+                host->raiseWindow(*intoRoot);
+            host->closeWindow(*r);
+        });
+        return;
+    }
     if (target) {
         // into another window's strip; this window goes when it has no tab left
         MajorTabs* into = target->tabs_;

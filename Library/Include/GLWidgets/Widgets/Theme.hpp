@@ -190,7 +190,7 @@ struct MajorTabStyle {
     float minimumWidth = 90;
     float maximumWidth = 220;
     float cornerRadius = 0;
-    float topGap = 6;               // above the tabs: the caption, to drag the window by
+    float topGap = 4;               // above the tabs: the caption, to drag the window by
 };
 
 struct CardStyle {
@@ -318,7 +318,7 @@ struct CanvasStyle {
 struct TitleBarStyle {
     Color background;
     Color title;
-    float height = 38;
+    float height = 32;              // as the system's caption (its buttons as high)
 };
 
 struct WindowButtonStyle {
