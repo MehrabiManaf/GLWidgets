@@ -13,7 +13,8 @@ The project has just started. Windows (with chrome of their own, redrawn while t
 right-to-left mirroring), themes and translations work, with the basic widgets: label, button, check box, text field,
 panel, card, scroll area, splitter; and docking, with major tabs in the title bar: tabs and panels move between
 windows, tear off into windows of their own, and float (on Wayland, where windows are placed by the compositor, within
-their window and into windows of their own). The design,
+their window and into windows of their own); and charts fed live (lines over time, pies, treemaps, stacked bars),
+zoomed and panned, drawn from what shows so that millions of points cost what thousands do. The design,
 and what comes next, is in
 [Docs/Architecture.md](Docs/Architecture.md); the libraries it is built with, and their notices, in
 [Docs/ThirdPartyNotices.md](Docs/ThirdPartyNotices.md).
@@ -59,10 +60,15 @@ Then, in `build/<preset>/bin`:
   strings and comments is shaped in lines that stay left to right. Its menu bar (in the title bar; `--menu-below` puts it
   under it) and toolbar share their actions, with SVG icons and shortcuts. `code_editor FILE` edits a file, `--lines N` adds N
   lines (a million: only what shows is laid out).
+- `chart_demo [--rate N] [--style ...] [--colors ...]` shows charts fed live: CPU, memory and network over the last
+  minute (`--rate` points a second each, ten minutes of history to zoom out and pan into), a donut of shares that drift,
+  stacked bars of each second's counts, a treemap of a project's files (a click goes into a folder, a right click out).
+  The wheel zooms, a drag pans (back to the newest, it follows again), the right button drags a rectangle to zoom into,
+  a double click shows all; a legend's item hides its series.
 - `hello_window` opens two windows drawn by one GPU device.
 - `GLW_LOG_FRAMES=1` makes any of them say how many frames it draws, each second that has some (idle, none), how far
   apart, and how many came late (a refresh missed).
-- `glw_benchmarks` times the widget layer with many widgets (laid out, painted, scrolled, a text changed), without a
+- `glw_benchmarks` times the widget layer with many widgets (laid out, painted, scrolled, a text changed; charts of millions of points), without a
   window: run it from a Release build to compare a change against what was.
 - `paint_demo` opens a borderless window with its own title bar, tabs and window buttons, and shows what the painter
   draws: a chart, shapes, a node canvas (the mouse wheel zooms it), text in Persian and English (drag to select).

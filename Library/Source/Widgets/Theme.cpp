@@ -295,6 +295,8 @@ Theme Theme::of(ColorScheme scheme, ThemeStyle style) {
     case ColorScheme::Light:
         break;
     case ColorScheme::Dusk:
+        t.chart.series = {hex(0xAE8FFF), hex(0xF2A5C2), hex(0x7FD3C4), hex(0xE8B98C), hex(0x8FB3FF), hex(0xE18FDB),
+                          hex(0xEADFA6), hex(0xF28B82), hex(0x9FD08A), hex(0xB5A9C9)};
         e.keyword = hex(0xB99DFF);
         e.type = hex(0x7FD3C4);
         e.string = hex(0xE8B98C);
@@ -304,6 +306,8 @@ Theme Theme::of(ColorScheme scheme, ThemeStyle style) {
         e.function = hex(0xEADFA6);
         break;
     case ColorScheme::Sand:
+        t.chart.series = {hex(0xB5532F), hex(0x24766E), hex(0xC99A2E), hex(0x5F7418), hex(0x7A4C9A), hex(0x3E6FA8),
+                          hex(0x8C3B5A), hex(0x6E8B3D), hex(0x9A7B5B), hex(0x4F5D73)};
         e.keyword = hex(0x9C3B1E);
         e.type = hex(0x24766E);
         e.string = hex(0x5F7418);
@@ -313,6 +317,8 @@ Theme Theme::of(ColorScheme scheme, ThemeStyle style) {
         e.function = hex(0x5A4512);
         break;
     case ColorScheme::Turquoise:
+        t.chart.series = {hex(0xE3B04B), hex(0x4FD1D9), hex(0xF2A08F), hex(0x86ABFF), hex(0x7FE6B0), hex(0xC99CE8),
+                          hex(0xF4DBA6), hex(0xE86A7A), hex(0x5FA8D3), hex(0xA9B4C8)};
         e.keyword = hex(0x86ABFF);
         e.type = hex(0x7FD9EE);
         e.string = hex(0xE9C27A);
@@ -491,6 +497,20 @@ Theme Theme::fromPalette(const Palette& p, ThemeStyle style) {
     t.dialog.border = p.outline;
     t.dialog.scrim = Color{0, 0, 0, 0.40f};
     t.canvas.background = p.window;
+    // charts: grids faint, axes and labels muted; the series' colors after the accent, as bright in the dark as in the
+    // light
+    t.chart.grid = withAlpha(p.text, dark ? 0.075f : 0.085f);
+    t.chart.axis = withAlpha(p.text, dark ? 0.28f : 0.32f);
+    t.chart.text = p.mutedText;
+    t.chart.title = p.text;
+    t.chart.crosshair = withAlpha(p.text, 0.38f);
+    t.chart.selection = withAlpha(p.accent, 0.20f);
+    t.chart.series = dark ? std::array{p.accent, hex(0x4C9BE8), hex(0x5BBF73), hex(0xE8615A), hex(0xA78BFA), hex(0x3FC1C9),
+                                       hex(0xE57AB8), hex(0x9CC655), hex(0xC4976B), hex(0x8E9AAF)}
+                          : std::array{p.accent, hex(0xE07B26), hex(0x2E9E5B), hex(0xD64545), hex(0x7B5CD6), hex(0x1A9BA3),
+                                       hex(0xC2478F), hex(0x7F9A1E), hex(0x9A6B45), hex(0x6B7480)};
+    t.chart.barBevel = {.gradient = dark ? 0.05f : 0.06f, .highlight = withAlpha(white, dark ? 0.07f : 0.35f)};
+    t.chart.barRadius = 0;
     // nodes: a body a layer above the canvas, a header raised (its kind's color), a shadow under them
     t.node.body = p.layer;
     t.node.border = dark ? withAlpha(black, 0.55f) : withAlpha(black, 0.18f);
@@ -615,6 +635,10 @@ Theme Theme::blend(const Theme& a, const Theme& b, float t) {
     panel.shadow = color(from.shadow, to.shadow);
     r.dock.selectedTabHighlight = color(a.dock.selectedTabHighlight, b.dock.selectedTabHighlight);
     r.node.cornerRadius = radius(a.node.cornerRadius, b.node.cornerRadius);
+    for (std::size_t i = 0; i < r.chart.series.size(); ++i)
+        r.chart.series[i] = color(a.chart.series[i], b.chart.series[i]);
+    r.chart.barRadius = radius(a.chart.barRadius, b.chart.barRadius);
+    r.chart.barBevel = bevel(a.chart.barBevel, b.chart.barBevel);
     r.dock.tabBevel = bevel(a.dock.tabBevel, b.dock.tabBevel);
     r.dock.islandBevel = bevel(a.dock.islandBevel, b.dock.islandBevel);
     r.card.bevel = bevel(a.card.bevel, b.card.bevel);
@@ -696,6 +720,8 @@ void Theme::fluid(Theme& t, bool dark) {
         view->headerBevel = raised;
     }
     t.node.cornerRadius = 10;
+    t.chart.barRadius = 4;
+    t.chart.barBevel = {};
     t.node.border = p.border;
     t.node.bevel = raised;
     t.node.shadow = withAlpha(black, dark ? 0.40f : 0.12f);
@@ -763,6 +789,8 @@ void Theme::reliefs(Theme& t, bool dark) {
     t.majorTab.bevel = t.dock.tabBevel;
     t.majorTab.cornerRadius = 6;
     t.node.cornerRadius = 8;
+    t.chart.barRadius = 3;
+    t.chart.barBevel = {.relief = 1.0f, .roundness = 1.5f};
     t.node.bevel = {.relief = 2.2f, .roundness = 3.5f};
     t.node.bodyBevel = {.relief = 1.6f, .roundness = 4};
     t.node.border = withAlpha(black, dark ? 0.45f : 0.15f);
@@ -803,6 +831,8 @@ void Theme::plain(Theme& t) {
     t.itemView.headerBevel = t.table.headerBevel = t.node.bevel = t.node.bodyBevel = {};
     t.node.shadow = clear;
     t.node.cornerRadius = 0;
+    t.chart.barBevel = {};
+    t.chart.barRadius = 0;
     t.node.border = t.palette.outline;
     t.collapsiblePanel.content = t.palette.layer;
     t.collapsiblePanel.border = t.collapsiblePanel.separator = t.palette.outline;

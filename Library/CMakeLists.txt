@@ -13,6 +13,13 @@ add_custom_command(
     VERBATIM)
 
 add_library(GLWidgets ${GLW_LIB_TYPE}
+    Source/Charts/BarChart.cpp
+    Source/Charts/Chart.cpp
+    Source/Charts/ChartAxis.cpp
+    Source/Charts/LineChart.cpp
+    Source/Charts/PieChart.cpp
+    Source/Charts/SeriesBuffer.cpp
+    Source/Charts/TreeMap.cpp
     Source/Core/Assert.cpp
     Source/Core/Error.cpp
     Source/Paint/Painter.cpp

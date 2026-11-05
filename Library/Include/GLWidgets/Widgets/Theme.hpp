@@ -12,6 +12,7 @@
 #include <GLWidgets/Paint/DrawList.hpp>
 #include <GLWidgets/Widgets/Widget.hpp>
 
+#include <array>
 #include <chrono>
 #include <cstdint>
 #include <optional>
@@ -395,6 +396,28 @@ struct NodeStyle {
     float cornerRadius = 8;
 };
 
+// Charts (Charts/*.hpp): their data, axes, labels, legends. The series' colors in order, from the scheme: the first its
+// accent, the others told apart by their hue and as bright on its background; a series, a slice, a tile may have a color
+// of its own.
+struct ChartStyle {
+    Color background{0, 0, 0, 0};   // behind all of it (none: what it is on)
+    Color plot{0, 0, 0, 0};         // behind its plot area
+    Color grid;                     // the lines at its ticks
+    Color axis;                     // the line of an axis
+    Color text;                     // ticks' labels, a legend's
+    Color title;
+    Color crosshair;                // the line at the mouse
+    Color selection;                // a rectangle dragged to zoom into
+    std::array<Color, 10> series;
+    float fontSize = 11;
+    float titleSize = 13;
+    float lineWidth = 1.5f;
+    float areaOpacity = 0.24f;      // an area under its line: of the line's color, this opaque at the top, fading down
+    float barRadius = 2;            // the corners of a bar, of a tile
+    float gap = 2;                  // between tiles, slices, the bars of a stack
+    Bevel barBevel;                 // bars and tiles, raised as the style's controls are
+};
+
 struct CanvasStyle {
     Color background;
     Color grid;                     // its lines, every gridSpacing dips of the canvas
@@ -446,6 +469,7 @@ struct Theme {
     MajorTabStyle majorTab;
     CardStyle card;
     CanvasStyle canvas;
+    ChartStyle chart;
     NodeStyle node;
     MenuStyle menu;
     CollapsiblePanelStyle collapsiblePanel;

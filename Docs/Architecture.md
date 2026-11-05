@@ -163,7 +163,10 @@ for zooming and panning a canvas) and a stack of clip rectangles apply to what i
   shininess, the rim's shadow, the finish: metal, brushed) is the fragment shader's uniform buffer, the Renderer's (`setLighting`, the theme's); an
   engine drawing the draw lists itself pushes it too.
 - **Lines and polygons:** polylines of any width with mitered joins, and convex polygons, tessellated on the CPU with a
-  one-pixel anti-aliasing fringe. This is what charts and node connections are made of.
+  one-pixel anti-aliasing fringe. This is what charts and node connections are made of. For charts also: the area
+  between a line and a level (`fillArea`: a chart's area under its line, in a gradient from the line down), and a sector
+  of a ring (`fillArc`: a slice of a pie or a donut, its sides moved in so that slices side by side are a gap apart
+  all along, a color at its inner radius and another at its outer).
 - **Images:** a texture (by id) on a rectangle, tinted.
 - **Masks:** the red channel of a texture as coverage, in a color. Glyphs are masks of the glyph atlas (see [Text](#text)).
 
@@ -177,10 +180,12 @@ exactly that shader and one pipeline.
 draws it inside the target's pass, one draw call per command. Texture ids are mapped to RHI textures by the renderer; 0 is
 white.
 
-**For charts:** points are mapped from data to dips by the chart, in double precision, before they reach the painter.
-Tens of thousands of points per frame are fine for the tessellated polylines. Beyond that, a draw list will hold *custom
-commands* *(planned, M6)*: a callback that draws with the RHI directly (instanced markers, a line shader over a storage
-buffer of points) in the same pass, between the commands around it. Custom commands exist only when GLWidgets renders the
+**For charts:** points are mapped from data to dips by the chart, in double precision, before they reach the painter, and
+a series of more points than the plot has columns of pixels is drawn as what each column shows (see [Charts](#charts)):
+a frame tessellates a few points for each column whatever the data's size, so a million points or ten million cost what
+a few thousand do. Should a chart ever need to draw every point (a scatter of a million dots), a draw list will hold
+*custom commands* *(planned)*: a callback that draws with the RHI directly (instanced markers, a line shader over a
+storage buffer of points) in the same pass, between the commands around it; they exist only when GLWidgets renders the
 list itself.
 
 ## Embedding *(planned, M6)*
@@ -743,6 +748,75 @@ and text editors show an I-beam over their text (the arrow over a text editor's 
 stacks' gaps a resize shape along their direction, a table header's edges left and right, a canvas being panned the move
 shape, the edges of a borderless window the resize shapes of its sides and corners. A disabled widget shows its parent's.
 
+### Charts
+
+Charts (`Library/Include/GLWidgets/Charts`) are widgets made for data that changes as it comes: a feed of measures, of
+events, of shares. Four for now: **lines** over values or time (`LineChart`), **pies** and donuts (`PieChart`),
+**treemaps** (`TreeMap`), and **bars**, stacked, grouped or in percent, standing or lying (`BarChart`). What they share
+is in `Chart`:
+
+- **The theme.** `ChartStyle` (`Theme::chart`): the grid, the axes, the labels, the crosshair; ten series colors from the
+  color scheme, the accent first, the others told apart by hue and as bright (Dusk, Sand and Turquoise have their own);
+  bars and tiles raised as the style's controls are (`barBevel`, `barRadius`: lit from above in Studio, rounded and flat
+  in Fluid, square and flat in Plain, reliefs in Plastic and Metal; a pie's slices darker toward the center there).
+  A chart may have its own (`setStyle`).
+- **Motion, optional.** New data, a new view, a series hidden are eased to (the theme's motions; none in Plain; none when
+  `setAnimated(false)`): the axes glide as data comes, bars grow to their new lengths, slices to their new angles, tiles
+  from where they were. A change while one is on its way goes on from where it shows, so that data coming at any rate
+  moves smoothly rather than jumping.
+- **Room.** A chart takes the room it gets and uses all of it: its axes as wide as their labels, as many ticks as their
+  labels fit (round values, 1, 2 or 5 times a power of ten; round local times: every 5 seconds, quarter of an hour, at
+  midnight, on the first of a month: `niceTicks`, `timeTicks`), its legend in as many rows as it needs, a pie as large as
+  its square, tiles squarified.
+- **A title, a legend** (a click on an item hides its series, slice or group, eased, and shows it again), **a tooltip** by
+  the mouse (the values under it, with their colors).
+
+**Live data.** A line series keeps its points in a `SeriesBuffer`: appended at the end in constant time, the oldest
+dropped past a capacity, in chunks of 64 points, each chunk's lowest and highest x and y in an array beside them. Where
+an x is is found by halves (by steps that double from where the last search ended, for the columns of a plot one after
+another), and the lowest and highest y between two points with the chunks between seen whole. A change only marks the
+chart to be painted; once a frame, the chart makes what shows of what of its data shows: the points in its view (by
+halves, x sorted), and when there are more of them than columns of pixels, each column as what it shows: a stroke from
+its lowest to its highest, and a line on through its first and last points (always forward: a line turning back on
+itself would be pinched to nothing at the turn). It looks as all the points would, and costs as much for ten million as
+for a thousand: 1.3 ms a frame for a million points, 2.7 ms for ten million, 5.4 ms for four series of a million, a
+thousand more appended to each every frame (`glw_benchmarks`, a Release build, 1280 x 720).
+
+**Lines** (`LineChart`, `LineSeries`): an x axis of values or of time (seconds since 1970, `chartTime`; labels in local
+time); a series a line, an area fading down under it, steps, dots when its points are far apart; a gap where y is NaN.
+It shows all of its data, or its last `window` of x, following what comes (a live chart); its y axis fitted to what
+shows (ending on its ticks; with 0 if asked), or a range of its own. The wheel zooms x at the mouse (a live chart: its
+window, still following), with Ctrl y; with Shift it pans. A drag pans: a live chart stops following, and follows again
+when dragged back to its newest data. The right button drags a rectangle to zoom into; a double click shows what it
+showed first. The mouse over it shows a line at the nearest x, a dot on each series there, and their values. Its y axis
+is on the start side; x grows to the right in either direction, as time does on a clock's chart.
+
+**Pies** (`PieChart`): slices of a circle or of a ring (`hole`), a gap apart all along (`ChartStyle::gap`), each with its
+share in it where it fits; a donut's hole shows the total, or the value of the slice under the mouse, which comes out a
+little. The first time it shows, its slices sweep around into place.
+
+**Treemaps** (`TreeMap`): nodes as rectangles as large as their share of their parent, squarified (Bruls, Huizing and
+van Wijk: as near to squares as they can be), a few levels at once (a node with children: its name along its top, its
+children in it). The top level takes the series colors, their children shades of them. Zooming is going into a node: a
+click on a tile with children, or the wheel turned in over it, makes it fill the chart, its tiles growing out of where
+they were; the path to it shows along the top, each name a way back there; a right click, Backspace or the wheel turned
+out goes up a level. New data is eased to, each tile from where it was (tiles matched by the names on their paths).
+
+**Bars** (`BarChart`): series' values in categories, stacked (the negative ones below 0), grouped, or in percent of each
+category's whole; standing, or lying (categories down the side). Categories may come as they happen
+(`appendCategory`), the oldest dropped past a capacity; a live chart shows its last `window` of them and scrolls on
+smoothly as one comes (categories counted from the first ever appended, so that the view moves rather than the bars).
+The wheel zooms along the categories, a drag pans them, a double click shows what it showed first; the value axis is
+fitted to what shows. A series hidden shrinks out of the stacks.
+
+`chart_demo` shows the four, fed live: three series at 200 points a second each over a minute (and ten minutes of
+history to pan into), shares that drift, a second's counts appended every second, a project's files changing now and
+then; the style, the colors, the motion and the bars' layout chosen above them.
+
+Still to come: more kinds (scatter, area stacked, candlesticks, histograms, heat maps, gauges), logarithmic axes, a
+second y axis, Persian digits and the Solar Hijri calendar on axes (with the `Locale` of
+[Localization](#localization-and-right-to-left)).
+
 Still to come in the widget core: the native extras of the chrome (Windows 11 shadow, rounded corners and snap layouts).
 
 ## Docking
@@ -993,7 +1067,7 @@ The `GLW_USE_SYSTEM_SDL3` option uses an installed SDL3 instead of the pinned re
 | M3 | Widget core: tree, events, focus, layout, a UI root independent of the platform, window chrome as widgets (with the native extras), live resize | Done, apart from the native extras of the chrome and what is listed in [Widgets](#widgets) |
 | M4 | Basic widgets (label, button, line edit, scroll area, splitter), styles, `LocalizedText` and catalogs, right-to-left layouts | Done, apart from plural rules and the formatting of numbers and dates (see [Localization](#localization-and-right-to-left)) |
 | M5 | Docking: major and panel tabs, windows merging and splitting by their tabs, both modes, layout persistence | Done: docking in a window, major tabs and saved layouts (M5a), across windows in the full mode (M5b), global panels, saved workspaces and Wayland's restricted mode (M5c). Wayland's drag-and-drop between windows, and keeping restored windows on the screens there are, later; the restricted mode not yet run on Wayland |
-| M6 | Validation: a node canvas and a code editor (FlowGraph), a chart widget with custom commands, an engine embedding example | In progress: the node canvas (`Canvas`, `node_editor`), menus, popups and dialogs, the code editor (`TextEdit`, `code_editor`) |
+| M6 | Validation: a node canvas and a code editor (FlowGraph), charts, an engine embedding example | In progress: the node canvas (`Canvas`, `node_editor`), menus, popups and dialogs, the code editor (`TextEdit`, `code_editor`), charts (lines, pies, treemaps, bars: `chart_demo`) |
 
 ## Open questions
 

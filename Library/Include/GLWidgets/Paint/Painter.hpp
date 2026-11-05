@@ -55,6 +55,18 @@ public:
     void drawBezier(Point from, Point c1, Point c2, Point to, float width, Color color);
     // A convex polygon, its points in order (either direction).
     void fillConvexPolygon(std::span<const Point> points, Color color);
+    // The area between a line through `points` (left to right) and the level `baseline` (a y): a chart's area under its
+    // line. `far` where the line is farthest from the baseline, `near` at the baseline, eased between. Its edge along the
+    // line has a fringe; its sides and the baseline none (what is beside it, a line over it, covers them).
+    void fillArea(std::span<const Point> points, float baseline, Color far, Color near);
+    // A sector of a ring (a slice of a pie, of a donut): around `center` from the radius `inner` (0: to the center) to
+    // `outer`, from the angle `start` over `sweep` (radians: 0 to the right, growing clockwise as y goes down). Its two
+    // sides are moved in by `inset` dips each, parallel: sectors side by side `2 * inset` apart all along. `innerColor` at
+    // the inner radius, `outerColor` at the outer, eased between. A whole turn is a ring, without sides.
+    void fillArc(Point center, float inner, float outer, float start, float sweep, float inset, Color innerColor, Color outerColor);
+    void fillArc(Point center, float inner, float outer, float start, float sweep, float inset, Color color) {
+        fillArc(center, inner, outer, start, sweep, inset, color, color);
+    }
 
     // ---- images ----
 

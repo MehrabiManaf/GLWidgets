@@ -4,6 +4,9 @@
 // scrolled, one text changed. No window and no GPU: a root, its draw list, as an engine would have them.
 //
 //   glw_benchmarks [--count N]...     (1000, 10000 and 100000 labels by default)
+#include <GLWidgets/Charts/BarChart.hpp>
+#include <GLWidgets/Charts/LineChart.hpp>
+#include <GLWidgets/Charts/TreeMap.hpp>
 #include <GLWidgets/Paint/DrawList.hpp>
 #include <GLWidgets/Text/Font.hpp>
 #include <GLWidgets/Text/GlyphAtlas.hpp>
@@ -26,6 +29,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <deque>
+#include <random>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -502,6 +506,89 @@ void nodesOnACanvas(glw::UiContext& ui, int count) {
                 drawn.vertices.size());
 }
 
+// A line chart of `series` series of `count` points each (a noisy signal, x sorted): filled, painted all of it, zoomed to
+// a tenth, then live (a thousand points appended to each, a frame).
+void pointsInALineChart(glw::UiContext& ui, std::size_t count, int series) {
+    glw::UiRoot root(ui);
+    root.setSize({1280, 720});
+    auto made = std::make_unique<glw::LineChart>();
+    glw::LineChart& chart = *made;
+    root.setContent(std::move(made));
+    std::vector<glw::LineSeries*> lines;
+    for (int i = 0; i < series; ++i)
+        lines.push_back(&chart.addSeries({.name = "s" + std::to_string(i), .area = i == 0, .capacity = count}));
+    std::mt19937 random(1);
+    std::normal_distribution<double> noise(0, 1);
+    double x = 0;
+    const double fill = once([&] {
+        for (std::size_t k = 0; k < count; ++k, ++x)
+            for (int i = 0; i < series; ++i)
+                lines[i]->append(x, std::sin(x * 1e-4 + i) * 10 + noise(random));
+    });
+    glw::paint::DrawList drawn;
+    root.paint(drawn);
+    const double all = best(5, [&] { root.paint(drawn); });
+    const std::size_t vertices = drawn.vertices.size();
+    chart.setXView({x * 0.45, x * 0.55});
+    root.paint(drawn);
+    const double tenth = best(5, [&] { root.paint(drawn); });
+    chart.resetView();
+    root.paint(drawn);
+    const double live = best(5, [&] {
+        for (int k = 0; k < 1000; ++k, ++x)
+            for (int i = 0; i < series; ++i)
+                lines[i]->append(x, std::sin(x * 1e-4 + i) * 10 + noise(random));
+        root.paint(drawn);
+    });
+    std::printf("%9zu | %6d | %8.1f | %8.2f | %8.2f | %8.2f | %8zu\n", count, series, fill, all, tenth, live, vertices);
+}
+
+// A bar chart of `categories` categories of 5 series, stacked; a treemap of `nodes` leaves in folders of 20.
+void barsAndTiles(glw::UiContext& ui, std::size_t categories, std::size_t nodes) {
+    glw::paint::DrawList drawn;
+    double bars = 0, appended = 0, tiles = 0, retiled = 0;
+    {
+        glw::UiRoot root(ui);
+        root.setSize({1280, 720});
+        auto made = std::make_unique<glw::BarChart>(glw::BarChart::Props{.capacity = categories, .window = 200});
+        glw::BarChart& chart = *made;
+        root.setContent(std::move(made));
+        for (int i = 0; i < 5; ++i)
+            chart.addSeries("s" + std::to_string(i));
+        const double values[] = {3, 5, 2, 7, 1};
+        for (std::size_t c = 0; c < categories; ++c)
+            chart.appendCategory(std::to_string(c), values);
+        root.paint(drawn);
+        bars = best(5, [&] { root.paint(drawn); });
+        appended = best(5, [&] {
+            chart.appendCategory("new", values);
+            root.paint(drawn);
+        });
+    }
+    {
+        glw::UiRoot root(ui);
+        root.setSize({1280, 720});
+        auto made = std::make_unique<glw::TreeMap>();
+        glw::TreeMap& chart = *made;
+        root.setContent(std::move(made));
+        glw::TreeMapNode tree{.label = "root"};
+        for (std::size_t i = 0; i < nodes; ++i) {
+            if (i % 20 == 0)
+                tree.children.push_back({.label = "folder " + std::to_string(i / 20)});
+            tree.children.back().children.push_back({.label = "file " + std::to_string(i), .value = 1.0 + static_cast<double>(i % 37)});
+        }
+        chart.setRoot(tree);
+        root.paint(drawn);
+        tiles = best(5, [&] { root.paint(drawn); });
+        retiled = best(5, [&] {
+            tree.children[3].children[2].value += 5;
+            chart.setRoot(tree);
+            root.paint(drawn);
+        });
+    }
+    std::printf("%10zu | %8.2f | %8.2f | %8zu | %8.2f | %8.2f\n", categories, bars, appended, nodes, tiles, retiled);
+}
+
 // A text of `count` lines of C++, highlighted.
 void linesInATextEdit(glw::UiContext& ui, int count) {
     std::string code;
@@ -600,6 +687,16 @@ int main(int argc, char** argv) {
     std::printf("    nodes |    build |   layout |    paint |      pan |     zoom |      all | vertices\n");
     for (int count : {1000, 10000})
         nodesOnACanvas(ui, count);
+
+    std::printf("\nPoints in a line chart, milliseconds: filled, painted all, a tenth of it, live (1000 more each, a frame)\n");
+    std::printf("   points | series |     fill |      all |    tenth |     live | vertices\n");
+    pointsInALineChart(ui, 1'000'000, 1);
+    pointsInALineChart(ui, 1'000'000, 4);
+    pointsInALineChart(ui, 10'000'000, 1);
+
+    std::printf("\nBars and tiles, milliseconds: a bar chart's last 200 painted, one appended and painted; a treemap painted, a value changed\n");
+    std::printf("categories |     bars | appended |    nodes |    tiles |  retiled\n");
+    barsAndTiles(ui, 10'000, 10'000);
 
     std::printf("\nLines of C++ in a text edit, highlighted, milliseconds\n");
     std::printf("    lines |     load |    first |    paint |   scroll |     type | to the end |     laid\n");

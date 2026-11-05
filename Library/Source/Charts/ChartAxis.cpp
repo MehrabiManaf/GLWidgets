@@ -1,0 +1,299 @@
+// SPDX-FileCopyrightText: 2026 Abdolmanaf Mehrabi Sisakht
+// SPDX-License-Identifier: MIT
+#include <GLWidgets/Charts/ChartAxis.hpp>
+
+#include <algorithm>
+#include <array>
+#include <cmath>
+#include <cstdio>
+#include <cstdlib>
+#include <ctime>
+#include <utility>
+
+namespace glw {
+
+namespace {
+
+constexpr int mostTicks = 1000;
+
+// The number of decimals that tell values `step` apart.
+int decimalsFor(double step) {
+    if (!(step > 0) || !std::isfinite(step))
+        return 0;
+    return std::clamp(static_cast<int>(-std::floor(std::log10(step) + 1e-9)), 0, 12);
+}
+
+// A round step near `raw`: 1, 2 or 5 times a power of ten, not less than it.
+double niceStep(double raw) {
+    const double magnitude = std::pow(10.0, std::floor(std::log10(raw)));
+    const double f = raw / magnitude;
+    const double nice = f <= 1 + 1e-9 ? 1 : f <= 2 + 1e-9 ? 2 : f <= 5 + 1e-9 ? 5 : 10;
+    return nice * magnitude;
+}
+
+std::tm localTime(std::time_t t) {
+    std::tm out{};
+#ifdef _WIN32
+    localtime_s(&out, &t);
+#else
+    localtime_r(&t, &out);
+#endif
+    return out;
+}
+
+// Days from 1970-01-01 to a date of the proleptic Gregorian calendar (Howard Hinnant's days_from_civil).
+long long daysFromCivil(long long y, unsigned m, unsigned d) {
+    y -= m <= 2;
+    const long long era = (y >= 0 ? y : y - 399) / 400;
+    const auto yoe = static_cast<unsigned>(y - era * 400);
+    const unsigned doy = (153 * (m + (m > 2 ? -3 : 9)) + 2) / 5 + d - 1;
+    const unsigned doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;
+    return era * 146097 + static_cast<long long>(doe) - 719468;
+}
+
+// How far local time is ahead of UTC at `t`, in seconds.
+double utcOffset(double t) {
+    const auto whole = static_cast<std::time_t>(std::floor(t));
+    const std::tm l = localTime(whole);
+    const long long asUtc = daysFromCivil(l.tm_year + 1900LL, static_cast<unsigned>(l.tm_mon + 1), static_cast<unsigned>(l.tm_mday)) * 86400 +
+                            l.tm_hour * 3600LL + l.tm_min * 60LL + l.tm_sec;
+    return static_cast<double>(asUtc - static_cast<long long>(whole));
+}
+
+struct TimeStep {
+    double seconds;     // Month and Year: months, years
+    TimeUnit unit;
+};
+
+constexpr std::array<TimeStep, 38> timeSteps{{
+    {0.001, TimeUnit::Millisecond}, {0.002, TimeUnit::Millisecond}, {0.005, TimeUnit::Millisecond},
+    {0.01, TimeUnit::Millisecond},  {0.02, TimeUnit::Millisecond},  {0.05, TimeUnit::Millisecond},
+    {0.1, TimeUnit::Millisecond},   {0.2, TimeUnit::Millisecond},   {0.5, TimeUnit::Millisecond},
+    {1, TimeUnit::Second},          {2, TimeUnit::Second},          {5, TimeUnit::Second},
+    {10, TimeUnit::Second},         {15, TimeUnit::Second},         {30, TimeUnit::Second},
+    {60, TimeUnit::Minute},         {120, TimeUnit::Minute},        {300, TimeUnit::Minute},
+    {600, TimeUnit::Minute},        {900, TimeUnit::Minute},        {1800, TimeUnit::Minute},
+    {3600, TimeUnit::Hour},         {7200, TimeUnit::Hour},         {10800, TimeUnit::Hour},
+    {21600, TimeUnit::Hour},        {43200, TimeUnit::Hour},        {86400, TimeUnit::Day},
+    {172800, TimeUnit::Day},        {604800, TimeUnit::Day},        {1, TimeUnit::Month},
+    {2, TimeUnit::Month},           {3, TimeUnit::Month},           {6, TimeUnit::Month},
+    {1, TimeUnit::Year},            {2, TimeUnit::Year},            {5, TimeUnit::Year},
+    {10, TimeUnit::Year},           {100, TimeUnit::Year},
+}};
+
+double approximateSeconds(const TimeStep& s) {
+    return s.unit == TimeUnit::Month ? s.seconds * 30.44 * 86400 : s.unit == TimeUnit::Year ? s.seconds * 365.25 * 86400 : s.seconds;
+}
+
+constexpr const char* monthNames[] = {"Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"};
+
+std::string dayLabel(const std::tm& t) {
+    char out[16];
+    std::snprintf(out, sizeof out, "%d %s", t.tm_mday, monthNames[std::clamp(t.tm_mon, 0, 11)]);
+    return out;
+}
+
+// Digits grouped by thousands: 1234567 is 1,234,567.
+std::string grouped(std::string digits) {
+    const std::size_t point = digits.find('.');
+    const std::size_t end = point == std::string::npos ? digits.size() : point;
+    const std::size_t begin = !digits.empty() && digits[0] == '-' ? 1 : 0;
+    for (std::size_t at = end; at > begin + 3; at -= 3)
+        digits.insert(at - 3, ",");
+    return digits;
+}
+
+} // namespace
+
+ChartTicks niceTicks(ChartRange range, int count) {
+    ChartTicks ticks;
+    count = std::max(count, 2);
+    const double span = range.span();
+    if (!(span > 0) || !std::isfinite(span)) {
+        if (std::isfinite(range.low))
+            ticks.values.push_back(range.low);
+        return ticks;
+    }
+    ticks.step = niceStep(span / (count - 1));
+    ticks.decimals = decimalsFor(ticks.step);
+    const double first = std::ceil(range.low / ticks.step - 1e-9);
+    for (int i = 0; i < mostTicks; ++i) {
+        double v = (first + i) * ticks.step;
+        if (v > range.high + ticks.step * 1e-9)
+            break;
+        if (std::abs(v) < ticks.step * 1e-9)
+            v = 0;
+        ticks.values.push_back(v);
+    }
+    return ticks;
+}
+
+ChartRange niceRange(ChartRange range, int count) {
+    if (!(range.span() > 0) || !std::isfinite(range.span()))
+        return range;
+    const double step = niceStep(range.span() / (std::max(count, 2) - 1));
+    ChartRange out{std::floor(range.low / step + 1e-9) * step, std::ceil(range.high / step - 1e-9) * step};
+    if (out.high <= out.low)
+        out.high = out.low + step;
+    return out;
+}
+
+std::string formatNumber(double value, int decimals, double step) {
+    if (!std::isfinite(value))
+        return std::isnan(value) ? "\xE2\x80\x93" : value > 0 ? "\xE2\x88\x9E" : "-\xE2\x88\x9E";
+    const double size = std::max(std::abs(value), std::abs(step));
+    char out[64];
+    if (size >= 1e6 || (std::abs(step) >= 1000 && std::abs(value) >= 1000)) {
+        static constexpr std::pair<double, const char*> scales[] = {{1e12, "T"}, {1e9, "G"}, {1e6, "M"}, {1e3, "k"}};
+        for (const auto& [scale, suffix] : scales) {
+            if (size >= scale) {
+                const int d = step > 0 ? decimalsFor(step / scale) : std::min(decimals, 1);
+                std::snprintf(out, sizeof out, "%.*f%s", d, value / scale, suffix);
+                std::string s = out;
+                if (s.rfind("-0", 0) == 0 && std::strtod(s.c_str(), nullptr) == 0)
+                    s.erase(0, 1);
+                return s;
+            }
+        }
+    }
+    std::snprintf(out, sizeof out, "%.*f", std::clamp(decimals, 0, 12), value);
+    std::string s = out;
+    if (s[0] == '-' && std::strtod(s.c_str(), nullptr) == 0)        // -0.0
+        s.erase(0, 1);
+    return grouped(std::move(s));
+}
+
+TimeTicks timeTicks(ChartRange range, int count) {
+    TimeTicks ticks;
+    count = std::max(count, 2);
+    const double span = range.span();
+    if (!(span > 0) || !std::isfinite(span)) {
+        if (std::isfinite(range.low))
+            ticks.values.push_back(range.low);
+        return ticks;
+    }
+    // the smallest step that keeps them `count` at most
+    const TimeStep* chosen = &timeSteps.back();
+    for (const TimeStep& s : timeSteps) {
+        if (span / approximateSeconds(s) <= count - 1) {
+            chosen = &s;
+            break;
+        }
+    }
+    ticks.unit = chosen->unit;
+    ticks.step = chosen->seconds;
+    if (chosen->unit == TimeUnit::Month || chosen->unit == TimeUnit::Year) {
+        // on the first of a month (of a year), a whole number of steps into its year (its century)
+        std::tm t = localTime(static_cast<std::time_t>(std::floor(range.low)));
+        t.tm_mday = 1;
+        t.tm_hour = t.tm_min = t.tm_sec = 0;
+        t.tm_isdst = -1;
+        const int n = static_cast<int>(chosen->seconds);
+        if (chosen->unit == TimeUnit::Month) {
+            t.tm_mon -= t.tm_mon % n;
+        } else {
+            t.tm_mon = 0;
+            t.tm_year -= (t.tm_year + 1900) % n;
+        }
+        for (int i = 0; i < mostTicks + 2; ++i) {
+            std::tm at = t;
+            at.tm_isdst = -1;
+            const double v = static_cast<double>(std::mktime(&at));
+            if (v > range.high)
+                break;
+            if (v >= range.low)
+                ticks.values.push_back(v);
+            if (chosen->unit == TimeUnit::Month)
+                t.tm_mon += n;
+            else
+                t.tm_year += n;
+        }
+        return ticks;
+    }
+    // round in local time: a whole number of steps from local midnight
+    const double offset = utcOffset(range.low);
+    const double step = chosen->seconds;
+    const double first = std::ceil((range.low + offset) / step - 1e-9);
+    for (int i = 0; i < mostTicks; ++i) {
+        const double v = (first + i) * step - offset;
+        if (v > range.high + step * 1e-9)
+            break;
+        ticks.values.push_back(v);
+    }
+    return ticks;
+}
+
+std::string formatTime(double seconds, const TimeTicks& ticks) {
+    if (!std::isfinite(seconds))
+        return "\xE2\x80\x93";
+    const double whole = std::floor(seconds);
+    const double fraction = seconds - whole;
+    const std::tm t = localTime(static_cast<std::time_t>(whole));
+    const bool midnight = t.tm_hour == 0 && t.tm_min == 0 && t.tm_sec == 0 && fraction < 1e-6;
+    char out[32];
+    switch (ticks.unit) {
+    case TimeUnit::Millisecond: {
+        const int decimals = ticks.step >= 0.1 - 1e-9 ? 1 : ticks.step >= 0.01 - 1e-9 ? 2 : 3;
+        const int scale = decimals == 1 ? 10 : decimals == 2 ? 100 : 1000;
+        const int part = std::min(scale - 1, static_cast<int>(std::lround(fraction * scale)));
+        std::snprintf(out, sizeof out, "%02d:%02d:%02d.%0*d", t.tm_hour, t.tm_min, t.tm_sec, decimals, part);
+        return out;
+    }
+    case TimeUnit::Second:
+        if (midnight)
+            return dayLabel(t);
+        std::snprintf(out, sizeof out, "%02d:%02d:%02d", t.tm_hour, t.tm_min, t.tm_sec);
+        return out;
+    case TimeUnit::Minute:
+    case TimeUnit::Hour:
+        if (midnight)
+            return dayLabel(t);
+        std::snprintf(out, sizeof out, "%02d:%02d", t.tm_hour, t.tm_min);
+        return out;
+    case TimeUnit::Day:
+        return dayLabel(t);
+    case TimeUnit::Month:
+        if (t.tm_mon == 0) {
+            std::snprintf(out, sizeof out, "%d", t.tm_year + 1900);
+            return out;
+        }
+        return monthNames[std::clamp(t.tm_mon, 0, 11)];
+    case TimeUnit::Year:
+        std::snprintf(out, sizeof out, "%d", t.tm_year + 1900);
+        return out;
+    }
+    return {};
+}
+
+std::string formatTimeFully(double seconds, TimeUnit unit, bool date) {
+    if (!std::isfinite(seconds))
+        return "\xE2\x80\x93";
+    const double whole = std::floor(seconds);
+    const std::tm t = localTime(static_cast<std::time_t>(whole));
+    char day[24], time[24];
+    std::snprintf(day, sizeof day, "%04d-%02d-%02d", t.tm_year + 1900, t.tm_mon + 1, t.tm_mday);
+    switch (unit) {
+    case TimeUnit::Year:
+        std::snprintf(day, sizeof day, "%04d", t.tm_year + 1900);
+        return day;
+    case TimeUnit::Month:
+        std::snprintf(day, sizeof day, "%04d-%02d", t.tm_year + 1900, t.tm_mon + 1);
+        return day;
+    case TimeUnit::Day:
+        return day;
+    case TimeUnit::Millisecond:
+        std::snprintf(time, sizeof time, "%02d:%02d:%02d.%03d", t.tm_hour, t.tm_min, t.tm_sec,
+                      std::min(999, static_cast<int>(std::lround((seconds - whole) * 1000))));
+        break;
+    case TimeUnit::Second:
+        std::snprintf(time, sizeof time, "%02d:%02d:%02d", t.tm_hour, t.tm_min, t.tm_sec);
+        break;
+    case TimeUnit::Minute:
+    case TimeUnit::Hour:
+        std::snprintf(time, sizeof time, "%02d:%02d", t.tm_hour, t.tm_min);
+        break;
+    }
+    return date ? std::string(day) + " " + time : std::string(time);
+}
+
+} // namespace glw

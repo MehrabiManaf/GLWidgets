@@ -284,6 +284,112 @@ void Painter::fillConvexPolygon(std::span<const Point> points, Color color) {
     cmd.indexCount += count;
 }
 
+void Painter::fillArea(std::span<const Point> points, float baseline, Color far, Color near) {
+    if (points.size() < 2 || (far.a <= 0 && near.a <= 0))
+        return;
+    transformed(points);
+    const std::size_t n = points_.size();
+    const float base = transform().map(Point{0, baseline}).y;
+    const float fringe = 1.0f / pixelsPerDip_;
+    // the color at a height: `far` at the point farthest from the baseline, `near` at it
+    float reach = 0;
+    for (const Point& p : points_)
+        if (std::abs(p.y - base) > std::abs(reach))
+            reach = p.y - base;
+    const auto colorAt = [&](float y) {
+        const float t = reach != 0 ? std::clamp((y - base) / reach, 0.0f, 1.0f) : 1.0f;
+        return mix(near, far, t);
+    };
+    DrawCommand& cmd = command(whiteTexture, false);
+    const auto first = static_cast<std::uint32_t>(list_.vertices.size());
+    const std::uint32_t atBase = packColor(near);
+    // three at each point: its fringe (away from the baseline), the point, the baseline under it
+    for (const Point& p : points_) {
+        const Color c = colorAt(p.y);
+        const float out = p.y <= base ? -fringe : fringe;
+        list_.vertices.push_back(texturedVertex({p.x, p.y + out}, {}, packColor(withAlpha(c, 0))));
+        list_.vertices.push_back(texturedVertex(p, {}, packColor(c)));
+        list_.vertices.push_back(texturedVertex({p.x, base}, {}, atBase));
+    }
+    for (std::uint32_t i = 0; i + 1 < n; ++i) {
+        const std::uint32_t a = first + 3 * i, b = a + 3;
+        list_.indices.insert(list_.indices.end(), {a, a + 1, b + 1, a, b + 1, b, a + 1, a + 2, b + 2, a + 1, b + 2, b + 1});
+    }
+    cmd.indexCount += static_cast<std::uint32_t>(12 * (n - 1));
+}
+
+void Painter::fillArc(Point center, float inner, float outer, float start, float sweep, float inset, Color innerColor,
+                      Color outerColor) {
+    constexpr float turn = 6.28318530718f;
+    if (sweep <= 0 || outer <= inner || outer <= 0 || (innerColor.a <= 0 && outerColor.a <= 0))
+        return;
+    const Transform& t = transform();
+    const Point c = t.map(center);
+    const bool whole = sweep >= turn - 1e-4f;
+    sweep = std::min(sweep, turn);
+    float r0 = std::max(0.0f, inner) * t.scale;
+    const float r1 = outer * t.scale;
+    const float gap = whole ? 0.0f : std::max(0.0f, inset) * t.scale;
+    if (gap > 0) {
+        // where its sides, moved in, meet: not nearer the center
+        r0 = std::max(r0, gap / std::sin(std::min(sweep, turn / 2) / 2));
+        if (r0 >= r1)
+            return;
+    }
+    if (culled({c.x - r1, c.y - r1, 2 * r1, 2 * r1}))
+        return;
+    const float fringe = 1.0f / pixelsPerDip_;
+    // the angle a side is moved in by at a radius
+    const auto shift = [&](float r) { return gap > 0 && r > 0 ? std::asin(std::min(1.0f, gap / r)) : 0.0f; };
+    const float in0 = shift(r0), out0 = shift(r1);
+    // segments enough for the outer arc to stay within a quarter of a pixel of the circle
+    const float pixels = r1 * pixelsPerDip_;
+    const float step = pixels > 0.25f ? 2 * std::acos(std::max(0.0f, 1 - 0.25f / pixels)) : sweep;
+    const int segments = std::clamp(static_cast<int>(std::ceil(sweep / std::max(step, 1e-3f))), 1, 1024);
+    // its inner edge a point (a pie's slice): no fringe there
+    const bool point = r0 <= fringe;
+
+    const std::uint32_t innerSolid = packColor(innerColor), innerClear = packColor(withAlpha(innerColor, 0));
+    const std::uint32_t outerSolid = packColor(outerColor), outerClear = packColor(withAlpha(outerColor, 0));
+    DrawCommand& cmd = command(whiteTexture, false);
+    const auto first = static_cast<std::uint32_t>(list_.vertices.size());
+    const auto along = [](float angle) { return Point{std::cos(angle), std::sin(angle)}; };
+    // four across each step: the inner fringe, the inner edge, the outer edge, the outer fringe
+    for (int k = 0; k <= segments; ++k) {
+        const float f = static_cast<float>(k) / static_cast<float>(segments);
+        const Point din = along(start + in0 + (sweep - 2 * in0) * f), dout = along(start + out0 + (sweep - 2 * out0) * f);
+        list_.vertices.push_back(texturedVertex(c + din * (point ? r0 : std::max(0.0f, r0 - fringe / 2)), {}, point ? innerSolid : innerClear));
+        list_.vertices.push_back(texturedVertex(c + din * (point ? r0 : r0 + fringe / 2), {}, innerSolid));
+        list_.vertices.push_back(texturedVertex(c + dout * (r1 - fringe / 2), {}, outerSolid));
+        list_.vertices.push_back(texturedVertex(c + dout * (r1 + fringe / 2), {}, outerClear));
+    }
+    std::uint32_t count = 0;
+    const auto strip = [&](std::uint32_t a, std::uint32_t b) {
+        for (std::uint32_t k = 0; k < 3; ++k)
+            list_.indices.insert(list_.indices.end(), {a + k, a + k + 1, b + k + 1, a + k, b + k + 1, b + k});
+        count += 18;
+    };
+    for (std::uint32_t k = 0; k < static_cast<std::uint32_t>(segments); ++k)
+        strip(first + 4 * k, first + 4 * (k + 1));
+    if (!whole) {
+        // the sides' fringes: each column of an end moved out of the sector by a fringe, clear
+        const auto cap = [&](std::uint32_t column, Point out) {
+            const auto at = static_cast<std::uint32_t>(list_.vertices.size());
+            for (std::uint32_t k = 0; k < 4; ++k) {
+                Vertex v = list_.vertices[column + k];
+                v.position = v.position + out * fringe;
+                v.color = k < 2 ? innerClear : outerClear;
+                list_.vertices.push_back(v);
+            }
+            strip(column, at);
+        };
+        const float end = start + sweep;
+        cap(first, {std::sin(start), -std::cos(start)});
+        cap(first + 4 * static_cast<std::uint32_t>(segments), {-std::sin(end), std::cos(end)});
+    }
+    cmd.indexCount += count;
+}
+
 // ---- images ----
 
 void Painter::drawImage(const Rect& rect, TextureId texture, Color tint, const Rect& uv) {
