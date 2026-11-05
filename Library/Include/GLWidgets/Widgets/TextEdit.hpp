@@ -111,7 +111,7 @@ public:
     float horizontalOffset() const { return offsetX_; }
     void setVerticalOffset(double offset);
     void setHorizontalOffset(float offset);
-    void scrollSmoothly(double vertical, float horizontal);
+    void scrollSmoothly(double vertical, float horizontal, bool aimed = false);
     // Scrolled as little as it takes for `position` to show.
     void scrollTo(TextPosition position);
     float lineHeight() const { return lineHeight_; }

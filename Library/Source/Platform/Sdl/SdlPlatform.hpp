@@ -45,6 +45,7 @@ private:
     Uint32 wakeUpEvent_ = 0;
     int windows_ = 0;
     std::function<void(WindowId)> exposeHandler_;
+    mutable Uint64 preciseWheel_ = 0;       // when the wheel last turned by a fraction of a step (nanoseconds)
     bool watching_ = false;
     std::array<SDL_Cursor*, cursorCount> cursors_{};       // made the first time they are shown
     Cursor cursor_ = Cursor::Arrow;

@@ -16,6 +16,7 @@
 #include <GLWidgets/Widgets/UiRoot.hpp>
 
 #include <algorithm>
+#include <cmath>
 #include <memory>
 #include <random>
 #include <string>
@@ -707,4 +708,27 @@ TEST(aTreesColumnFitsItsNodesWithTheirIndentsAndArrows) {
     t.tree->fitColumn(0);
     t.root.layout();
     CHECK(t.tree->columnWidth(0) >= widest && t.tree->columnWidth(0) < 150);
+}
+
+TEST(aTouchpadScrollsAListAsTheFingersGoAWheelByWholeRows) {
+    UiRoot root{tests::testContext()};
+    auto made = std::make_unique<ListView>();
+    ListView* list = made.get();
+    list->setModel(std::make_shared<StringListModel>(std::vector<LocalizedText>(200, LocalizedText("x"))));
+    root.setSize({300, 300});
+    root.setContent(std::move(made));
+    root.layout();
+    const double h = list->style().rowHeight;
+    // by fractions of a step: as they come, not snapped to the rows
+    root.dispatch(platform::MouseWheelScrolled{1, {0, -0.1f}, {100, 100}, true});
+    root.layout();
+    const double one = list->offset();
+    CHECK(one > 0 && std::fmod(one, h) > 0.5);
+    root.dispatch(platform::MouseWheelScrolled{1, {0, -0.1f}, {100, 100}, true});
+    root.layout();
+    CHECK(std::abs(list->offset() - 2 * one) < 0.01);
+    // a wheel's step: to a row's top
+    root.dispatch(platform::MouseWheelScrolled{1, {0, -1}, {100, 100}});
+    root.layout();
+    CHECK(std::abs(std::fmod(list->offset(), h)) < 0.01 && list->offset() > 2 * one);
 }

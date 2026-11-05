@@ -130,32 +130,52 @@ private:
     Easing easing_ = Easing::OutCubic;
 };
 
-// A scroll offset easing to where it is sent: a turn of the wheel, a page, an area brought into view. Sent on while it
-// moves (the wheel turned again), it goes from where it shows to the new place. `show` sets the offset shown at each step,
-// and at once with animations off; the widget clamps it. Offsets are doubles: a list of a hundred million rows is longer
-// than a float counts dips exactly.
+// A scroll offset easing to where it is sent: a turn of the wheel, a page, an area brought into view. It starts as fast as
+// it goes and slows down to a stop (as OutCubic); sent on while it moves (the wheel turned again), it goes from where it
+// shows to the new place at the speed it has, speeding up or slowing down from it (no jump in its speed at each turn: a
+// wheel turned on and on moves evenly). `show` sets the offset shown at each step, and at once with animations off; the
+// widget clamps it. Offsets are doubles: a list of a hundred million rows is longer than a float counts dips exactly.
+//
+// The curve, in time t from 0 to 1: 1 - (1 - t)^3 (1 + c t), its speed at the start 3 - c (of the distance over the
+// duration; c from 0 to 3), at the end none, nor any change in it: it settles without a bump.
 class GLW_EXPORT SmoothScroll {
 public:
     explicit SmoothScroll(std::function<void(double)> show);
 
-    // From `shown` (where it is now) to `target`, over `duration`.
-    void scrollTo(Scheduler* scheduler, double shown, double target, Duration duration);
+    // From `shown` (where it is now) to `target`, over `duration`. `aimed`: the target is where the wheel aimed (aim),
+    // snapped, so that its next turn adds to that aim.
+    void scrollTo(Scheduler* scheduler, double shown, double target, Duration duration, bool aimed = false);
     // Where it is going; where it is (`shown`) when it does not move.
     double target(double shown) const { return running() ? to_ : shown; }
     bool running() const { return progress_.running(); }
     // Where it shows now, it stays (a drag of the thumb takes over).
     void stop() { progress_.set(1); }
+    // How fast it moves now, in dips a second.
+    double velocity() const;
 
+    // Where a turn of the wheel aims: `step` (boosted) from where it aimed before while it goes there, not from where that
+    // was snapped to (a row's top), so that the steps of a turning wheel add up evenly; between `low` and `high`.
+    double aim(double shown, double step, double low, double high);
     // A step of the wheel, larger as the wheel turns faster: turned again the same way before the last step got there,
     // it is `boostGrowth` times the last one, up to `maximumBoost` times a step; a pause or the other way, a step again.
     double boosted(double step);
     static constexpr double boostGrowth = 1.3;
     static constexpr double maximumBoost = 6;
+    // Its speed at the start, of the distance over the duration: from rest, and at least when sent on.
+    static constexpr double startSpeed = 3;
+    static constexpr double minimumSpeed = 1;
 
 private:
-    Animation progress_;                    // from 0 (from_) to 1 (to_), eased
+    double shape(double t) const;           // the distance gone, from 0 to 1
+    double slope(double t) const;           // its speed
+
+    Animation progress_;                    // the time, from 0 (from_) to 1 (to_)
     double from_ = 0;
     double to_ = 0;
+    double bend_ = 0;                       // c
+    double seconds_ = 0;                    // how long it takes
+    bool aiming_ = false;                   // the target is where the wheel aimed, snapped
+    double aimed_ = 0;                      // ... that aim
     double boost_ = 1;
     double lastStep_ = 0;
     std::function<void(double)> show_;

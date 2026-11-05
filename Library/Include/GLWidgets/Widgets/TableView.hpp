@@ -106,7 +106,7 @@ public:
     // eased there (the wheel).
     double horizontalOffset() const { return horizontalOffset_; }
     void setHorizontalOffset(double offset);
-    void scrollAcrossSmoothly(double offset);
+    void scrollAcrossSmoothly(double offset, bool aimed = false);
     double maximumHorizontalOffset() const;
     // Scrolled across so that the column shows (as little as it takes).
     void scrollToColumn(std::size_t column);

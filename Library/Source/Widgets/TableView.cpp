@@ -573,7 +573,7 @@ void TableView::setHorizontalOffset(double offset) {
     showAcross(offset);
 }
 
-void TableView::scrollAcrossSmoothly(double offset) {
+void TableView::scrollAcrossSmoothly(double offset, bool aimed) {
     // to the nearest column's edge (or the end): the column at the start shows whole
     const double limit = maximumHorizontalOffset();
     offset = std::clamp(offset, 0.0, limit);
@@ -585,7 +585,7 @@ void TableView::scrollAcrossSmoothly(double offset) {
     if (offset == smoothAcross_.target(horizontalOffset_))
         return;
     const UiContext* ui = context();
-    smoothAcross_.scrollTo(scheduler(), horizontalOffset_, offset, ui ? Duration(ui->theme.motion.scroll) : Duration::zero());
+    smoothAcross_.scrollTo(scheduler(), horizontalOffset_, offset, ui ? Duration(ui->theme.motion.scroll) : Duration::zero(), aimed);
 }
 
 void TableView::showAcross(double offset) {
@@ -776,8 +776,19 @@ void TableView::onPreviewMouse(MouseEvent& event) {
         const float across = shift ? -event.wheelDelta.y : (rightToLeft() ? -event.wheelDelta.x : event.wheelDelta.x);
         if (across == 0 || (!shift && std::abs(event.wheelDelta.x) < std::abs(event.wheelDelta.y)))
             return;
+        if (event.wheelPrecise) {
+            // by fractions of a step: eased on, not boosted nor snapped to columns
+            const double before = smoothAcross_.target(horizontalOffset_);
+            const double to = std::clamp(before + across * wheelStep, 0.0, maximumHorizontalOffset());
+            if (to != before) {
+                const UiContext* ui = context();
+                smoothAcross_.scrollTo(scheduler(), horizontalOffset_, to, ui ? Duration(ui->theme.motion.scroll) : Duration::zero());
+            }
+            event.handled = to != before;
+            break;
+        }
         const double before = smoothAcross_.target(horizontalOffset_);
-        scrollAcrossSmoothly(before + smoothAcross_.boosted(across * wheelStep));
+        scrollAcrossSmoothly(smoothAcross_.aim(horizontalOffset_, across * wheelStep, 0, maximumHorizontalOffset()), true);
         event.handled = smoothAcross_.target(horizontalOffset_) != before;
         break;
     }

@@ -410,12 +410,12 @@ double ListView::snapped(double offset) const {
     return std::min(limit, offset - top < bottom - offset ? top : bottom);
 }
 
-void ListView::scrollSmoothly(double offset) {
+void ListView::scrollSmoothly(double offset, bool aimed) {
     offset = snapped(offset);
     if (offset == smooth_.target(offset_))
         return;
     const UiContext* ui = context();
-    smooth_.scrollTo(scheduler(), offset_, offset, ui ? Duration(ui->theme.motion.scroll) : Duration::zero());
+    smooth_.scrollTo(scheduler(), offset_, offset, ui ? Duration(ui->theme.motion.scroll) : Duration::zero(), aimed);
 }
 
 void ListView::show(double offset) {
@@ -762,9 +762,22 @@ void ListView::onMouse(MouseEvent& event) {
     const bool left = event.button == platform::MouseButton::Left;
     switch (event.type) {
     case MouseEventType::Wheel: {
-        // from where it is going: turned again, it goes further
+        const double step = -event.wheelDelta.y * wheelRows * style().rowHeight;
+        if (event.wheelPrecise) {
+            // by fractions of a step (a touchpad, a fine wheel): eased on from where it is going, not boosted nor
+            // snapped to rows
+            const double before = smooth_.target(offset_);
+            const double to = std::clamp(before + step, 0.0, maximumOffset());
+            if (to != before) {
+                const UiContext* ui = context();
+                smooth_.scrollTo(scheduler(), offset_, to, ui ? Duration(ui->theme.motion.scroll) : Duration::zero());
+            }
+            event.handled = to != before;
+            break;
+        }
+        // from where it aimed: turned again, it goes further
         const double before = smooth_.target(offset_);
-        scrollSmoothly(before + smooth_.boosted(-event.wheelDelta.y * wheelRows * style().rowHeight));
+        scrollSmoothly(smooth_.aim(offset_, step, 0, maximumOffset()), true);
         event.handled = smooth_.target(offset_) != before;
         break;
     }

@@ -373,6 +373,7 @@ void UiRoot::dispatch(const platform::Event& event) {
                    [&](const platform::MouseWheelScrolled& e) {
                        hideToolTip(true);
                        MouseEvent wheel{MouseEventType::Wheel, {}, platform::MouseButton::Left, 0, e.delta, modifiers_};
+                       wheel.wheelPrecise = e.precise;
                        route(capture_ ? capture_ : widgetAt(e.position), wheel, e.position);
                    },
                    [&](const platform::KeyChanged& e) {

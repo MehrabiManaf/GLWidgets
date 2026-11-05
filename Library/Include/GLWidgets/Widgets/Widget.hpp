@@ -99,6 +99,7 @@ struct MouseEvent {
     Point wheelDelta;                                   // Wheel: steps, positive y away from the user
     platform::KeyModifiers modifiers = platform::KeyModifiers::None;
     bool handled = false;
+    bool wheelPrecise = false;                          // Wheel: by fractions of a step (a touchpad, a fine wheel)
 };
 
 struct KeyEvent {

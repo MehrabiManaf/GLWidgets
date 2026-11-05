@@ -561,7 +561,7 @@ void TextEdit::setHorizontalOffset(float offset) {
     showX(offset);
 }
 
-void TextEdit::scrollSmoothly(double vertical, float horizontal) {
+void TextEdit::scrollSmoothly(double vertical, float horizontal, bool aimed) {
     const UiContext* ui = context();
     const Duration duration = ui ? Duration(ui->theme.motion.scroll) : Duration::zero();
     // to the nearest line's top (or the end): the line at the top shows whole
@@ -571,7 +571,7 @@ void TextEdit::scrollSmoothly(double vertical, float horizontal) {
         vertical = std::min(limit, std::round(vertical / lineHeight_) * lineHeight_);
     horizontal = std::clamp(horizontal, 0.0f, maximumOffsetX());
     if (vertical != smoothY_.target(offsetY_))
-        smoothY_.scrollTo(scheduler(), offsetY_, vertical, duration);
+        smoothY_.scrollTo(scheduler(), offsetY_, vertical, duration, aimed);
     if (horizontal != static_cast<float>(smoothX_.target(offsetX_)))
         smoothX_.scrollTo(scheduler(), offsetX_, horizontal, duration);
 }
@@ -795,15 +795,32 @@ void TextEdit::onMouse(MouseEvent& event) {
     switch (event.type) {
     case MouseEventType::Wheel: {
         const bool across = platform::hasAny(event.modifiers, platform::KeyModifiers::Shift) || event.wheelDelta.x != 0;
-        // from where it is going: turned again, it goes further
+        const float by = event.wheelDelta.x != 0 ? event.wheelDelta.x : -event.wheelDelta.y;
+        if (event.wheelPrecise) {
+            // by fractions of a step (a touchpad, a fine wheel): eased on from where it is going, not boosted nor
+            // snapped to lines
+            const UiContext* ui = context();
+            const Duration duration = ui ? Duration(ui->theme.motion.scroll) : Duration::zero();
+            if (across) {
+                const double to = std::clamp(smoothX_.target(offsetX_) + by * wheelLines * 2 * digitWidth_, 0.0,
+                                             static_cast<double>(maximumOffsetX()));
+                if (to != smoothX_.target(offsetX_))
+                    smoothX_.scrollTo(scheduler(), offsetX_, to, duration);
+            } else {
+                const double to = std::clamp(smoothY_.target(offsetY_) - event.wheelDelta.y * wheelLines * lineHeight_, 0.0, maximumOffsetY());
+                if (to != smoothY_.target(offsetY_))
+                    smoothY_.scrollTo(scheduler(), offsetY_, to, duration);
+            }
+            event.handled = true;
+            break;
+        }
+        // from where it is going (where it aimed, down: snapped to lines): turned again, it goes further
         const double y = smoothY_.target(offsetY_);
         const float x = static_cast<float>(smoothX_.target(offsetX_));
-        if (across) {
-            const float by = event.wheelDelta.x != 0 ? event.wheelDelta.x : -event.wheelDelta.y;
+        if (across)
             scrollSmoothly(y, x + static_cast<float>(smoothX_.boosted(by * wheelLines * 2 * digitWidth_)));
-        } else {
-            scrollSmoothly(y + smoothY_.boosted(-event.wheelDelta.y * wheelLines * lineHeight_), x);
-        }
+        else
+            scrollSmoothly(smoothY_.aim(offsetY_, -event.wheelDelta.y * wheelLines * lineHeight_, 0, maximumOffsetY()), x, true);
         event.handled = true;
         break;
     }

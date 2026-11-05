@@ -17,6 +17,7 @@
 
 #include <algorithm>
 #include <atomic>
+#include <cmath>
 #include <cstdint>
 #include <string_view>
 #include <utility>
@@ -214,8 +215,12 @@ bool SdlPlatform::translate(const SDL_Event& in, Event& out) const {
     case SDL_EVENT_MOUSE_WHEEL: {
         const float f = SdlWindow::dipsPerUnit(SDL_GetWindowFromID(in.wheel.windowID));
         const float sign = in.wheel.direction == SDL_MOUSEWHEEL_FLIPPED ? -1.0f : 1.0f;     // "natural" scrolling
+        // precise: by a fraction of a step, or soon after one (a touchpad's whole steps among its fractions)
+        if (in.wheel.x != std::round(in.wheel.x) || in.wheel.y != std::round(in.wheel.y))
+            preciseWheel_ = in.wheel.timestamp;
+        const bool precise = preciseWheel_ != 0 && in.wheel.timestamp - preciseWheel_ < 250'000'000;
         out = MouseWheelScrolled{in.wheel.windowID, Point{in.wheel.x * sign, in.wheel.y * sign},
-                                 Point{in.wheel.mouse_x * f, in.wheel.mouse_y * f}};
+                                 Point{in.wheel.mouse_x * f, in.wheel.mouse_y * f}, precise};
         return true;
     }
 

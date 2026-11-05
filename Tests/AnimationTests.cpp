@@ -200,3 +200,31 @@ TEST(aTooltipShowsAfterADelayAndGoesWhenTheMouseDoesSomething) {
     root.dispatch(platform::MouseMoved{1, {200, 150}});
     CHECK(host.open().empty());
 }
+
+TEST(aSmoothScrollKeepsItsSpeedWhenSentOn) {
+    Timed t;
+    double shown = 0;
+    SmoothScroll s([&](double at) { shown = at; });
+    // from rest: at once, as fast as it goes (three times the distance over the time)
+    s.scrollTo(&t.scheduler, 0, 100, 180ms);
+    CHECK(std::abs(s.velocity() - 3 * 100 / 0.18) < 1);
+    t.advance(60ms);
+    const double before = s.velocity();
+    CHECK(shown > 50 && shown < 100 && before > 0);
+    // sent on: from the speed it has, no jump
+    const double target = shown + 60;
+    s.scrollTo(&t.scheduler, shown, target, 180ms);
+    CHECK(std::abs(s.velocity() - before) < before * 0.01);
+    // never back, never past it: it settles there
+    double last = shown;
+    bool forward = true;
+    for (int i = 0; i < 20; ++i) {
+        t.advance(10ms);
+        forward = forward && shown >= last - 1e-9 && shown <= target + 1e-9;
+        last = shown;
+    }
+    CHECK(forward && std::abs(shown - target) < 1e-6 && !s.running());
+    // the other way: from rest again, toward it
+    s.scrollTo(&t.scheduler, shown, 0, 180ms);
+    CHECK(s.velocity() < 0);
+}

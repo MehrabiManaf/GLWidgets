@@ -177,8 +177,32 @@ Color ColorTransition::value() const {
 // ---- scrolling ----
 
 SmoothScroll::SmoothScroll(std::function<void(double)> show)
-    : progress_([this] { show_(from_ + (to_ - from_) * static_cast<double>(progress_.value())); }), show_(std::move(show)) {
+    : progress_([this] { show_(from_ + (to_ - from_) * shape(progress_.value())); }), show_(std::move(show)) {
     progress_.set(1);
+}
+
+double SmoothScroll::shape(double t) const {
+    t = std::clamp(t, 0.0, 1.0);
+    const double left = 1 - t;
+    return 1 - left * left * left * (1 + bend_ * t);
+}
+
+double SmoothScroll::slope(double t) const {
+    t = std::clamp(t, 0.0, 1.0);
+    const double left = 1 - t;
+    return left * left * (3 - bend_ + 4 * bend_ * t);
+}
+
+double SmoothScroll::velocity() const {
+    if (!running() || seconds_ <= 0)
+        return 0;
+    return (to_ - from_) * slope(progress_.value()) / seconds_;
+}
+
+double SmoothScroll::aim(double shown, double step, double low, double high) {
+    const double from = running() && aiming_ ? aimed_ : target(shown);
+    aimed_ = std::clamp(from + boosted(step), low, high);
+    return aimed_;
 }
 
 double SmoothScroll::boosted(double step) {
@@ -188,12 +212,19 @@ double SmoothScroll::boosted(double step) {
     return step * boost_;
 }
 
-void SmoothScroll::scrollTo(Scheduler* scheduler, double shown, double target, Duration duration) {
+void SmoothScroll::scrollTo(Scheduler* scheduler, double shown, double target, Duration duration, bool aimed) {
+    const double seconds = std::chrono::duration<double>(duration).count();
+    // from rest: at once, as fast as it goes; on the way, the speed it has (as much as it goes the same way, and some)
+    double speed = startSpeed;
+    if (running() && target != shown && seconds > 0)
+        speed = std::clamp(velocity() * seconds / (target - shown), minimumSpeed, startSpeed);
+    bend_ = startSpeed - speed;
     from_ = shown;
     to_ = target;
+    seconds_ = seconds;
+    aiming_ = aimed;
     progress_.set(0);
-    // decelerating: it answers at once, and settles
-    progress_.animateTo(scheduler, 1, duration, Easing::OutCubic);
+    progress_.animateTo(scheduler, 1, duration, Easing::Linear);
     if (!progress_.running())
         show_(to_);
 }

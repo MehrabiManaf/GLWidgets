@@ -79,6 +79,9 @@ struct MouseWheelScrolled {
     WindowId window = 0;
     Point delta;
     Point position;
+    // In fractions of a step, often: a touchpad, a wheel that spins freely or turns finely. Eased on as it comes, not
+    // boosted nor snapped to rows.
+    bool precise = false;
 };
 
 struct KeyChanged {

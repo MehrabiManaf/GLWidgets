@@ -611,12 +611,20 @@ buttons at the header's end trigger actions (a + that adds an item). `ui::Collap
 
 **What moves, moves eased**, from where it shows, and is drawn only while it does:
 - **Scrolling** (`SmoothScroll`): the wheel, a page, a press on a bar's track and an area brought into view ease the
-  offset there (the theme's `motion.scroll`, 180 ms, decelerating), in scroll areas, lists, trees, tables (across too)
-  and text editors; turned again on the way, the wheel goes further from where it was going, by a step 1.3 times the
-  last, up to 6 times a step (`SmoothScroll::boosted`): turned fast, it flies; a pause or the other way, a step again.
-  In lists, trees and tables it goes to the nearest row's top (across, a column's edge; in a text editor, a line's),
-  or the end, so that what is at the top shows whole; a thumb let go goes there too. A thumb dragged, an offset set,
-  and what follows the caret are at once.
+  offset there (the theme's `motion.scroll`, 180 ms), in scroll areas, lists, trees, tables (across too) and text
+  editors. From rest it starts as fast as it goes and slows down to a stop; sent on while it moves, it goes on from the
+  speed it has (the curve 1 - (1 - t)^3 (1 + c t), its speed at the start 3 - c of the distance over the time, chosen
+  to be the speed it had, and at least 1), so a wheel turned on and on moves evenly rather than jumping at each step.
+  Turned again on the way, the wheel goes further from where it aimed, by a step 1.3 times the last, up to 6 times a
+  step (`SmoothScroll::boosted`): turned fast, it flies; a pause or the other way, a step again. In lists, trees and
+  tables it goes to the nearest row's top (across, a column's edge; in a text editor, a line's), or the end, so that
+  what is at the top shows whole; the steps add up from where the wheel aimed, not from where that was snapped to
+  (`SmoothScroll::aim`), so they stay even. A thumb let go goes there too. A thumb dragged, an offset set, and what
+  follows the caret are at once.
+- **A touchpad scrolls by what it turned**: a wheel that turns by fractions of a step (a touchpad, a wheel that spins
+  freely or turns finely; and its whole steps for a moment after, `MouseWheelScrolled::precise`) eases the offset on
+  from where it is going by just what it turned, not boosted nor snapped to rows: each fraction would go back to the
+  same row's top.
 - **A tree's nodes open and close eased** (`ListView::setAnimatesChanges`): the rows inserted among those that show come
   out from under the row before them, cut to what of them shows (`Widget::childClip`), the rows after them going down
   with them; rows removed go back under it showing what they showed, the rows after them coming up. At most a view's

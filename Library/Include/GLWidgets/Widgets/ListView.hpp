@@ -160,7 +160,7 @@ public:
     void setOffset(double offset);
     // Eased there (the theme's scroll motion) from where it shows: what the wheel and a page do. Where it goes is a row's
     // top, the nearest (or the end), so that the rows at the top show whole.
-    void scrollSmoothly(double offset);
+    void scrollSmoothly(double offset, bool aimed = false);
     double maximumOffset() const;
     // Scrolled so that the item shows (as little as it takes).
     void scrollTo(std::size_t index);
