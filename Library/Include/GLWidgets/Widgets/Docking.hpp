@@ -88,7 +88,7 @@ struct DockPanel {
     LocalizedText title;
     std::unique_ptr<Widget> content;
     bool closable = true;                   // a × on its tab
-    std::vector<DockButton> buttons;        // on the tab bar while it is shown, before the float button
+    std::vector<DockButton> buttons{};      // on the tab bar while it is shown, before the float button
     DockScope scope = DockScope::MajorTab;  // the areas it goes into: of its scope only
 };
 

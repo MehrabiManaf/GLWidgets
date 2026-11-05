@@ -235,9 +235,9 @@ TEST(windowFrameHitAreas) {
     root.dispatch(press(close));
     root.dispatch(release(close));
     CHECK(host.closed == 1);
-    // maximized: no resize borders
+    // maximized: no resize borders (the corner away from the buttons: the caption)
     host.state = platform::WindowState::Maximized;
-    CHECK(root.windowHitTest({2, 2}) == HitArea::Caption);
+    CHECK(root.windowHitTest(atEnd ? Point{2, 2} : Point{798, 2}) == HitArea::Caption);
     // right to left: the buttons go to the other side
     host.state = platform::WindowState::Normal;
     root.setLayoutDirection(LayoutDirection::RightToLeft);

@@ -77,7 +77,7 @@ private:
         LocalizedText title;
         Widget* content = nullptr;
         bool closable = true;
-        std::string id;
+        std::string id{};
     };
     void changed();                     // the tabs: the strip shows them again
     void requestClose(std::size_t index);

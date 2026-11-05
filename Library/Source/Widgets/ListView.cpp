@@ -23,7 +23,6 @@ namespace {
 
 constexpr float wheelRows = 3;          // rows a step of the wheel scrolls
 constexpr float parkedAt = -100000;     // where a row widget showing nothing waits: out of sight, out of the mouse's way
-constexpr std::size_t hidden = static_cast<std::size_t>(-1);      // a position: filtered out
 
 } // namespace
 

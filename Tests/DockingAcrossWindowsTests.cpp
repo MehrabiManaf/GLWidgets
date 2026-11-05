@@ -410,10 +410,16 @@ TEST(panelFloatsAndDocksBack) {
     const float afterTab = firstTab.mapToRoot({}).x + firstTab.size().width + 10;
     CHECK(floating.root->windowHitTest({afterTab, barMiddle}) == platform::HitArea::Client);
     CHECK(floating.root->windowHitTest(firstTab.mapToRoot({10, 10})) == platform::HitArea::Client);
-    const Point close{floating.root->size().width - 20, barMiddle};
+    // the buttons at its end (at its start, as macOS has them)
+    const bool atStart = screen.context.theme.frame.buttonsAtStart;
+    const Point close{atStart ? 20.0f : floating.root->size().width - 20, barMiddle};
     CHECK(dynamic_cast<const WindowButton*>(floating.root->widgetAt(close)) != nullptr);
     CHECK(floating.root->windowHitTest(close) == platform::HitArea::Client);
-    CHECK(firstTab.mapToRoot({}).x + firstTab.size().width < close.x - 40);      // the tabs leave the buttons room
+    // the tabs leave the buttons room
+    if (atStart)
+        CHECK(firstTab.mapToRoot({}).x > close.x + 40);
+    else
+        CHECK(firstTab.mapToRoot({}).x + firstTab.size().width < close.x - 40);
 
     // its only tab drags the floating window
     const Point from = panelTab(screen, *t.area, "palette");
