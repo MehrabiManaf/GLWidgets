@@ -432,6 +432,24 @@ Shift or tilted, and Left and Right; in right to left the first column is at the
 million rows of a hundred columns (or a hundred million of a thousand), some 190 widgets show it; painting and scrolling
 down or across take less than half a millisecond, a jump to anywhere 3 ms.
 
+**A tree of columns is a table.** A TreeView's rows are those of a TableView (its entries as a table's model), so a
+`TreeModel` of several columns (`columnCount`, `header`, and in a column `flags`, `sortable`, `compare`: the first
+column's by default) shows them as a table does, resized by their edges and scrolled across; the first column holds the
+indent and the arrow, the delegate's cell after them (a `TreeDelegate` makes cells by kind and binds a node's cell in a
+column, as a table's delegate does). The table's header says which column sorts, the tree sorting each node's children
+by it (the table's rows left as they are: `TableView::setSortIndicator`); a cell of the first column is edited after
+the arrow (`TableView::setEditorArea`). A tree of one column is a list still: no header unless that column has a title.
+
+**Headers show and hide.** A list has a header of one column when it has a title (`ListView::setHeader`): its rows
+under it, a click sorting them (ascending, descending, not; an arrow in it), unless sorting is off. A table's header,
+a tree's (shown when it has several columns or a titled one) and a list's are hidden at will (`setHeaderVisible`), the
+rows taking their place.
+
+**Cells' borders** are the style's (`ItemViewStyle`: `rowLines`, a line under each row; `columnLines`, a line between a
+table's columns, through its header and down to its last row; `gridLine`, `gridLineWidth`). The theme's `table` style
+shows both, as a spreadsheet does; its `itemView`, of lists and trees, the lines between the rows. A view takes its own (`setStyle`), or
+the theme's; with borders, the rows' backgrounds (under the mouse, selected) fill their cells rather than being pills.
+
 **Views sort, filter and edit what their models hold, without the models changing.** A model says how two of its
 items compare (`ListModel::compare`, `TableModel::compare` in a column, with `sortable`; `TreeModel::compare` of two
 children) and what can be done with an item (`flags`: `ItemFlags::Editable`, as Qt's item flags). A list keeps the

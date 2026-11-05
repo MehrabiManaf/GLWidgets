@@ -113,6 +113,11 @@ Theme Theme::fromPalette(const Palette& p) {
     t.itemView.expander = p.mutedText;
     t.itemView.headerText = p.mutedText;
     t.itemView.headerLine = withAlpha(p.text, 0.10f);
+    t.itemView.gridLine = withAlpha(p.text, dark ? 0.08f : 0.10f);
+    t.itemView.rowLines = true;         // lists and trees: a line between their rows
+    // tables: the cells' borders, as a spreadsheet's
+    t.table = t.itemView;
+    t.table.columnLines = true;
 
     t.splitter.handle = p.border;
     t.splitter.active = p.accent;

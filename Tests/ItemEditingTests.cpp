@@ -8,6 +8,7 @@
 #include "TestUi.hpp"
 
 #include <GLWidgets/Widgets/CheckBox.hpp>
+#include <GLWidgets/Widgets/Label.hpp>
 #include <GLWidgets/Widgets/LineEdit.hpp>
 #include <GLWidgets/Widgets/ListView.hpp>
 #include <GLWidgets/Widgets/TableView.hpp>
@@ -507,4 +508,166 @@ TEST(aSortedFilteredListFollowsItsModelItemByItem) {
         CHECK(followsItemByItem(seed, SortOrder::Ascending, true, true));
         CHECK(followsItemByItem(seed, SortOrder::Descending, false, true));
     }
+}
+
+TEST(itemViewsShowTheirCellsBordersAsTheirStylesSay) {
+    // by default: a table its cells' borders, a list and a tree the lines between their rows
+    Fruit f;
+    CHECK(f.list->style().rowLines && !f.list->style().columnLines);
+    Peopled p;
+    CHECK(p.table->style().rowLines && p.table->style().columnLines);
+    CHECK(p.table->list().style().rowLines);                // its rows drawn with the table's style
+    // their own: a list without lines; a table without borders
+    ItemViewStyle bare = tests::testContext().theme.itemView;
+    bare.rowLines = false;
+    f.list->setStyle(bare);
+    CHECK(!f.list->style().rowLines);
+    ItemViewStyle plain = tests::testContext().theme.table;
+    plain.rowLines = plain.columnLines = false;
+    p.table->setStyle(plain);
+    CHECK(!p.table->style().columnLines && !p.table->list().style().rowLines);
+    // back to the theme's
+    p.table->setStyle(std::nullopt);
+    CHECK(p.table->list().style().rowLines);
+}
+
+TEST(aListsHeaderSortsItsItemsAndHidesAtWill) {
+    Fruit f;
+    CHECK(!f.list->headerShown());                          // no title: no header
+    const float h = f.list->style().rowHeight;
+    CHECK(f.list->itemAt({50, h / 2}) == 0u);
+    f.list->setHeader("Fruit");
+    f.root.layout();
+    CHECK(f.list->headerShown() && !f.list->itemAt({50, h / 2}));   // the rows under it
+    CHECK(f.list->itemAt({50, h * 1.5f}) == 0u);
+    // a click: ascending, then descending, then as the model has them
+    click(f.root, {100, h / 2});
+    CHECK(f.shown() == "Apple banana fig pear" && f.list->sortOrder() == SortOrder::Ascending);
+    click(f.root, {100, h / 2});
+    CHECK(f.shown() == "pear fig banana Apple");
+    click(f.root, {100, h / 2});
+    CHECK(f.shown() == "pear Apple fig banana" && !f.list->sortOrder());
+    // sorting off: a click does nothing
+    f.list->setSortingEnabled(false);
+    click(f.root, {100, h / 2});
+    CHECK(!f.list->sortOrder());
+    // hidden: the rows where it was
+    f.list->setHeaderVisible(false);
+    f.root.layout();
+    CHECK(!f.list->headerShown() && f.list->itemAt({50, h / 2}) == 0u);
+}
+
+namespace {
+
+// docs: b a c, zip — a name and a size, sorted by either; the size editable.
+class Files final : public TreeModel {
+public:
+    struct File {
+        std::string name;
+        int size = 0;
+        std::vector<std::size_t> children;
+    };
+    std::vector<File> files{{"docs", 13, {1, 2, 3}}, {"b", 3, {}}, {"a", 9, {}}, {"c", 1, {}}, {"zip", 5, {}}};
+    std::vector<std::size_t> top{0, 4};
+    std::size_t childCount(std::optional<TreeNode> parent) const override { return parent ? files[parent->id].children.size() : top.size(); }
+    TreeNode child(std::optional<TreeNode> parent, std::size_t index) const override {
+        return {parent ? files[parent->id].children[index] : top[index]};
+    }
+    std::size_t columnCount() const override { return 2; }
+    LocalizedText header(std::size_t column) const override { return column == 0 ? "Name" : "Size"; }
+    ItemFlags flags(TreeNode, std::size_t column) const override { return column == 1 ? ItemFlags::Editable : ItemFlags::None; }
+    bool sortable(std::size_t) const override { return true; }
+    std::partial_ordering compare(TreeNode a, TreeNode b, std::size_t column) const override {
+        if (column == 1)
+            return files[a.id].size <=> files[b.id].size;
+        return files[a.id].name <=> files[b.id].name;
+    }
+    void resized(TreeNode node) {
+        const auto& c = files[0].children;
+        if (const auto it = std::find(c.begin(), c.end(), node.id); it != c.end())
+            notifyChanged(TreeNode{0}, static_cast<std::size_t>(it - c.begin()), 1);
+        else
+            notifyChanged(std::nullopt, node.id == 0 ? 0 : 1, 1);
+    }
+};
+
+struct Filed {
+    UiRoot root{tests::testContext()};
+    TreeView* tree = nullptr;
+    std::shared_ptr<Files> files = std::make_shared<Files>();
+
+    Filed() {
+        auto made = std::make_unique<TreeView>();
+        tree = made.get();
+        tree->setModel(files);
+        auto delegate = std::make_unique<TreeTextDelegate>([f = files.get()](TreeNode node, std::size_t column) {
+            return LocalizedText(column == 0 ? f->files[node.id].name : std::to_string(f->files[node.id].size));
+        });
+        delegate->setOnEdited([f = files.get()](TreeNode node, std::size_t column, std::string text) {
+            if (column == 1) {
+                f->files[node.id].size = std::stoi(text);
+                f->resized(node);
+            }
+        });
+        tree->setDelegate(std::move(delegate));
+        tree->setColumnWidth(0, 150);
+        tree->setColumnWidth(1, 100);
+        tree->expandAll();
+        root.setSize({300, 400});
+        root.setContent(std::move(made));
+        root.layout();
+    }
+    std::string shown() const {
+        std::string out;
+        for (std::size_t i = 0; i < tree->shownCount(); ++i)
+            out += (i ? " " : "") + std::string(tree->depthOf(i), '.') + files->files[tree->shownNode(i).id].name;
+        return out;
+    }
+    void clickHeader(std::size_t column) {
+        const Widget* header = tree->table().headerWidget(column);
+        const Point at = header->mapToRoot({});
+        click(root, {at.x + header->size().width / 2, at.y + header->size().height / 2});
+    }
+};
+
+} // namespace
+
+TEST(aTreeOfColumnsShowsThemUnderAHeaderAndSortsByThem) {
+    // a tree of one untitled column: no header
+    Treed one;
+    CHECK(!one.tree->headerShown());
+    Filed t;
+    CHECK(t.tree->headerShown() && t.tree->table().headerWidget(0) && t.tree->table().headerWidget(1));
+    CHECK(t.shown() == "docs .b .a .c zip");
+    // each cell bound to its column
+    const Widget* cell = t.tree->table().cellWidget(1, 1);
+    const auto* size = cell && !cell->children().empty() ? dynamic_cast<const Label*>(cell->children()[0].get()) : nullptr;
+    CHECK(size && size->text().source == "3");
+    // a header clicked: each node's children sorted by its column, ascending, descending, then not
+    t.clickHeader(1);
+    CHECK(t.shown() == "zip docs .c .b .a" && t.tree->sortColumn() == 1u);
+    t.clickHeader(1);
+    CHECK(t.shown() == "docs .a .b .c zip" && t.tree->sortOrder() == SortOrder::Descending);
+    t.clickHeader(1);
+    CHECK(t.shown() == "docs .b .a .c zip" && !t.tree->sortColumn());
+    t.tree->sortBy(0);
+    CHECK(t.shown() == "docs .a .b .c zip");
+    t.tree->sortBy(std::nullopt);
+    // a column of its own edited: the size, the name not
+    t.tree->list().focus();
+    CHECK(!t.tree->edit({1}, 0));
+    CHECK(t.tree->edit({1}, 1) && t.tree->editor());
+    type(t.root, "42");
+    key(t.root, platform::Key::Enter);
+    CHECK(!t.tree->editing() && t.files->files[1].size == 42);
+    // hidden at will: the rows where it was
+    const auto top = [&] { return t.tree->list().rowWidget(0)->mapToRoot({}).y - t.tree->mapToRoot({}).y; };
+    const float under = top();
+    CHECK(under > 10);
+    t.tree->setHeaderVisible(false);
+    t.root.layout();
+    CHECK(!t.tree->headerShown() && top() < under - 10);
+    t.tree->setHeaderVisible(true);
+    t.root.layout();
+    CHECK(t.tree->headerShown() && top() == under);
 }

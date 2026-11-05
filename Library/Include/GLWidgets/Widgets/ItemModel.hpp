@@ -162,6 +162,18 @@ public:
     // How two children of one node compare, to sort them (TreeView::setSortOrder): by default equivalent.
     virtual std::partial_ordering compare(TreeNode a, TreeNode b) const { return std::partial_ordering::equivalent; }
 
+    // Its columns: one by default (the tree), more for a tree of columns (TreeView shows them as a table does, their
+    // headers over them); the first one shows the tree. A column's flags and comparison are the first one's by default,
+    // the others' none.
+    virtual std::size_t columnCount() const { return 1; }
+    virtual LocalizedText header(std::size_t column) const { return {}; }
+    virtual ItemFlags flags(TreeNode node, std::size_t column) const { return column == 0 ? flags(node) : ItemFlags::None; }
+    // Whether the children can be sorted by a column (a click on its header), and how two of one node compare in it.
+    virtual bool sortable(std::size_t column) const { return false; }
+    virtual std::partial_ordering compare(TreeNode a, TreeNode b, std::size_t column) const {
+        return column == 0 ? compare(a, b) : std::partial_ordering::equivalent;
+    }
+
     void addObserver(TreeModelObserver& observer);
     void removeObserver(TreeModelObserver& observer);
 

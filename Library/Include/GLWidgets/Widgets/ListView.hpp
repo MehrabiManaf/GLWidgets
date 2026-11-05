@@ -36,6 +36,7 @@ namespace glw {
 class RowHeights;
 class ItemEditor;
 class ItemOrder;
+class Label;
 
 // What makes the widgets of a list's rows, and shows an item in one.
 class GLW_EXPORT ListDelegate {
@@ -127,6 +128,18 @@ public:
     std::size_t modelIndex(std::size_t position) const;
     std::optional<std::size_t> position(std::size_t index) const;
 
+    // ---- its header ----
+    // A title over its items (none: no header, as by default); a click on it sorts them, ascending, then descending, then
+    // not (as the model compares them, or as setSortOrder was told), an arrow in it saying which.
+    void setHeader(LocalizedText title);
+    const LocalizedText& header() const { return headerTitle_; }
+    // Shown when it has a title (true by default); hidden at will.
+    void setHeaderVisible(bool visible);
+    bool headerVisible() const { return headerVisible_; }
+    bool headerShown() const { return headerVisible_ && !headerTitle_.empty(); }
+    // A click on the header sorts (true by default).
+    void setSortingEnabled(bool enabled) { sortingEnabled_ = enabled; }
+
     // ---- editing ----
     void setEditTriggers(EditTriggers triggers) { editTriggers_ = triggers; }
     EditTriggers editTriggers() const { return editTriggers_; }
@@ -166,6 +179,8 @@ public:
     // A double click or Enter on an item.
     void setOnActivated(std::function<void(std::size_t)> handler) { onActivated_ = std::move(handler); }
 
+    // Its own (the cells' borders shown, say), or none: the theme's itemView.
+    void setStyle(std::optional<ItemViewStyle> style);
     const ItemViewStyle& style() const;
 
 protected:
@@ -173,7 +188,7 @@ protected:
     void arrangeContent(const Rect& content) override;
     void paint(PaintContext& context) override;
     void paintOver(PaintContext& context) override;
-    Rect childrenClip() const override { return viewport_; }
+    Rect childrenClip() const override;
     std::optional<Rect> childClip(const Widget& child) const override;
     void onMouse(MouseEvent& event) override;
     void onPreviewKey(KeyEvent& event) override;
@@ -245,6 +260,7 @@ private:
     std::unique_ptr<RowHeights> heights_;
     std::optional<float> rowHeight_;
     SelectionMode selectionMode_ = SelectionMode::Single;
+    std::optional<ItemViewStyle> style_;
     std::optional<std::size_t> current_;   // a position
     double offset_ = 0;
     std::optional<SortOrder> sortOrder_;
@@ -280,6 +296,14 @@ private:
 
     std::optional<std::size_t> hovered_;
     std::optional<std::size_t> pressed_;
+    // the header
+    LocalizedText headerTitle_;
+    bool headerVisible_ = true;
+    bool sortingEnabled_ = true;
+    Label* headerLabel_ = nullptr;
+    Rect headerRect_;
+    bool headerHovered_ = false;
+    bool headerPressed_ = false;
     bool barHovered_ = false;
     std::optional<double> thumbGrab_;   // the thumb dragged: where it was pressed, along it
 

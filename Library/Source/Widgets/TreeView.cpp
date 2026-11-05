@@ -18,6 +18,11 @@ namespace {
 constexpr float arrowWidth = 16;        // the room of a row's arrow, after its indent
 
 const ItemViewStyle& itemStyle(const Widget& widget) {
+    // the list it is a row of: its style, its own or the theme's
+    for (const Widget* w = widget.parent(); w; w = w->parent()) {
+        if (const auto* list = dynamic_cast<const ListView*>(w))
+            return list->style();
+    }
     const UiRoot* r = widget.root();
     if (r)
         return r->context().theme.itemView;
@@ -25,10 +30,10 @@ const ItemViewStyle& itemStyle(const Widget& widget) {
     return unstyled;
 }
 
-// A row of a tree: its indent, its arrow (by a node with children), the delegate's widget after them.
-class TreeRow final : public Widget {
+// A tree's first cell: its indent, its arrow (by a node with children), the delegate's cell after them.
+class TreeCell final : public Widget {
 public:
-    TreeRow(std::unique_ptr<Widget> content, std::function<void(std::size_t)> toggle, std::function<float(TreeNode, bool)> turn)
+    TreeCell(std::unique_ptr<Widget> content, std::function<void(std::size_t)> toggle, std::function<float(TreeNode, bool)> turn)
         : toggle_(std::move(toggle)), turn_(std::move(turn)) {
         content_ = &addChild(std::move(content));
     }
@@ -108,75 +113,93 @@ private:
 
 TreeDelegate::~TreeDelegate() = default;
 
-std::unique_ptr<Widget> TreeTextDelegate::makeRow() {
-    auto row = std::make_unique<Widget>();
-    row->setPadding({4, 0, 12, 0});
-    auto& label = row->add(std::make_unique<Label>(Label::Props{.elide = true}));
+std::unique_ptr<Widget> TreeTextDelegate::makeCell(std::size_t) {
+    auto cell = std::make_unique<Widget>();
+    cell->setPadding({4, 0, 12, 0});
+    auto& label = cell->add(std::make_unique<Label>(Label::Props{.elide = true}));
     label.setAlignment(Alignment::Start, Alignment::Center);
-    return row;
+    return cell;
 }
 
-void TreeTextDelegate::bindRow(Widget& row, TreeNode node) {
-    static_cast<Label&>(*row.children()[0]).setText(text_(node));
+void TreeTextDelegate::bindCell(Widget& cell, TreeNode node, std::size_t column) {
+    static_cast<Label&>(*cell.children()[0]).setText(text_(node, column));
 }
 
-std::unique_ptr<Widget> TreeTextDelegate::makeEditor(TreeNode node) {
+std::unique_ptr<Widget> TreeTextDelegate::makeEditor(TreeNode node, std::size_t column) {
     if (!onEdited_)
         return nullptr;
-    auto field = std::make_unique<LineEdit>(LineEdit::Props{.text = text_(node).source});
+    auto field = std::make_unique<LineEdit>(LineEdit::Props{.text = text_(node, column).source});
     field->selectAll();
     return field;
 }
 
-void TreeTextDelegate::commitEdit(Widget& editor, TreeNode node) {
+void TreeTextDelegate::commitEdit(Widget& editor, TreeNode node, std::size_t column) {
     if (onEdited_)
-        onEdited_(node, static_cast<LineEdit&>(editor).text());
+        onEdited_(node, column, static_cast<LineEdit&>(editor).text());
 }
 
-// ---- the list's model and delegate ----
+// ---- the table's model and delegate ----
 
-class TreeView::Rows final : public ListModel {
+// The entries that show, as the rows of a table; its columns the model's.
+class TreeView::Rows final : public TableModel {
 public:
     explicit Rows(const TreeView& tree) : tree_(tree) {}
     std::vector<Entry> entries;
 
-    std::size_t count() const override { return entries.size(); }
-    ItemFlags flags(std::size_t index) const override {
-        return tree_.model_ && tree_.delegate_ ? tree_.model_->flags(entries[index].node) : ItemFlags::None;
+    std::size_t rowCount() const override { return entries.size(); }
+    std::size_t columnCount() const override { return tree_.model_ ? std::max<std::size_t>(1, tree_.model_->columnCount()) : 1; }
+    LocalizedText header(std::size_t column) const override { return tree_.model_ ? tree_.model_->header(column) : LocalizedText{}; }
+    ItemFlags flags(std::size_t row, std::size_t column) const override {
+        return tree_.model_ && tree_.delegate_ ? tree_.model_->flags(entries[row].node, column) : ItemFlags::None;
     }
-    using ListModel::notifyChanged;
-    using ListModel::notifyInserted;
-    using ListModel::notifyRemoved;
-    using ListModel::notifyReset;
+    using TableModel::notifyColumnsChanged;
+    using TableModel::notifyReset;
+    using TableModel::notifyRowsChanged;
+    using TableModel::notifyRowsInserted;
+    using TableModel::notifyRowsRemoved;
 
 private:
     const TreeView& tree_;
 };
 
-class TreeView::RowDelegate final : public ListDelegate {
+// The user's cells; the first column's in a TreeCell, after the indent and the arrow. Kinds: the user's, twice over (odd:
+// in a TreeCell), so that a first column's cell is used again for the first column only.
+class TreeView::CellDelegate final : public TableDelegate {
 public:
-    explicit RowDelegate(TreeView& tree) : tree_(tree) {}
+    explicit CellDelegate(TreeView& tree) : tree_(tree) {}
 
-    std::unique_ptr<Widget> makeRow() override {
-        std::unique_ptr<Widget> content = tree_.delegate_ ? tree_.delegate_->makeRow() : std::make_unique<Widget>();
-        return std::make_unique<TreeRow>(std::move(content), [tree = &tree_](std::size_t index) { tree->toggle(index); },
-                                         [tree = &tree_](TreeNode node, bool expanded) { return tree->turnOf(node, expanded); });
+    std::size_t cellKind(std::size_t column) const override {
+        const std::size_t kind = tree_.delegate_ ? tree_.delegate_->cellKind(column) : 0;
+        return 2 * kind + (column == 0 ? 1 : 0);
     }
 
-    void bindRow(Widget& row, std::size_t index) override {
-        auto& treeRow = static_cast<TreeRow&>(row);
-        const Entry& entry = tree_.rows_->entries[index];
-        treeRow.show(index, entry.node, entry.depth, entry.expandable, entry.expanded);
+    std::unique_ptr<Widget> makeCell(std::size_t kind) override {
+        std::unique_ptr<Widget> cell = tree_.delegate_ ? tree_.delegate_->makeCell(kind / 2) : std::make_unique<Widget>();
+        if (kind % 2 == 0)
+            return cell;
+        return std::make_unique<TreeCell>(std::move(cell), [tree = &tree_](std::size_t index) { tree->toggle(index); },
+                                          [tree = &tree_](TreeNode node, bool expanded) { return tree->turnOf(node, expanded); });
+    }
+
+    void bindCell(Widget& cell, std::size_t row, std::size_t column) override {
+        const Entry& entry = tree_.rows_->entries[row];
+        Widget* content = &cell;
+        if (column == 0) {
+            auto& first = static_cast<TreeCell&>(cell);
+            first.show(row, entry.node, entry.depth, entry.expandable, entry.expanded);
+            content = &first.content();
+        }
         if (tree_.delegate_)
-            tree_.delegate_->bindRow(treeRow.content(), entry.node);
+            tree_.delegate_->bindCell(*content, entry.node, column);
     }
 
-    std::unique_ptr<Widget> makeEditor(std::size_t index) override {
-        return tree_.delegate_ ? tree_.delegate_->makeEditor(tree_.rows_->entries[index].node) : nullptr;
+    std::unique_ptr<Widget> makeEditor(std::size_t row, std::size_t column) override {
+        return tree_.delegate_ && row < tree_.rows_->entries.size() ? tree_.delegate_->makeEditor(tree_.rows_->entries[row].node, column)
+                                                                    : nullptr;
     }
-    void commitEdit(Widget& editor, std::size_t index) override {
-        if (tree_.delegate_ && index < tree_.rows_->entries.size())
-            tree_.delegate_->commitEdit(editor, tree_.rows_->entries[index].node);
+    void commitEdit(Widget& editor, std::size_t row, std::size_t column) override {
+        if (tree_.delegate_ && row < tree_.rows_->entries.size())
+            tree_.delegate_->commitEdit(editor, tree_.rows_->entries[row].node, column);
     }
 
 private:
@@ -186,12 +209,20 @@ private:
 // ---- the view ----
 
 TreeView::TreeView() : rows_(std::make_shared<Rows>(*this)) {
-    list_ = &add(std::make_unique<ListView>());
-    list_->setModel(rows_);
-    list_->setDelegate(std::make_unique<RowDelegate>(*this));
+    table_ = &add(std::make_unique<TableView>());
+    table_->setModel(rows_);
+    table_->setDelegate(std::make_unique<CellDelegate>(*this));
+    table_->setSortingEnabled(false);       // its rows are the entries: the tree sorts each node's children
+    table_->setOnHeaderClicked([this](std::size_t column) { headerClicked(column); });
+    // the first column's editor after the indent and the arrow
+    table_->setEditorArea([](const Widget& cell, std::size_t column) {
+        if (column == 0)
+            return static_cast<const TreeCell&>(cell).content().bounds();
+        return Rect{0, 0, cell.size().width, cell.size().height};
+    });
+    list_ = &table_->list();
     list_->setAnimatesChanges(true);        // a node's children come out from under it, and go back
-    // an editor after the indent and the arrow
-    list_->setEditorArea([](const Widget& row) { return static_cast<const TreeRow&>(row).content().bounds(); });
+    showHeader();
     list_->setOnCurrentChanged([this](std::optional<std::size_t> index) {
         if (onCurrentChanged_)
             onCurrentChanged_(index ? std::optional<TreeNode>(rows_->entries[*index].node) : std::nullopt);
@@ -217,16 +248,62 @@ void TreeView::setModel(std::shared_ptr<TreeModel> model) {
     if (model_)
         model_->addObserver(*this);
     expanded_.clear();
-    rebuild();
+    sortOrder_.reset();
+    table_->setSortIndicator(std::nullopt);
+    rows_->notifyColumnsChanged();
+    showHeader();
+    reorder();
 }
 
 void TreeView::setDelegate(std::unique_ptr<TreeDelegate> delegate) {
     delegate_ = std::move(delegate);
-    list_->setDelegate(std::make_unique<RowDelegate>(*this));       // its rows made again, with the new delegate's
+    table_->setDelegate(std::make_unique<CellDelegate>(*this));       // its cells made again, with the new delegate's
 }
 
 void TreeView::setRowHeight(std::optional<float> height) {
-    list_->setRowHeight(height);
+    table_->setRowHeight(height);
+}
+
+void TreeView::setStyle(std::optional<ItemViewStyle> style) {
+    style_ = std::move(style);
+    onStyleChanged();
+}
+
+void TreeView::onRootChanged() {
+    onStyleChanged();
+}
+
+void TreeView::onStyleChanged() {
+    // its own, or the theme's of lists and trees (a table's own is another)
+    if (style_)
+        table_->setStyle(style_);
+    else if (const UiContext* ui = context())
+        table_->setStyle(ui->theme.itemView);
+}
+
+// ---- columns ----
+
+void TreeView::setHeaderVisible(bool visible) {
+    headerVisible_ = visible;
+    showHeader();
+}
+
+void TreeView::showHeader() {
+    // several columns, or a title for its one
+    const bool titled = model_ && (model_->columnCount() > 1 || !model_->header(0).empty());
+    table_->setHeaderVisible(headerVisible_ && titled);
+}
+
+void TreeView::headerClicked(std::size_t column) {
+    if (!model_ || !model_->sortable(column))
+        return;
+    // ascending, then descending, then not
+    if (!sortOrder_ || sortColumn_ != column)
+        sortBy(column, SortOrder::Ascending);
+    else if (*sortOrder_ == SortOrder::Ascending)
+        sortBy(column, SortOrder::Descending);
+    else
+        sortBy(std::nullopt);
 }
 
 std::size_t TreeView::shownCount() const {
@@ -274,7 +351,7 @@ std::vector<TreeNode> TreeView::shownChildren(std::optional<TreeNode> parent) co
     if (sortOrder_) {
         const bool descending = *sortOrder_ == SortOrder::Descending;
         std::stable_sort(children.begin(), children.end(), [&](TreeNode a, TreeNode b) {
-            const std::partial_ordering o = model_->compare(a, b);
+            const std::partial_ordering o = model_->compare(a, b, sortColumn_);
             return descending ? o > 0 : o < 0;
         });
     }
@@ -296,9 +373,22 @@ void TreeView::appendChildren(std::optional<TreeNode> parent, std::uint32_t dept
     }
 }
 
-void TreeView::setSortOrder(std::optional<SortOrder> order) {
-    sortOrder_ = order;
+void TreeView::sortBy(std::optional<std::size_t> column, SortOrder order) {
+    if (column) {
+        sortColumn_ = *column;
+        sortOrder_ = order;
+    } else {
+        sortOrder_.reset();
+    }
+    table_->setSortIndicator(sortOrder_ ? std::optional<std::size_t>(sortColumn_) : std::nullopt, order);
     rebuild();
+}
+
+void TreeView::setSortOrder(std::optional<SortOrder> order) {
+    if (order)
+        sortBy(0, *order);
+    else
+        sortBy(std::nullopt);
 }
 
 void TreeView::setFilter(std::function<bool(TreeNode)> accepts) {
@@ -336,17 +426,19 @@ void TreeView::refilter() {
         visit(visit, model_->child(std::nullopt, i));
 }
 
-bool TreeView::edit(TreeNode node) {
+bool TreeView::edit(TreeNode node, std::size_t column) {
     const std::optional<std::size_t> index = shownIndexOf(node);
-    return index && list_->edit(*index);
+    return index && table_->edit(*index, column);
 }
 
 void TreeView::rebuild() {
-    list_->cancelEdit();
+    table_->cancelEdit();
     rows_->entries.clear();
     if (model_)
         appendChildren(std::nullopt, 0, rows_->entries);
+    // the entries again: all of the rows (the columns' widths kept); the arrow of the column sorted by, again
     rows_->notifyReset();
+    table_->setSortIndicator(sortOrder_ ? std::optional<std::size_t>(sortColumn_) : std::nullopt, sortOrder_.value_or(SortOrder::Ascending));
 }
 
 std::size_t TreeView::subtreeEnd(std::size_t index) const {
@@ -400,9 +492,9 @@ void TreeView::expandAt(std::size_t index) {
     std::vector<Entry> children;
     appendChildren(entry.node, entry.depth + 1, children);
     rows_->entries.insert(rows_->entries.begin() + static_cast<std::ptrdiff_t>(index + 1), children.begin(), children.end());
-    rows_->notifyChanged(index, 1);
+    rows_->notifyRowsChanged(index, 1);
     if (!children.empty())
-        rows_->notifyInserted(index + 1, children.size());
+        rows_->notifyRowsInserted(index + 1, children.size());
 }
 
 void TreeView::collapseAt(std::size_t index) {
@@ -419,9 +511,9 @@ void TreeView::collapseAt(std::size_t index) {
     const bool under = current && *current > index && *current < end;
     if (end > index + 1) {
         rows_->entries.erase(rows_->entries.begin() + static_cast<std::ptrdiff_t>(index + 1), rows_->entries.begin() + static_cast<std::ptrdiff_t>(end));
-        rows_->notifyRemoved(index + 1, end - index - 1);
+        rows_->notifyRowsRemoved(index + 1, end - index - 1);
     }
-    rows_->notifyChanged(index, 1);
+    rows_->notifyRowsChanged(index, 1);
     if (under)
         list_->setCurrent(index);
 }
@@ -534,7 +626,7 @@ void TreeView::childrenInserted(std::optional<TreeNode> parent, std::size_t firs
         Entry& entry = rows_->entries[*index];
         entry.expandable = model_->hasChildren(*parent);
         if (!entry.expanded) {
-            rows_->notifyChanged(*index, 1);
+            rows_->notifyRowsChanged(*index, 1);
             return;
         }
     }
@@ -552,7 +644,7 @@ void TreeView::childrenInserted(std::optional<TreeNode> parent, std::size_t firs
             appendChildren(node, depth + 1, added);
     }
     rows_->entries.insert(rows_->entries.begin() + static_cast<std::ptrdiff_t>(*at), added.begin(), added.end());
-    rows_->notifyInserted(*at, added.size());
+    rows_->notifyRowsInserted(*at, added.size());
 }
 
 void TreeView::childrenRemoved(std::optional<TreeNode> parent, std::size_t first, std::size_t count) {
@@ -572,14 +664,14 @@ void TreeView::childrenRemoved(std::optional<TreeNode> parent, std::size_t first
             expanded_.erase(rows_->entries[i].node.id);
         if (end > *at) {
             rows_->entries.erase(rows_->entries.begin() + static_cast<std::ptrdiff_t>(*at), rows_->entries.begin() + static_cast<std::ptrdiff_t>(end));
-            rows_->notifyRemoved(*at, end - *at);
+            rows_->notifyRowsRemoved(*at, end - *at);
         }
     }
     // the parent may have no children now
     if (parent) {
         if (const std::optional<std::size_t> index = shownIndexOf(*parent)) {
             rows_->entries[*index].expandable = model_->hasChildren(*parent);
-            rows_->notifyChanged(*index, 1);
+            rows_->notifyRowsChanged(*index, 1);
         }
     }
 }
@@ -597,13 +689,15 @@ void TreeView::childrenChanged(std::optional<TreeNode> parent, std::size_t first
         Entry& entry = rows_->entries[*at];
         entry.node = model_->child(parent, first + k);
         entry.expandable = model_->hasChildren(entry.node);
-        rows_->notifyChanged(*at, 1);
+        rows_->notifyRowsChanged(*at, 1);
         at = subtreeEnd(*at);
     }
 }
 
 void TreeView::modelReset() {
     expanded_.clear();
+    rows_->notifyColumnsChanged();
+    showHeader();
     reorder();
 }
 

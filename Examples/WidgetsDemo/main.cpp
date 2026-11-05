@@ -99,8 +99,11 @@ constexpr const char* persianCatalog = R"({
     "A modal dialog: the window waits for it": "یک گفتگوی مودال: پنجره منتظرش می‌ماند",
     "Folder {n}": "پوشه‌ی {n}",
     "File {n}": "پرونده‌ی {n}",
-    "A thousand folders of a thousand files, all open: a million rows. Open and close them.":
-      "هزار پوشه با هزار پرونده در هر کدام، همه باز: یک میلیون سطر. بازشان کنید و ببندید."
+    "A thousand folders of a thousand files, all open: a million rows. Open and close them; click a header to sort each folder's files by it.":
+      "هزار پوشه با هزار پرونده در هر کدام، همه باز: یک میلیون سطر. بازشان کنید و ببندید؛ روی سرستونی کلیک کنید تا پرونده‌های هر پوشه بر اساس آن مرتب شوند.",
+    "Size": "اندازه",
+    "Modified": "تغییر",
+    "Items": "موردها"
   }
 })";
 
@@ -108,6 +111,7 @@ constexpr const char* persianCatalog = R"({
 class Million final : public glw::ListModel {
 public:
     std::size_t count() const override { return 1'000'000; }
+    std::partial_ordering compare(std::size_t a, std::size_t b) const override { return a <=> b; }
 };
 
 // A million rows of fifty columns of numbers, made when they show (only those edited are kept): sorted by any column,
@@ -161,7 +165,29 @@ public:
         return {!parent ? index : count + parent->id * count + index};
     }
     bool hasChildren(glw::TreeNode node) const override { return node.id < count; }
-    static glw::LocalizedText name(glw::TreeNode node) {
+    // its columns: the name, the size, when it was changed; sorted by any of them
+    std::size_t columnCount() const override { return 3; }
+    glw::LocalizedText header(std::size_t column) const override {
+        return column == 0 ? tr("Name") : column == 1 ? tr("Size") : tr("Modified");
+    }
+    bool sortable(std::size_t) const override { return true; }
+    std::partial_ordering compare(glw::TreeNode a, glw::TreeNode b, std::size_t column) const override {
+        if (column == 1)
+            return size(a) <=> size(b);
+        if (column == 2)
+            return day(a) <=> day(b);
+        return a.id <=> b.id;
+    }
+    // what a file holds, and the day it was changed: numbers that look random (a folder: its files')
+    static std::uint64_t size(glw::TreeNode node) { return node.id < count ? 1000 * 500 : (node.id * 7919) % 1000 + 1; }
+    static std::uint64_t day(glw::TreeNode node) { return (node.id * 104729) % 3650; }
+    static glw::LocalizedText text(glw::TreeNode node, std::size_t column) {
+        if (column == 1)
+            return glw::LocalizedText(std::to_string(size(node)) + " KB");
+        if (column == 2) {
+            const std::uint64_t d = day(node);
+            return glw::LocalizedText(std::to_string(2016 + d / 365) + "-" + std::to_string(d % 365 / 31 + 1) + "-" + std::to_string(d % 31 + 1));
+        }
         if (node.id < count)
             return tr("Folder {n}").arg("n", std::to_string(node.id + 1));
         return tr("File {n}").arg("n", std::to_string((node.id - count) / count + 1) + "." + std::to_string((node.id - count) % count + 1));
@@ -232,11 +258,14 @@ struct Page {
     std::unique_ptr<glw::Widget> tree() {
         auto view = std::make_unique<glw::TreeView>();
         view->setModel(std::make_shared<Folders>());
-        view->setDelegate(std::make_unique<glw::TreeTextDelegate>(&Folders::name));
+        view->setDelegate(std::make_unique<glw::TreeTextDelegate>(&Folders::text));
+        view->setColumnWidth(0, 220);
+        view->setColumnWidth(1, 110);
         view->expandAll();
         view->setStretch(1);
         return ui::VStack({.spacing = 8},
-                          ui::Label({.text = tr("A thousand folders of a thousand files, all open: a million rows. Open and close them."),
+                          ui::Label({.text = tr("A thousand folders of a thousand files, all open: a million rows. Open and close them; click a "
+                                                "header to sort each folder's files by it."),
                                      .muted = true,
                                      .wrap = true}),
                           std::move(view))
@@ -247,6 +276,7 @@ struct Page {
         auto view = std::make_unique<glw::ListView>();
         view->setModel(std::make_shared<Million>());
         view->setDelegate(std::make_unique<glw::TextDelegate>([](std::size_t i) { return tr("Item {n}").arg("n", std::to_string(i + 1)); }));
+        view->setHeader(tr("Items"));           // a click sorts them
         view->setStretch(1);
         return ui::VStack({.spacing = 8},
                           ui::Label({.text = tr("A million items, and only those that show are widgets. Drag the line between the two sides."),

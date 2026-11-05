@@ -129,7 +129,8 @@ struct ScrollBarStyle {
 };
 
 // The rows of item views (ListView): a pill under the mouse, the one selected a pill of the accent's tint; the current one,
-// when it is not the one selected, ringed while the view has the focus.
+// when it is not the one selected, ringed while the view has the focus. With the cells' borders (rowLines, columnLines),
+// a line between the rows and between a table's columns, and the rows' backgrounds fill their cells.
 struct ItemViewStyle {
     StateColor row;                 // behind a row: under the mouse, pressed
     Color selected;                 // behind the one selected
@@ -143,6 +144,11 @@ struct ItemViewStyle {
     float inset = 3;                // rows drawn this much in from the view's sides
     float indent = 16;              // a tree's, for each level
     float columnWidth = 140;        // a table's, until it is set
+    // the cells' borders
+    bool rowLines = false;          // a line under each row: lists, trees, tables
+    bool columnLines = false;       // a line between a table's columns, its header's too
+    Color gridLine;
+    float gridLineWidth = 1;
 };
 
 struct SplitterStyle {
@@ -341,7 +347,8 @@ struct Theme {
     LineEditStyle lineEdit;
     CheckBoxStyle checkBox;
     ScrollBarStyle scrollBar;
-    ItemViewStyle itemView;
+    ItemViewStyle itemView;         // lists and trees
+    ItemViewStyle table;            // tables: their cells' borders shown
     SplitterStyle splitter;
     DockStyle dock;
     MajorTabStyle majorTab;

@@ -210,10 +210,17 @@ TableView::~TableView() {
         model_->removeObserver(*this);
 }
 
+void TableView::setStyle(std::optional<ItemViewStyle> style) {
+    style_ = std::move(style);
+    onStyleChanged();
+}
+
 const ItemViewStyle& TableView::style() const {
+    if (style_)
+        return *style_;
     if (const UiContext* ui = context())
-        return ui->theme.itemView;
-    static const ItemViewStyle unstyled = Theme::dark().itemView;
+        return ui->theme.table;
+    static const ItemViewStyle unstyled = Theme::dark().table;
     return unstyled;
 }
 
@@ -356,11 +363,19 @@ void TableView::sortBy(std::optional<std::size_t> column, SortOrder order) {
         column.reset();
     sortColumn_ = column;
     sortOrder_ = order;
+    indicatorColumn_ = column;
+    indicatorOrder_ = order;
     cancelEdit();
     if (column)
         list_->setSortOrder(order, [this, c = *column](std::size_t a, std::size_t b) { return model_->compare(a, b, c); });
     else
         list_->setSortOrder(std::nullopt);
+    invalidatePaint();
+}
+
+void TableView::setSortIndicator(std::optional<std::size_t> column, SortOrder order) {
+    indicatorColumn_ = column;
+    indicatorOrder_ = order;
     invalidatePaint();
 }
 
@@ -424,6 +439,10 @@ std::optional<Rect> TableView::cellRect(std::size_t row, std::size_t column) con
     if (!cell || !cell->visible())
         return std::nullopt;
     const Point at = mapFromRoot(cell->mapToRoot({}));
+    if (editorArea_) {
+        const Rect in = editorArea_(*cell, column);
+        return Rect{at.x + in.x, at.y + in.y, in.width, in.height};
+    }
     return Rect{at.x, at.y, cell->size().width, cell->size().height};
 }
 
@@ -556,9 +575,9 @@ void TableView::paint(PaintContext& context) {
             p.fillRoundedRect({x + s.inset, h.y + 2, w - 2 * s.inset, h.height - 4}, s.cornerRadius, s.row.resolve(state));
         }
         // sorted by it: an arrow at its end side, up ascending, down descending
-        if (sortColumn_ == column) {
+        if (indicatorColumn_ == column) {
             const float ax = rtl ? x + 14 : x + w - 14, ay = h.y + h.height / 2;
-            const float d = sortOrder_ == SortOrder::Ascending ? -1.0f : 1.0f;
+            const float d = indicatorOrder_ == SortOrder::Ascending ? -1.0f : 1.0f;
             const Point arrow[] = {{ax - 4, ay - 2 * d}, {ax, ay + 2 * d}, {ax + 4, ay - 2 * d}};
             p.drawPolyline(arrow, 1.4f, s.headerText);
         }
@@ -567,7 +586,7 @@ void TableView::paint(PaintContext& context) {
             continue;
         const bool hot = hoveredEdge_ == column || (resizing_ && resizing_->column == column);
         const float edge = rtl ? x : x + w;
-        const float inset = hot ? 4.0f : 8.0f;
+        const float inset = s.columnLines ? 0.0f : hot ? 4.0f : 8.0f;
         p.fillRect({edge - (hot ? 1.0f : 0.5f), h.y + inset, hot ? 2.0f : 1.0f, h.height - 2 * inset}, hot ? s.indicator : s.headerLine);
     }
     p.popClip();
@@ -592,6 +611,32 @@ Rect TableView::barThumb() const {
 }
 
 void TableView::paintOver(PaintContext& context) {
+    const ItemViewStyle& cells = style();
+    if (cells.columnLines && !widths_.empty()) {
+        paint::Painter& p = context.painter;
+        const Rect rows = list_->bounds(), view = list_->viewport();
+        const Rect area{rows.x + view.x, rows.y + view.y, view.width, view.height};
+        // down to the last row, when it shows
+        float bottom = area.bottom();
+        const std::size_t lastShown = list_->shownItems().second;
+        if (lastShown == list_->shownCount()) {
+            if (lastShown == 0)
+                bottom = area.y;
+            else if (const std::optional<Rect> last = list_->itemRect(list_->modelIndex(lastShown - 1)))
+                bottom = std::min(bottom, rows.y + last->bottom());
+        }
+        const bool rtl = rightToLeft();
+        p.pushClip(area);
+        const auto [first, last] = shownColumns();
+        for (std::size_t column = first; column < last; ++column) {
+            if (stretchLast_ && column + 1 == widths_.size())
+                break;
+            const float x = area.x + columnX(column, area.width);
+            const float edge = rtl ? x : x + shownWidth(column);
+            p.fillRect({edge - cells.gridLineWidth / 2, area.y, cells.gridLineWidth, bottom - area.y}, cells.gridLine);
+        }
+        p.popClip();
+    }
     if (!showBar_)
         return;
     const ScrollBarStyle& s = context.ui.theme.scrollBar;
@@ -821,6 +866,7 @@ void TableView::onRootChanged() {
 }
 
 void TableView::onStyleChanged() {
+    list_->setStyle(style());   // its rows: the table's style
     updateLefts();              // the theme's column width
     header_->clear();           // its colors
     invalidateLayout();
@@ -863,6 +909,7 @@ void TableView::columnsChanged() {
 void TableView::modelReset() {
     cancelEdit();
     sortColumn_.reset();
+    indicatorColumn_.reset();
     list_->setSortOrder(std::nullopt);
     resetColumns();
     horizontalOffset_ = 0;

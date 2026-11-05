@@ -128,6 +128,8 @@ public:
     SortOrder sortOrder() const { return sortOrder_; }
     // A header clicked sorts by its column, if the model can (on by default).
     void setSortingEnabled(bool enabled) { sortingEnabled_ = enabled; }
+    // The arrow in a header, as sortBy shows it, its rows left as they are (what shows them sorts them: a tree).
+    void setSortIndicator(std::optional<std::size_t> column, SortOrder order = SortOrder::Ascending);
     // Only the rows `accepts` says yes to (the model's rows); none: all of them.
     void setFilter(std::function<bool(std::size_t)> accepts) { list_->setFilter(std::move(accepts)); }
     // Sorted and filtered again (what the filter says changed).
@@ -145,7 +147,12 @@ public:
     void cancelEdit();
     // The column F2 and typing edit, on the current row: the last cell pressed (none: its first editable one).
     std::optional<std::size_t> currentColumn() const { return currentColumn_; }
+    // Where a cell's editor goes in it (the cell's coordinates): all of it by default (a tree's first column: after its
+    // arrow).
+    void setEditorArea(std::function<Rect(const Widget& cell, std::size_t column)> area) { editorArea_ = std::move(area); }
 
+    // Its own (no cells' borders, say), or none: the theme's table.
+    void setStyle(std::optional<ItemViewStyle> style);
     const ItemViewStyle& style() const;
 
 protected:
@@ -211,6 +218,7 @@ private:
     ListView* list_ = nullptr;
     Strip* header_ = nullptr;
     std::optional<float> rowHeight_;
+    std::optional<ItemViewStyle> style_;
 
     std::vector<float> widths_;             // as set (0: the theme's)
     std::vector<double> lefts_;             // where each starts, one more: where the last ends (not stretched)
@@ -238,6 +246,9 @@ private:
 
     std::optional<std::size_t> sortColumn_;
     SortOrder sortOrder_ = SortOrder::Ascending;
+    std::optional<std::size_t> indicatorColumn_;    // the arrow shown
+    SortOrder indicatorOrder_ = SortOrder::Ascending;
+    std::function<Rect(const Widget&, std::size_t)> editorArea_;
     bool sortingEnabled_ = true;
     EditTriggers editTriggers_ = EditTriggers::All;
     std::unique_ptr<ItemEditor> editor_;

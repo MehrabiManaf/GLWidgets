@@ -69,7 +69,14 @@ ListView::~ListView() {
         model_->removeObserver(*this);
 }
 
+void ListView::setStyle(std::optional<ItemViewStyle> style) {
+    style_ = std::move(style);
+    onStyleChanged();       // its rows' height, what they show
+}
+
 const ItemViewStyle& ListView::style() const {
+    if (style_)
+        return *style_;
     if (const UiContext* ui = context())
         return ui->theme.itemView;
     static const ItemViewStyle unstyled = Theme::dark().itemView;
@@ -156,6 +163,31 @@ void ListView::setCurrentAt(std::optional<std::size_t> at) {
 void ListView::activate(std::size_t at) {
     if (onActivated_)
         onActivated_(modelIndex(at));
+}
+
+// ---- the header ----
+
+void ListView::setHeader(LocalizedText title) {
+    headerTitle_ = std::move(title);
+    if (!headerLabel_) {
+        headerLabel_ = static_cast<Label*>(&addChild(std::make_unique<Label>(Label::Props{.elide = true})));
+        headerLabel_->setHitTestVisible(false);
+    }
+    headerLabel_->setText(headerTitle_);
+    headerLabel_->setVisible(headerShown());
+    invalidateLayout();
+}
+
+void ListView::setHeaderVisible(bool visible) {
+    headerVisible_ = visible;
+    if (headerLabel_)
+        headerLabel_->setVisible(headerShown());
+    invalidateLayout();
+}
+
+Rect ListView::childrenClip() const {
+    // its rows' and its header's
+    return headerShown() ? Rect{viewport_.x, headerRect_.y, viewport_.width, viewport_.bottom() - headerRect_.y} : viewport_;
 }
 
 // ---- sorting and filtering ----
@@ -458,10 +490,22 @@ Size ListView::measureContent(Size available) {
 
 void ListView::arrangeContent(const Rect& content) {
     area_ = content;
+    headerRect_ = {};
+    if (headerShown()) {
+        const float h = style().rowHeight;
+        headerRect_ = {content.x, content.y, content.width, std::min(h, content.height)};
+        area_ = {content.x, content.y + headerRect_.height, content.width, std::max(0.0f, content.height - headerRect_.height)};
+        // its title after the rows' padding, the arrow's room at its end
+        const bool rtl = rightToLeft();
+        const Rect title{headerRect_.x + (rtl ? 28.0f : 12.0f), headerRect_.y, std::max(0.0f, headerRect_.width - 40), headerRect_.height};
+        headerLabel_->measure({title.width, title.height});
+        arrangeInCell(*headerLabel_, title, rtl);
+    }
+    const Rect rows = area_;
     const ScrollBarStyle* bar = context() ? &context()->theme.scrollBar : nullptr;
     const float barWidth = bar ? bar->width : 8.0f;
-    viewport_ = content;
-    showBar_ = heights_->total() > content.height + 0.5;
+    viewport_ = rows;
+    showBar_ = heights_->total() > rows.height + 0.5;
     if (showBar_) {
         viewport_.width = std::max(0.0f, viewport_.width - barWidth);
         if (rightToLeft())
@@ -597,9 +641,12 @@ Rect ListView::gapRect() const {
 }
 
 std::optional<Rect> ListView::childClip(const Widget& child) const {
-    if (!change_ || std::find(revealed_.begin(), revealed_.end(), &child) == revealed_.end())
+    if (&child == headerLabel_)
         return std::nullopt;
-    return gapRect();
+    if (change_ && std::find(revealed_.begin(), revealed_.end(), &child) != revealed_.end())
+        return gapRect().intersected(viewport_);
+    // under a header: the rows where they show, not over it
+    return headerShown() ? std::optional<Rect>(viewport_) : std::nullopt;
 }
 
 void ListView::changeStepped() {
@@ -630,6 +677,23 @@ void ListView::paint(PaintContext& context) {
     // behind the rows: under the mouse, pressed, selected (a pill of the accent's tint)
     const ItemViewStyle& s = style();
     paint::Painter& p = context.painter;
+    if (headerShown()) {
+        // its header: a pill under the mouse, the arrow of the order, a line under it
+        const Rect& h = headerRect_;
+        if (headerHovered_) {
+            const VisualState state{.hovered = true, .pressed = headerPressed_};
+            p.fillRoundedRect({h.x + s.inset, h.y + 2, h.width - 2 * s.inset, h.height - 4}, s.cornerRadius, s.row.resolve(state));
+        }
+        if (sortOrder_) {
+            const bool rtl = rightToLeft();
+            const float ax = rtl ? h.x + 14 : h.right() - 14, ay = h.y + h.height / 2;
+            const float d = *sortOrder_ == SortOrder::Ascending ? -1.0f : 1.0f;
+            const Point arrow[] = {{ax - 4, ay - 2 * d}, {ax, ay + 2 * d}, {ax + 4, ay - 2 * d}};
+            p.drawPolyline(arrow, 1.4f, s.headerText);
+        }
+        p.fillRect({h.x, h.bottom() - 1, h.width, 1}, s.headerLine);
+        headerLabel_->setColor(s.headerText);
+    }
     p.pushClip(viewport_);
     for (const Row& row : rows_) {
         const std::optional<Rect> rect = itemRect(modelIndex(row.index));
@@ -647,16 +711,22 @@ void ListView::paint(PaintContext& context) {
                     p.popClip();
             }
         } uncut{p, cut};
-        const Rect r{rect->x + s.inset, rect->y + 1, rect->width - 2 * s.inset, rect->height - 2};
+        // a pill; with the cells' borders, all of its cell
+        const bool grid = s.rowLines || s.columnLines;
+        const Rect r = grid ? *rect : Rect{rect->x + s.inset, rect->y + 1, rect->width - 2 * s.inset, rect->height - 2};
+        const float radius = grid ? 0.0f : s.cornerRadius;
         const VisualState state{.hovered = hovered_ == row.index, .pressed = pressed_ == row.index && hovered_ == row.index};
         const bool selected = selectionMode_ == SelectionMode::Single && current_ == row.index;
         if (selected)
-            p.fillRoundedRect(r, s.cornerRadius, s.selected);
+            p.fillRoundedRect(r, radius, s.selected);
         else if (state.hovered)
-            p.fillRoundedRect(r, s.cornerRadius, s.row.resolve(state));
+            p.fillRoundedRect(r, radius, s.row.resolve(state));
         // the current row ringed, unless the selection already shows it
         if (hasFocus() && current_ == row.index && !selected)
-            p.strokeRoundedRect(r, s.cornerRadius, 1.5f, s.focusRing);
+            p.strokeRoundedRect(grid ? r.inflated(-1) : r, radius, 1.5f, s.focusRing);
+        // the line under it
+        if (s.rowLines)
+            p.fillRect({rect->x, rect->bottom() - s.gridLineWidth, rect->width, s.gridLineWidth}, s.gridLine);
     }
     p.popClip();
 }
@@ -699,6 +769,10 @@ void ListView::onMouse(MouseEvent& event) {
         break;
     }
     case MouseEventType::Move: {
+        if (const bool over = headerShown() && headerRect_.contains(event.position); over != headerHovered_) {
+            headerHovered_ = over;
+            invalidatePaint();
+        }
         if (thumbGrab_) {
             // the thumb follows the mouse; the offset, the thumb
             const Rect track = scrollTrack();
@@ -723,6 +797,11 @@ void ListView::onMouse(MouseEvent& event) {
             return;
         event.handled = true;
         focus();
+        if (headerShown() && headerRect_.contains(event.position)) {
+            headerPressed_ = true;
+            invalidatePaint();
+            return;
+        }
         if (showBar_ && scrollTrack().contains(event.position)) {
             const Rect thumb = scrollThumb();
             if (thumb.contains(event.position))
@@ -747,6 +826,20 @@ void ListView::onMouse(MouseEvent& event) {
     case MouseEventType::Release:
         if (!left)
             return;
+        if (std::exchange(headerPressed_, false)) {
+            event.handled = true;
+            invalidatePaint();
+            // ascending, then descending, then not: as it compares (its own comparison kept)
+            if (sortingEnabled_ && headerRect_.contains(event.position)) {
+                if (!sortOrder_)
+                    setSortOrder(SortOrder::Ascending, compare_);
+                else if (*sortOrder_ == SortOrder::Ascending)
+                    setSortOrder(SortOrder::Descending, compare_);
+                else
+                    setSortOrder(std::nullopt, compare_);
+            }
+            return;
+        }
         if (thumbGrab_ || pressed_)
             event.handled = true;
         if (thumbGrab_)
@@ -808,9 +901,10 @@ void ListView::onKey(KeyEvent& event) {
 }
 
 void ListView::onHoverChanged(bool hovered) {
-    if (!hovered && (hovered_ || barHovered_)) {
+    if (!hovered && (hovered_ || barHovered_ || headerHovered_)) {
         hovered_.reset();
         barHovered_ = false;
+        headerHovered_ = false;
         invalidatePaint();
     }
 }
