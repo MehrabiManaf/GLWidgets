@@ -90,3 +90,6 @@ target_include_directories(GLWidgets
         Source)
 target_compile_features(GLWidgets PUBLIC cxx_std_20)
 target_link_libraries(GLWidgets PRIVATE ${GLW_SDL3_TARGET} glw_freetype glw_harfbuzz glw_sheenbidi glw_unibreak glw_thorvg)
+if(WIN32)
+    target_link_libraries(GLWidgets PRIVATE dwmapi)     # rounded windows (Windows 11)
+endif()

@@ -274,7 +274,7 @@ int main(int argc, char** argv) {
         app.translator().loadCatalog(persianCatalog);
         app.setLanguage(language);
         if (light)
-            app.setTheme(glw::Theme::light());
+            app.setTheme(glw::Theme::light(app.style()));
 
         Studio studio{app};
         bool restored = false;

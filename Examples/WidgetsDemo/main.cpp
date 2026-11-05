@@ -6,7 +6,7 @@
 // The interface is written with the builders of Widgets/Declarative.hpp. Its other side is a list of a million items: only
 // those that show are widgets.
 //
-//   widgets_demo [--frames N] [--language fa] [--light]
+//   widgets_demo [--frames N] [--language fa] [--light] [--style studio|fluid|plain]
 //
 // --frames N draws N frames and exits: a smoke test.
 #include <GLWidgets/Widgets/Application.hpp>
@@ -25,6 +25,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <exception>
+#include <optional>
 #include <string>
 #include <string_view>
 
@@ -47,6 +48,7 @@ constexpr const char* persianCatalog = R"({
     "Nothing typed yet.": "هنوز چیزی نوشته نشده.",
     "فارسی": "English",
     "Light theme": "پوسته‌ی روشن",
+    "Style": "سبک",
     "Dark theme": "پوسته‌ی تیره",
     "Close": "بستن",
     "a share": "یک سهم",
@@ -206,6 +208,7 @@ struct Page {
     glw::Button* menuButton = nullptr;
     int variableCount = 0;
     bool light = false;
+    glw::ComboBox* styleBox = nullptr;
 
     // The form on one side; on the other a list of a million items, a tree of a million rows and a table of a million rows;
     // handles between them.
@@ -317,7 +320,15 @@ struct Page {
                               ui::Label({.text = tr("Size")}).alignment(glw::Alignment::Start, glw::Alignment::Center),
                               ui::ComboBox({.items = {tr("Small"), tr("Medium"), tr("Large")},
                                             .current = 1,
-                                            .onChanged = [this](std::size_t i) { chosen(i == 0 ? tr("Small") : i == 1 ? tr("Medium") : tr("Large")); }})),
+                                            .onChanged = [this](std::size_t i) { chosen(i == 0 ? tr("Small") : i == 1 ? tr("Medium") : tr("Large")); }}),
+                              // the looks of the library: as a tool's, modern and moving, plain and still
+                              ui::Label({.text = tr("Style")}).alignment(glw::Alignment::Start, glw::Alignment::Center),
+                              ui::ComboBox({.items = {glw::LocalizedText("Studio"), glw::LocalizedText("Fluid"), glw::LocalizedText("Plain")},
+                                            .current = 0,
+                                            .onChanged = [this](std::size_t i) {
+                                                app.setStyle(i == 0 ? glw::ThemeStyle::Studio : i == 1 ? glw::ThemeStyle::Fluid : glw::ThemeStyle::Plain);
+                                            }})
+                                  .bind(styleBox)),
                    ui::HStack({.spacing = 12}, card(1, tr("a share")), card(2, tr("two shares")), card(1, tr("a share"))).bind(cards),
                    ui::Label({.text = tr("Click a header to open or close it; + adds a variable."), .muted = true, .wrap = true}),
                    panels(),
@@ -431,7 +442,7 @@ struct Page {
     // Eased, by its button; at once at the start (--light).
     void switchTheme(bool animated = true) {
         light = !light;
-        app.setTheme(light ? glw::Theme::light() : glw::Theme::dark(), animated);
+        app.setTheme(light ? glw::Theme::light(app.style()) : glw::Theme::dark(app.style()), animated);
         themeButton->setText(light ? tr("Dark theme") : tr("Light theme"));
     }
 };
@@ -442,6 +453,7 @@ int main(int argc, char** argv) {
     int frames = -1;
     std::string language = "en";
     bool light = false;
+    std::optional<glw::ThemeStyle> style;       // none: the default (Studio)
     for (int i = 1; i < argc; ++i) {
         const std::string_view arg(argv[i]);
         if (arg == "--frames" && i + 1 < argc)
@@ -450,6 +462,10 @@ int main(int argc, char** argv) {
             language = argv[++i];
         else if (arg == "--light")
             light = true;
+        else if (arg == "--style" && i + 1 < argc) {
+            const std::string_view name(argv[++i]);
+            style = name == "studio" ? glw::ThemeStyle::Studio : name == "plain" ? glw::ThemeStyle::Plain : glw::ThemeStyle::Fluid;
+        }
     }
     try {
         glw::Application app;
@@ -459,6 +475,9 @@ int main(int argc, char** argv) {
         app.setLanguage(language);
         Page page{app};
         page.window = &app.openWindow({.title = tr("Widgets"), .size = {980, 640}}, page.build());
+        if (style)
+            app.setStyle(*style, false);
+        page.styleBox->setCurrent(app.style() == glw::ThemeStyle::Studio ? 0 : app.style() == glw::ThemeStyle::Fluid ? 1 : 2);
         if (light)
             page.switchTheme(false);
         return app.run(frames);

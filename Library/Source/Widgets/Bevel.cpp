@@ -5,6 +5,8 @@
 #include <GLWidgets/Paint/Painter.hpp>
 
 #include <algorithm>
+#include <cmath>
+#include <utility>
 
 namespace glw {
 
@@ -53,6 +55,30 @@ void paintSunken(paint::Painter& p, const Rect& rect, float radius, Color backgr
 void paintFocusGlow(paint::Painter& p, const Rect& rect, float radius, Color glow) {
     if (glow.a > 0)
         p.drawShadow(rect.inflated(1), radius + 1, 2.5f, glow);
+}
+
+Ripple::Ripple(std::function<void()> onStep) : progress_(std::move(onStep)) {
+    progress_.set(1);
+}
+
+void Ripple::start(Scheduler* scheduler, Point at, Duration duration) {
+    at_ = at;
+    progress_.set(0);
+    progress_.animateTo(scheduler, 1, duration, Easing::Linear);
+}
+
+void Ripple::paint(paint::Painter& p, const Rect& rect, float radius, Color color) const {
+    if (!progress_.running() || color.a <= 0 || rect.empty())
+        return;
+    // out to the end furthest from where it was pressed, fast at first; full until halfway, then fading. As high as the
+    // control and as round: inside it whatever its shape
+    const float t = progress_.value();
+    const float grown = 1 - (1 - t) * (1 - t) * (1 - t);
+    const float x = std::clamp(at_.x, rect.x, rect.right());
+    const float reach = std::max(x - rect.x, rect.right() - x) * grown + rect.height / 2;
+    const float left = std::max(rect.x, x - reach), right = std::min(rect.right(), x + reach);
+    const float alpha = color.a * std::min(1.0f, 2 * (1 - t));
+    p.fillRoundedRect({left, rect.y, right - left, rect.height}, radius, withAlpha(color, alpha));
 }
 
 void paintScrollThumb(paint::Painter& p, const Rect& thumb, bool vertical, bool outerAtEnd, float wide, Color color, float radius) {

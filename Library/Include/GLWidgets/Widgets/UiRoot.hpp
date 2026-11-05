@@ -66,6 +66,9 @@ struct PopupRequest {
     // the one it opened from shows dimmed. It closes only by its host's closeWindow (its buttons, Escape), or with its
     // window.
     bool modal = false;
+    // How round its window's corners are (where the system rounds windows); none: the theme's (WindowFrameStyle::
+    // popupRadius). A menu's: square.
+    std::optional<float> windowRadius;
 };
 
 // What a root asks of the window it is in.
@@ -105,6 +108,13 @@ public:
 
     void setContent(std::unique_ptr<Widget> content);
     Widget* content() const { return content_.get(); }
+    // How round its window's corners are, the system rounding them (a popup's, in some styles): what draws its edge
+    // follows them. 0: square.
+    float windowRadius() const { return windowRadius_; }
+    void setWindowRadius(float radius) {
+        windowRadius_ = radius;
+        invalidatePaint();
+    }
     // The content's previous owner gets it back, the root shows nothing.
     std::unique_ptr<Widget> takeContent();
 
@@ -198,6 +208,7 @@ private:
     const UiContext& context_;
     UiHost* host_;
     std::unique_ptr<Widget> content_;
+    float windowRadius_ = 0;
     Size size_;
     float scale_ = 1;
     bool rightToLeft_ = false;

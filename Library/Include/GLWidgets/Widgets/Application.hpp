@@ -104,6 +104,8 @@ private:
     bool told_ = false;                                 // its root was told it closes
     // a popup coming in: faded in, its content sliding `slide_` dips to its place
     void entering();
+    void roundCorners();                // a popup's: as the theme says, or as it was asked
+    std::optional<float> popupRadius_;
     Animation entrance_{[this] { entering(); }};
     Point slide_;
 };
@@ -136,6 +138,9 @@ public:
     // Eased there (the theme's slow motion): through the themes of the palettes between the one shown and its own, then
     // itself. At once when `animated` is false, with animations off, or before a window opens.
     void setTheme(const Theme& theme, bool animated = true);
+    // The theme of another style (Studio, Fluid, Plain: ThemeStyle), as dark or light as it is now; eased as setTheme.
+    void setStyle(ThemeStyle style, bool animated = true);
+    ThemeStyle style() const;
     // The language every window shows its texts in (its catalog loaded in translator()), which shows them at once; a
     // language written right to left mirrors the windows.
     void setLanguage(const std::string& language);

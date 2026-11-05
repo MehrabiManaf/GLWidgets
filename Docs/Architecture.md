@@ -97,7 +97,7 @@ What stays native, behind the interface:
 
 | What | Where | Plan |
 |---|---|---|
-| Window shadow and rounded corners | Windows 11 | DWM attributes on the borderless window (native code, M3) |
+| Window shadow and rounded corners | Windows 11 | Popups' corners rounded (`Window::setCornerRadius`: DWM's round corners on Windows 11, the window's region cut round before it); windows' shadows and their own corners still to come |
 | The snap layouts flyout on the maximize button | Windows 11 | Answer `HTMAXBUTTON` for our maximize button (native code, M3) |
 | Shadow | macOS | Given by the system |
 | Shadow | X11, Wayland | None, or drawn by GLWidgets in a transparent margin (decided in M3) |
@@ -328,9 +328,37 @@ from markup.
 ### Styles
 
 How widgets look is in `Theme` (`Widgets/Theme.hpp`): a `Palette` (the colors everything is made of) and a style for each
-kind of widget, made from the palette by `Theme::fromPalette` (`Theme::dark()`, `Theme::light()`).
+kind of widget, made from the palette by `Theme::fromPalette` in one of the library's looks (`ThemeStyle`), each in the
+dark and in the light (`Theme::dark(style)`, `Theme::light(style)`, with the style's own palettes). An application
+changes look with `Application::setStyle` (as dark or light as it is), eased as `setTheme` is: from the theme shown to
+the new one, the palettes' colors mixed and the shapes too (`Theme::blend`: corners rounding, controls growing lower,
+bevels fading; a pill's radius as round as a control is high, so that it rounds as it goes):
 
-The look is GLWidgets' own, of the family of Qt's Fusion, compact and softer: neutral grays with a little blue in them,
+- **Studio** (the default), described below: square, controls raised and lit from above, fields sunk, quick motions (what the tests and
+  the benchmarks measure).
+- **Fluid**, modern: lower controls (3 dips above and below a button's or a field's text, panels' headers 30, tool
+  buttons 28, rows 26), and round: buttons, fields, combo boxes and tool buttons pills (a half circle at each end: the
+  painter takes a radius past half a box's height as half of it), panels' headers 10, menus' items and the menu bar's titles 6, docks and cards 10, the
+  scroll thumbs pills; buttons, combo boxes, tool buttons under the mouse and panels' headers raised a little (lighter at
+  their top, a fine light line, a soft shadow), fields flat; deeper palettes with a brighter accent; more motion and longer (150, 260
+  and 380 ms, the wheel 240): a press on a button or a row ripples out of where it was (`Ripple`: as
+  high as the control and as round, out sideways to its ends, full until halfway and then fading: inside a pill's ends
+  too; `ButtonStyle::ripple` and `motion.ripple`), the selection of a list, tree or table slides from the row it was on
+  to the one it goes to (`ItemViewStyle::slideSelection`), rows are pills without lines between them; popups' windows
+  (not menus', square in every style: `PopupRequest::windowRadius`) are rounded (`WindowFrameStyle::popupRadius`, 8 dips: on Windows 11 by the system, smoothly; before it, the window's
+  shape cut round; square on macOS and Linux for now, their edges then drawn square: `UiRoot::windowRadius`), come in
+  from 12 dips.
+- A collapsible panel is a card: its body a step above the window (not sunk below it), the header over it. In Studio, a
+  line between them (`CollapsiblePanelStyle::separator`), a soft edge around it and a soft shadow under it (`shadow`);
+  in Plain the same, crisp and without the shadow; in Fluid without a frame, the header raised a little over its body
+  (lighter at its top, a fine light line, a soft shadow), a soft shadow under all of it. In none is there a ring of the
+  focus: the header shows it, lighter (`header.focused`), as under the mouse. As it opens, its header's lower corners
+  square, eased with it.
+- **Plain**, simple: square and flat, no light from above, no shadows, no glow of the focus (its edge says it), gray
+  palettes without a tint; nothing moves (`MotionStyle::still`: every motion at once, the wheel's too; rows inserted
+  and removed, panels opened and closed, popups, all at once).
+
+Studio's look is of the family of Qt's Fusion, compact and softer: neutral grays with a little blue in them,
 in layers (the title bar the darkest, the window's background, panels over it), controls that stand out of them lit from
 above. A raised control (a button, a combo box, a panel's header; a tool button under the mouse) is lighter at its top,
 has a light line inside along its top that fades down its sides and a soft shadow under it, and sinks when pressed; a

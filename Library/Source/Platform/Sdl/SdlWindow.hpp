@@ -29,6 +29,7 @@ public:
     bool focused() const override;
     void setParent(Window* parent) override;
     void setOpacity(float opacity) override;
+    bool setCornerRadius(float radius) override;
     Point position() const override;
     void setPosition(Point position) override;
     Point toScreen(Point point) const override;
@@ -57,6 +58,8 @@ private:
     SdlPlatform& platform_;
     SDL_Window* window_ = nullptr;
     SdlWindow* popupOf_ = nullptr;          // a popup's parent: SDL keeps its position from the parent's corner
+    float cornerRadius_ = 0;                // its shape cut round by this (where the system does not round it): again as it resizes
+    void cutCorners();
     HitTest hitTest_;
 };
 

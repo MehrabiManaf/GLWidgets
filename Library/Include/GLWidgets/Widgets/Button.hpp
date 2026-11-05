@@ -5,6 +5,7 @@
 // focus. It looks as its ButtonStyle says: the theme's, or its own.
 #include <GLWidgets/Export.hpp>
 #include <GLWidgets/Widgets/Animation.hpp>
+#include <GLWidgets/Widgets/Bevel.hpp>
 #include <GLWidgets/Widgets/Label.hpp>
 #include <GLWidgets/Widgets/Localization.hpp>
 #include <GLWidgets/Widgets/Theme.hpp>
@@ -55,11 +56,13 @@ private:
     Label* label_ = nullptr;
     std::function<void()> onClick_;
     std::optional<ButtonStyle> style_;
+    void ripple(Point at);              // a press's, out of `at` (when the style has one)
     bool pressed_ = false;
     // what it shows eases to its state's colors
     ColorTransition background_{[this] { invalidatePaint(); }};
     ColorTransition border_{[this] { invalidatePaint(); }};
     ColorTransition glow_{[this] { invalidatePaint(); }};
+    Ripple ripple_{[this] { invalidatePaint(); }};
 };
 
 } // namespace glw

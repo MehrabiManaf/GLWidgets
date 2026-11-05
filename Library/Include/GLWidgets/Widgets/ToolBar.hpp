@@ -8,6 +8,7 @@
 #include <GLWidgets/Export.hpp>
 #include <GLWidgets/Widgets/Action.hpp>
 #include <GLWidgets/Widgets/Animation.hpp>
+#include <GLWidgets/Widgets/Bevel.hpp>
 #include <GLWidgets/Widgets/Theme.hpp>
 #include <GLWidgets/Widgets/Widget.hpp>
 
@@ -48,6 +49,7 @@ private:
     bool pressed_ = false;
     ColorTransition background_{[this] { invalidatePaint(); }};
     ColorTransition outline_{[this] { invalidatePaint(); }};
+    Ripple ripple_{[this] { invalidatePaint(); }};
 };
 
 class GLW_EXPORT ToolBar : public Widget {

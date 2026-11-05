@@ -15,7 +15,8 @@ namespace glw {
 
 namespace {
 
-constexpr float arrowWidth = 16;        // the room of a row's arrow, after its indent
+constexpr float arrowLead = 6;          // before a row's arrow, after its indent: off the row's edge
+constexpr float arrowWidth = 18;        // the room of the arrow
 
 const ItemViewStyle& itemStyle(const Widget& widget) {
     // the list it is a row of: its style, its own or the theme's
@@ -76,10 +77,10 @@ protected:
         const Color color = itemStyle(*this).expander;
         const float angle = turn_(node_, expanded_) * 1.5707964f * d;
         const float cs = std::cos(angle), sn = std::sin(angle);
-        Point points[] = {{-2 * d, -4}, {2 * d, 0}, {-2 * d, 4}};
+        Point points[] = {{-2.25f * d, -4.5f}, {2.25f * d, 0}, {-2.25f * d, 4.5f}};
         for (Point& q : points)
             q = {c.x + q.x * cs - q.y * sn, c.y + q.x * sn + q.y * cs};
-        context.painter.drawPolyline(points, 1.4f, color);
+        context.painter.drawPolyline(points, 1.5f, color);
     }
 
     void onMouse(MouseEvent& event) override {
@@ -92,10 +93,10 @@ protected:
     }
 
 private:
-    float lead() const { return itemStyle(*this).indent * static_cast<float>(depth_) + arrowWidth; }
+    float lead() const { return itemStyle(*this).indent * static_cast<float>(depth_) + arrowLead + arrowWidth; }
 
     Rect arrow() const {
-        const float x = itemStyle(*this).indent * static_cast<float>(depth_);
+        const float x = itemStyle(*this).indent * static_cast<float>(depth_) + arrowLead;
         return rightToLeft() ? Rect{size().width - x - arrowWidth, 0, arrowWidth, size().height} : Rect{x, 0, arrowWidth, size().height};
     }
 

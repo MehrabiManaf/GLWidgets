@@ -11,6 +11,13 @@
 #include <SDL3/SDL_hints.h>
 #include <SDL3/SDL_keyboard.h>
 
+#ifdef _WIN32
+#define WIN32_LEAN_AND_MEAN
+#define NOMINMAX
+#include <windows.h>
+#include <dwmapi.h>
+#endif
+
 #include <algorithm>
 #include <cmath>
 #include <string>
@@ -89,6 +96,8 @@ void SdlWindow::setSize(Size size) {
     GLW_EXPECTS(size.width > 0 && size.height > 0);
     const float f = dipsPerUnit(window_);
     SDL_SetWindowSize(window_, sizeInUnits(size.width, f), sizeInUnits(size.height, f));
+    if (cornerRadius_ > 0)
+        cutCorners();
 }
 
 PixelSize SdlWindow::pixelSize() const {
@@ -117,6 +126,46 @@ void SdlWindow::raise() {
 
 bool SdlWindow::focused() const {
     return (SDL_GetWindowFlags(window_) & SDL_WINDOW_INPUT_FOCUS) != 0;
+}
+
+bool SdlWindow::setCornerRadius(float radius) {
+#ifdef _WIN32
+    auto* hwnd = static_cast<HWND>(SDL_GetPointerProperty(SDL_GetWindowProperties(window_), SDL_PROP_WINDOW_WIN32_HWND_POINTER, nullptr));
+    if (!hwnd)
+        return false;
+    // Windows 11's: DWM rounds the window, smoothly, and clips what it shows (no hairline of its own: the window draws its
+    // edge, as round); before it, the attribute is not known
+    const DWM_WINDOW_CORNER_PREFERENCE corners = radius > 0 ? DWMWCP_ROUND : DWMWCP_DONOTROUND;
+    if (SUCCEEDED(DwmSetWindowAttribute(hwnd, DWMWA_WINDOW_CORNER_PREFERENCE, &corners, sizeof corners))) {
+        const COLORREF border = DWMWA_COLOR_NONE;
+        DwmSetWindowAttribute(hwnd, DWMWA_BORDER_COLOR, &border, sizeof border);
+        cornerRadius_ = 0;
+        return radius > 0;
+    }
+    // before it: the window's shape cut round (its corners not smoothed)
+    cornerRadius_ = radius;
+    cutCorners();
+    return radius > 0;
+#else
+    return false;
+#endif
+}
+
+void SdlWindow::cutCorners() {
+#ifdef _WIN32
+    auto* hwnd = static_cast<HWND>(SDL_GetPointerProperty(SDL_GetWindowProperties(window_), SDL_PROP_WINDOW_WIN32_HWND_POINTER, nullptr));
+    if (!hwnd)
+        return;
+    if (cornerRadius_ <= 0) {
+        SetWindowRgn(hwnd, nullptr, TRUE);
+        return;
+    }
+    int width = 0, height = 0;
+    SDL_GetWindowSizeInPixels(window_, &width, &height);
+    const int diameter = static_cast<int>(std::lround(2 * cornerRadius_ * scale()));
+    // the region is the system's from then on (not deleted here)
+    SetWindowRgn(hwnd, CreateRoundRectRgn(0, 0, width + 1, height + 1, diameter, diameter), TRUE);
+#endif
 }
 
 void SdlWindow::setOpacity(float opacity) {

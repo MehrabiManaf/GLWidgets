@@ -24,6 +24,7 @@
 //   list->setOnActivated([](std::size_t i) { ... });
 #include <GLWidgets/Export.hpp>
 #include <GLWidgets/Widgets/Animation.hpp>
+#include <GLWidgets/Widgets/Bevel.hpp>
 #include <GLWidgets/Widgets/ItemModel.hpp>
 #include <GLWidgets/Widgets/Theme.hpp>
 #include <GLWidgets/Widgets/Widget.hpp>
@@ -291,6 +292,14 @@ private:
     std::function<bool(std::size_t)> filter_;
     std::unique_ptr<ItemOrder> order_;      // while sorted or filtered: the items shown, in their order
     std::unique_ptr<IndexSet> selection_;   // Multiple: the model's items selected
+    // the style's motions: a press on a row ripples; the selection slides from the row it was on (where its pill showed:
+    // its top in the rows, and its height) to the current one
+    Ripple ripple_{[this] { invalidatePaint(); }};
+    std::optional<std::size_t> rippled_;    // the position of the row pressed
+    Animation slide_{[this] { invalidatePaint(); }};
+    double slideFrom_ = 0, slideFromHeight_ = 0;
+    // the selection's pill now: its top in the rows and its height (sliding, or on the current row)
+    std::pair<double, double> selectionPill() const;
     std::optional<std::size_t> anchor_;     // ... where Shift selects from (the model's item)
     // a batch of the model's changes: the current item and the one at the top, by their handles (which stay theirs)
     struct Held {

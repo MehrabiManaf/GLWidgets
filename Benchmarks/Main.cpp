@@ -556,7 +556,7 @@ int main(int argc, char** argv) {
     glw::text::FontLibrary fonts;
     glw::text::GlyphAtlas atlas(1, 1024);
     glw::Translator translator;
-    glw::UiContext ui{fonts, atlas, translator, glw::Theme::dark()};
+    glw::UiContext ui{fonts, atlas, translator, glw::Theme::dark(glw::ThemeStyle::Studio)};
 
     std::printf("Labels in a scroll area, milliseconds (paint and after: the best of 5)\n");
     std::printf("   labels |    build |   layout |    paint |   scroll |     text | vertices\n");

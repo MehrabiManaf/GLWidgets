@@ -78,7 +78,7 @@ void Dialog::paint(PaintContext& context) {
     const DialogStyle& s = dialogStyle(*this);
     const Rect all{0, 0, size().width, size().height};
     context.painter.fillRect(all, s.background);
-    context.painter.strokeRoundedRect(all, 0, 1, s.border);
+    context.painter.strokeRoundedRect(all, root() ? root()->windowRadius() : 0.0f, 1, s.border);
 }
 
 void Dialog::onKey(KeyEvent& event) {

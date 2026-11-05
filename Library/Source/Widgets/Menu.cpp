@@ -101,7 +101,7 @@ protected:
         const float width = size().width;
         const Rect all{0, 0, width, size().height};
         p.fillRect(all, s.background);
-        p.strokeRoundedRect(all, 0, 1, s.border);
+        p.strokeRoundedRect(all, root() ? root()->windowRadius() : 0.0f, 1, s.border);
         for (std::size_t i = 0; i < rows_.size(); ++i) {
             const Row& row = rows_[i];
             const MenuItem& item = items_[i];
@@ -296,7 +296,8 @@ private:
         const Point corner = mapToRoot({0, rows_[index].y - s.padding});
         UiRoot* opened = host->openPopup({.content = std::make_unique<MenuView>(items_[index].items, this, 0.0f, nullptr),
                                           .anchor = {corner.x, corner.y, size().width, rows_[index].height + 2 * s.padding},
-                                          .placement = PopupPlacement::After});
+                                          .placement = PopupPlacement::After,
+                                          .windowRadius = 0.0f});
         if (!opened)
             return;
         submenu_ = static_cast<MenuView*>(opened->content());
@@ -372,7 +373,8 @@ UiRoot* open(Widget& from, const Rect& anchor, std::vector<MenuItem> items, floa
     resolve(items, root->context().translator);
     UiRoot* opened = host->openPopup({.content = std::make_unique<MenuView>(std::move(items), nullptr, minimumWidth, std::move(options.onClosed),
                                                                           std::move(options.onAcross)),
-                                      .anchor = from.transformToRoot().map(anchor)});
+                                      .anchor = from.transformToRoot().map(anchor),
+                                      .windowRadius = 0.0f});       // a menu: square in every style
     if (!opened)
         return nullptr;
     opened->content()->focus();

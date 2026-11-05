@@ -106,6 +106,7 @@ void ToolButton::paint(PaintContext& context) {
     outline_.to(scheduler(), state.hovered || state.pressed || checked ? s.outline : withAlpha(s.outline, 0), fast);
     const Rect r{0, 0, size().width, size().height};
     paintRaised(p, r, s.cornerRadius, background_.value(), outline_.value(), s.bevel, state.pressed || checked);
+    ripple_.paint(p, r, s.cornerRadius, s.ripple);
     const Color ink = enabled ? s.icon : s.disabledIcon;
     if (!action_->icon().empty()) {
         // its icon, in the middle (or at the start, before its text)
@@ -123,6 +124,8 @@ void ToolButton::onMouse(MouseEvent& event) {
     event.handled = true;
     if (event.type == MouseEventType::Press) {
         pressed_ = true;
+        if (const UiContext* ui = context(); ui && style().ripple.a > 0)
+            ripple_.start(scheduler(), event.position, ui->theme.motion.ripple);
     } else {
         const bool over = Rect{0, 0, size().width, size().height}.contains(event.position);
         if (std::exchange(pressed_, false) && over)

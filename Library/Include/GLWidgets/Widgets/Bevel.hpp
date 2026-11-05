@@ -9,7 +9,10 @@
 #include <GLWidgets/Core/Color.hpp>
 #include <GLWidgets/Core/Geometry.hpp>
 #include <GLWidgets/Export.hpp>
+#include <GLWidgets/Widgets/Animation.hpp>
 #include <GLWidgets/Widgets/Theme.hpp>
+
+#include <functional>
 
 namespace glw {
 
@@ -38,5 +41,22 @@ GLW_EXPORT void paintFocusGlow(paint::Painter& painter, const Rect& rect, float 
 // Its corners `radius` round, at most half as much as it is thick (a pill).
 GLW_EXPORT void paintScrollThumb(paint::Painter& painter, const Rect& thumb, bool vertical, bool outerAtEnd, float wide, Color color,
                                  float radius = 0);
+
+// A press's ripple (a style's that has one: ButtonStyle::ripple): out of where the control was pressed to its ends, as high
+// as it is and as round (inside it, a pill's round ends too), fading as it goes. Started on a press, painted over the
+// control's background, under what is on it.
+class GLW_EXPORT Ripple {
+public:
+    explicit Ripple(std::function<void()> onStep);
+    // Out of `at` (the control's coordinates), over `duration`: none without one, or with animations off.
+    void start(Scheduler* scheduler, Point at, Duration duration);
+    bool running() const { return progress_.running(); }
+    // In `rect` of corners `radius` round, in `color` (transparent: none).
+    void paint(paint::Painter& painter, const Rect& rect, float radius, Color color) const;
+
+private:
+    Animation progress_;
+    Point at_;
+};
 
 } // namespace glw

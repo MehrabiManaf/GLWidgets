@@ -143,21 +143,21 @@ void CollapsiblePanel::paint(PaintContext& context) {
     paint::Painter& p = context.painter;
     const Rect all{0, 0, size().width, size().height};
     const Rect head = header();
-    // a card: the content's background under all of it, the header over it
+    // a card: a soft shadow under it, the content's background under all of it, the header over it
+    if (s.shadow.a > 0)
+        p.drawShadow({all.x, all.y + 1, all.width, all.height}, s.cornerRadius, 5, s.shadow);
     p.fillRoundedRect(all, s.cornerRadius, s.content);
-    const VisualState state{.hovered = headerHovered_, .pressed = pressed_ && headerHovered_};
+    const VisualState state{.hovered = headerHovered_, .pressed = pressed_ && headerHovered_, .focused = hasFocus()};
     headerColor_.to(scheduler(), s.header.resolve(state), context.ui.theme.motion.fast);
-    const bool open = all.height > head.height + 0.5f;
-    if (open) {
-        // open, even a little: the header's lower corners square (cut out of a taller box), a line under it
-        p.pushClip(head);
-        paintRaised(p, {0, 0, head.width, head.height + s.cornerRadius}, s.cornerRadius, headerColor_.value(), {0, 0, 0, 0}, s.bevel);
-        p.popClip();
-        p.fillRect({0, head.bottom() - 1, head.width, 1}, s.border);
-    } else {
-        paintRaised(p, head, s.cornerRadius, headerColor_.value(), {0, 0, 0, 0}, s.bevel);
-    }
-    p.strokeRoundedRect(all, s.cornerRadius, 1, s.border);
+    // the header's lower corners squaring as it opens (cut out of a box taller by as much), a line under it
+    const float opened = std::clamp(progress_.value(), 0.0f, 1.0f);
+    p.pushClip(head);
+    paintRaised(p, {0, 0, head.width, head.height + s.cornerRadius * opened}, s.cornerRadius, headerColor_.value(), {0, 0, 0, 0}, s.bevel);
+    p.popClip();
+    if (opened > 0)
+        p.fillRect({0, head.bottom() - 1, head.width, 1}, withAlpha(s.separator, s.separator.a * opened));
+    if (s.border.a > 0)
+        p.strokeRoundedRect(all, s.cornerRadius, 1, s.border);
     // the arrow: toward the end side closed, down open, turning between
     const bool rtl = rightToLeft();
     const Point c{rtl ? all.width - arrowRoom / 2 : arrowRoom / 2, head.height / 2};
@@ -171,10 +171,7 @@ void CollapsiblePanel::paint(PaintContext& context) {
     title_->setColor(s.title);
 }
 
-void CollapsiblePanel::paintOver(PaintContext& context) {
-    if (hasFocus())
-        context.painter.strokeRoundedRect(header().inflated(-1), style().cornerRadius, 1.5f, style().focusRing);
-}
+void CollapsiblePanel::paintOver(PaintContext&) {}
 
 // ---- events ----
 

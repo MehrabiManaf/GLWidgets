@@ -40,7 +40,7 @@ Then, in `build/<preset>/bin`:
   guides, docks again. Around the scripts are the application's own panels (files, log), the same whichever script is
   shown, in any window (the files as a tree). `--workspace FILE` saves the windows and everything in them when it ends,
   and starts with them again; `--light` starts it in the light theme.
-- `widgets_demo` is an application made of widgets, written with the declarative builders (`glw::ui`): a window with its
+- `widgets_demo [--style studio|fluid|plain] [--light]` is an application made of widgets, written with the declarative builders (`glw::ui`): a window with its
   own chrome, split in two by a handle, a form (text field, check boxes, buttons; Tab moves the focus) and, over each
   other, a list of a million items (sorted by a click on its header), a tree of a thousand folders of a thousand files
   in three columns (all open: a million rows, eased as they open and close; a header clicked sorts each folder's files)

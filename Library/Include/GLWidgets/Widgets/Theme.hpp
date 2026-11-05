@@ -12,6 +12,7 @@
 #include <GLWidgets/Widgets/Widget.hpp>
 
 #include <chrono>
+#include <cstdint>
 #include <optional>
 
 namespace glw {
@@ -46,6 +47,17 @@ struct StateColor {
     }
 };
 
+// The looks a theme is made in, each in the dark and in the light (Theme::dark, Theme::light; Application::setStyle):
+//   Studio  (the default) as a tool's (Qt's Fusion, made finer): square, controls raised and lit from above, fields sunk; quick motions.
+//   Fluid   modern: rounded, flat with soft shadows; more motion and longer: a press ripples out of where it was, the
+//           selection slides from row to row, popups come in from further.
+//   Plain   simple: square and flat, no shadows, no glows, and nothing animated (every motion at once).
+enum class ThemeStyle : std::uint8_t {
+    Studio,
+    Fluid,
+    Plain,
+};
+
 // The colors everything is made of, in layers: the title bar the darkest, the window's background over it, panels (layers,
 // the islands of docked panels) over that, raised controls on them; fields sunk into them.
 struct Palette {
@@ -66,8 +78,8 @@ struct Palette {
     Color selection;        // behind selected text
     Color closeHover;       // the close button of a window, under the mouse
 
-    GLW_EXPORT static Palette dark();
-    GLW_EXPORT static Palette light();
+    GLW_EXPORT static Palette dark(ThemeStyle style = ThemeStyle::Studio);
+    GLW_EXPORT static Palette light(ThemeStyle style = ThemeStyle::Studio);
 };
 
 // How a control stands out of what it is on, lit from above. Raised (a button): its background lighter at its top, a light
@@ -75,8 +87,8 @@ struct Palette {
 // shadow inside along its top, a light line along its bottom edge. paintRaised and paintSunken (Widgets/Bevel.hpp) draw it.
 struct Bevel {
     float gradient = 0;             // the background mixed toward white by this at its top, toward black by half of it at its bottom
-    Color highlight;                // raised: the line inside, at the top; sunken: the line under its bottom edge
-    Color shadow;                   // raised: under it; sunken: inside, along its top
+    Color highlight{0, 0, 0, 0};    // raised: the line inside, at the top; sunken: the line under its bottom edge (none: none)
+    Color shadow{0, 0, 0, 0};       // raised: under it; sunken: inside, along its top
 };
 
 struct ButtonStyle {
@@ -88,6 +100,7 @@ struct ButtonStyle {
     float cornerRadius = 0;
     Insets padding{12, 5, 12, 5};
     Color focusRing;                // a glow around it while it has the focus
+    Color ripple{0, 0, 0, 0};                   // a press's: a circle out of where it was pressed, fading (transparent: none)
 };
 
 struct LineEditStyle {
@@ -150,6 +163,8 @@ struct ItemViewStyle {
     bool columnLines = false;       // a line between a table's columns, its header's too
     Color gridLine;
     float gridLineWidth = 1;
+    Color ripple{0, 0, 0, 0};                   // a press on a row: a circle out of where it was pressed (transparent: none)
+    bool slideSelection = false;    // the selection slides from the row it was on to the one it goes to
 };
 
 struct SplitterStyle {
@@ -202,13 +217,14 @@ struct CardStyle {
 
 // A header over content that opens and closes (CollapsiblePanel), as Fluent's expander: a card.
 struct CollapsiblePanelStyle {
-    StateColor header;              // under the mouse, pressed
+    StateColor header;              // under the mouse, pressed, with the focus (which shows so: no ring)
     Bevel bevel;                    // of the header
     Color content;                  // behind the content, under the header
-    Color border;
+    Color border;                   // around all of it
+    Color separator{0, 0, 0, 0};    // between the header and the content
+    Color shadow{0, 0, 0, 0};       // a soft one under all of it (transparent: none)
     Color title;
     Color arrow;
-    Color focusRing;
     float headerHeight = 36;
     Insets padding{14, 8, 14, 12};  // around the content
     float spacing = 8;              // between the content's widgets
@@ -238,6 +254,7 @@ struct ToolBarStyle {
     float padding = 4;              // around its buttons
     float spacing = 2;              // between them
     float cornerRadius = 0;
+    Color ripple{0, 0, 0, 0};                   // a press's (transparent: none)
 };
 
 struct MenuStyle {
@@ -285,6 +302,10 @@ struct MotionStyle {
     std::chrono::milliseconds slow{300};
     std::chrono::milliseconds scroll{180};      // a turn of the wheel, a page: eased to where it goes (a faster wheel
                                                 // goes further: SmoothScroll::boosted)
+    std::chrono::milliseconds ripple{450};      // a press's ripple, out and gone
+    float popupSlide = 6;                       // dips a popup slides in from, out of its anchor
+    // None of them: every motion at once (Plain).
+    bool still() const { return fast.count() == 0 && normal.count() == 0 && slow.count() == 0 && scroll.count() == 0; }
 };
 
 struct ToolTipStyle {
@@ -330,6 +351,7 @@ struct WindowButtonStyle {
 
 struct WindowFrameStyle {
     Color background;
+    float popupRadius = 0;          // popups' windows (not menus') rounded by this, where the system rounds windows
     float resizeBorder = 6;         // dips along the edges that resize the window
     float contentInset = 4;         // around its content: the window's background, between it and the edges
     // The window buttons at the start of the title bar (the system's convention on macOS) or at its end (elsewhere).
@@ -341,6 +363,7 @@ struct WindowFrameStyle {
 };
 
 struct Theme {
+    ThemeStyle style = ThemeStyle::Studio;
     Palette palette;
     float fontSize = 13;
     float cornerRadius = 0;
@@ -367,10 +390,21 @@ struct Theme {
     WindowButtonStyle windowButton;
     WindowFrameStyle frame;
 
-    // The styles of every widget made from `palette`.
-    GLW_EXPORT static Theme fromPalette(const Palette& palette);
-    static Theme dark() { return fromPalette(Palette::dark()); }
-    static Theme light() { return fromPalette(Palette::light()); }
+    // The styles of every widget made from `palette`, in `style`.
+    GLW_EXPORT static Theme fromPalette(const Palette& palette, ThemeStyle style = ThemeStyle::Studio);
+    // The style's own colors.
+    static Theme dark(ThemeStyle style = ThemeStyle::Studio) { return fromPalette(Palette::dark(style), style); }
+    static Theme light(ThemeStyle style = ThemeStyle::Studio) { return fromPalette(Palette::light(style), style); }
+    // Between two themes, `t` of the way from `from` to `to` (an application changing theme, or style, eased): the
+    // palettes' colors mixed, and the shapes (corners rounding, controls growing lower, bevels fading); what neither
+    // mixes (what is on or off, the motions) is `to`'s.
+    GLW_EXPORT static Theme blend(const Theme& from, const Theme& to, float t);
+    // Whether its palette is the dark one's (a dark window).
+    bool isDark() const { return palette.window.r + palette.window.g + palette.window.b < 1.5f; }
+
+private:
+    static void fluid(Theme& theme, bool dark);
+    static void plain(Theme& theme);
 };
 
 } // namespace glw

@@ -92,7 +92,7 @@ struct Application::Impl final : DockingHost {
     Scheduler scheduler;                                // before the windows: their timers go first
     // a theme eased to: the themes of the palettes between the one shown and its own, then it
     std::optional<Theme> themeTarget;
-    Palette themeFrom;
+    Theme themeFrom;                                    // fading from it
     Animation themeFade{[this] { themeStepped(); }};
     // GLW_LOG_FRAMES: the frames drawn, each second that had some (what is idle draws none), and how evenly: the time
     // between two frames of a run (one drawn within 50 ms of the last), on average and at most, and how many of them were
@@ -122,8 +122,10 @@ struct Application::Impl final : DockingHost {
         context->theme = theme;
         for (const auto& w : opened)
             w->root_.styleChanged();
-        for (const auto& w : popups)
+        for (const auto& w : popups) {
+            w->roundCorners();
             w->root_.styleChanged();
+        }
     }
 
     void themeStepped() {
@@ -133,28 +135,8 @@ struct Application::Impl final : DockingHost {
             applyTheme(*std::exchange(themeTarget, std::nullopt));
             return;
         }
-        const float t = themeFade.value();
-        const Palette& to = themeTarget->palette;
-        const auto mixed = [t](Color a, Color b) { return lerp(a, b, t); };
-        const Palette between{
-            .window = mixed(themeFrom.window, to.window),
-            .layer = mixed(themeFrom.layer, to.layer),
-            .surface = mixed(themeFrom.surface, to.surface),
-            .base = mixed(themeFrom.base, to.base),
-            .titleBar = mixed(themeFrom.titleBar, to.titleBar),
-            .text = mixed(themeFrom.text, to.text),
-            .mutedText = mixed(themeFrom.mutedText, to.mutedText),
-            .disabledText = mixed(themeFrom.disabledText, to.disabledText),
-            .accent = mixed(themeFrom.accent, to.accent),
-            .onAccent = mixed(themeFrom.onAccent, to.onAccent),
-            .border = mixed(themeFrom.border, to.border),
-            .outline = mixed(themeFrom.outline, to.outline),
-            .hover = mixed(themeFrom.hover, to.hover),
-            .pressed = mixed(themeFrom.pressed, to.pressed),
-            .selection = mixed(themeFrom.selection, to.selection),
-            .closeHover = mixed(themeFrom.closeHover, to.closeHover),
-        };
-        applyTheme(Theme::fromPalette(between));
+        // the colors mixed, and the shapes: corners rounding, controls growing lower (a style changed)
+        applyTheme(Theme::blend(themeFrom, *themeTarget, themeFade.value()));
     }
 
     Window* find(platform::WindowId id) const {
@@ -715,7 +697,8 @@ Window::Window(Application& app, const WindowOptions& options, std::unique_ptr<W
 }
 
 Window::Window(Application& app, PopupRequest request, Window& parent)
-    : app_(app), root_(*app.impl_->context, this), owner_(&parent), popup_(true), tooltip_(request.tooltip), modal_(request.modal) {
+    : app_(app), root_(*app.impl_->context, this), owner_(&parent), popup_(true), tooltip_(request.tooltip), modal_(request.modal),
+      popupRadius_(request.windowRadius) {
     Application::Impl& impl = *app.impl_;
     const bool rtl = parent.root_.rightToLeft();
     root_.setLayoutDirection(rtl ? LayoutDirection::RightToLeft : LayoutDirection::LeftToRight);
@@ -733,11 +716,12 @@ Window::Window(Application& app, PopupRequest request, Window& parent)
     surface_ = impl.device->createSurface(*window_);
     root_.setSize(window_->size());
     root_.setScale(window_->scale());
+    roundCorners();
     // it comes in: faded in, sliding a little out of its anchor (down from what it opens under, up when it went above,
     // across from a menu beside it, up into the middle for a dialog); a tooltip only fades
     const UiContext& ui = *impl.context;
     if (ui.scheduler && ui.scheduler->animationsEnabled()) {
-        constexpr float distance = 6;
+        const float distance = ui.theme.motion.popupSlide;
         if (request.tooltip)
             slide_ = {};
         else if (request.placement == PopupPlacement::Below)
@@ -751,6 +735,13 @@ Window::Window(Application& app, PopupRequest request, Window& parent)
         entering();
     }
     window_->show(!request.tooltip);
+}
+
+void Window::roundCorners() {
+    // a popup's window rounded as the theme says, where the system rounds it; what draws its edge follows
+    const float radius = popup_ ? popupRadius_.value_or(app_.impl_->context->theme.frame.popupRadius) : 0.0f;
+    const bool rounded = popup_ && window_->setCornerRadius(radius);
+    root_.setWindowRadius(rounded ? radius : 0.0f);
 }
 
 void Window::entering() {
@@ -1033,11 +1024,20 @@ void Application::setTheme(const Theme& theme, bool animated) {
         return;
     }
     // from what shows now (a fade on its way, from where it is)
-    impl.themeFrom = impl.context->theme.palette;
+    impl.themeFrom = impl.context->theme;
     impl.themeTarget = theme;
     impl.themeFade.set(0);
     impl.themeFade.animateTo(&impl.scheduler, 1, impl.context->theme.motion.slow, Easing::InOutCubic);
     impl.themeStepped();
+}
+
+void Application::setStyle(ThemeStyle style, bool animated) {
+    const bool dark = impl_->themeTarget ? impl_->themeTarget->isDark() : impl_->context->theme.isDark();
+    setTheme(dark ? Theme::dark(style) : Theme::light(style), animated);
+}
+
+ThemeStyle Application::style() const {
+    return impl_->themeTarget ? impl_->themeTarget->style : impl_->context->theme.style;
 }
 
 void Application::setLanguage(const std::string& language) {

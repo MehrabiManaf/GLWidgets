@@ -15,6 +15,7 @@
 #include <GLWidgets/Widgets/UiRoot.hpp>
 
 #include <algorithm>
+#include <tuple>
 #include <cmath>
 #include <numeric>
 
@@ -153,6 +154,15 @@ bool ListView::isSelected(std::size_t index) const {
     return selectionMode_ == SelectionMode::Single && current_ && modelIndex(*current_) == index;
 }
 
+std::pair<double, double> ListView::selectionPill() const {
+    const double top = current_ && *current_ < heights_->count() ? heights_->top(*current_) : 0;
+    const double height = current_ && *current_ < heights_->count() ? heights_->height(*current_) : 0;
+    if (!slide_.running())
+        return {top, height};
+    const double t = slide_.value();
+    return {slideFrom_ + (top - slideFrom_) * t, slideFromHeight_ + (height - slideFromHeight_) * t};
+}
+
 bool ListView::selectedAt(std::size_t position) const {
     if (selectionMode_ == SelectionMode::Multiple)
         return selection_->contains(modelIndex(position));
@@ -273,6 +283,15 @@ void ListView::setCurrentAt(std::optional<std::size_t> at) {
         scrollToPosition(*at);
     if (at == current_)
         return;
+    // the selection slides from where its pill shows to the row (a style's motion)
+    const UiContext* ui = context();
+    if (ui && style().slideSelection && selectionMode_ == SelectionMode::Single && current_ && at && *current_ < heights_->count()) {
+        std::tie(slideFrom_, slideFromHeight_) = selectionPill();
+        slide_.set(0);
+        slide_.animateTo(scheduler(), 1, ui->theme.motion.normal, Easing::OutCubic);
+    } else {
+        slide_.set(1);
+    }
     current_ = at;
     invalidatePaint();
     if (onCurrentChanged_)
@@ -826,6 +845,15 @@ void ListView::paint(PaintContext& context) {
         headerLabel_->setColor(s.headerText);
     }
     p.pushClip(viewport_);
+    const bool grid = s.rowLines || s.columnLines;
+    const bool sliding = slide_.running() && selectionMode_ == SelectionMode::Single && current_;
+    if (sliding) {
+        // the selection on its way from the row it was on
+        const auto [top, height] = selectionPill();
+        const Rect full{viewport_.x, viewport_.y + static_cast<float>(top - offset_), viewport_.width, static_cast<float>(height)};
+        const Rect pill = grid ? full : Rect{full.x + s.inset, full.y + 1, full.width - 2 * s.inset, full.height - 2};
+        p.fillRoundedRect(pill, grid ? 0.0f : s.cornerRadius, s.selected);
+    }
     for (const Row& row : rows_) {
         const std::optional<Rect> rect = itemRect(modelIndex(row.index));
         if (!rect)
@@ -843,15 +871,16 @@ void ListView::paint(PaintContext& context) {
             }
         } uncut{p, cut};
         // a pill; with the cells' borders, all of its cell
-        const bool grid = s.rowLines || s.columnLines;
         const Rect r = grid ? *rect : Rect{rect->x + s.inset, rect->y + 1, rect->width - 2 * s.inset, rect->height - 2};
         const float radius = grid ? 0.0f : s.cornerRadius;
         const VisualState state{.hovered = hovered_ == row.index, .pressed = pressed_ == row.index && hovered_ == row.index};
         const bool selected = selectedAt(row.index);
-        if (selected)
+        if (selected && !sliding)
             p.fillRoundedRect(r, radius, s.selected);
-        else if (state.hovered)
+        else if (state.hovered && !selected)
             p.fillRoundedRect(r, radius, s.row.resolve(state));
+        if (rippled_ == row.index)
+            ripple_.paint(p, r, radius, s.ripple);
         // the current row ringed, unless the selection already shows it
         if (hasFocus() && current_ == row.index && !selected)
             p.strokeRoundedRect(grid ? r.inflated(-1) : r, radius, 1.5f, s.focusRing);
@@ -958,6 +987,10 @@ void ListView::onMouse(MouseEvent& event) {
         const std::optional<std::size_t> item = itemAt(event.position);
         const std::optional<std::size_t> at = item ? position(*item) : std::nullopt;
         pressed_ = at;
+        if (at && style().ripple.a > 0 && context()) {
+            rippled_ = at;
+            ripple_.start(scheduler(), event.position, context()->theme.motion.ripple);
+        }
         if (at) {
             if (selectionMode_ == SelectionMode::Multiple && event.clicks == 1) {
                 chose(*at, platform::hasAny(event.modifiers, platform::KeyModifiers::Shift),
@@ -1165,7 +1198,7 @@ void ListView::itemsInserted(std::size_t first, std::size_t count) {
     // among the rows that show: they come out from under the row before them
     const bool among = animatesChanges_ && !rows_.empty() && first > rows_.front().index && first <= rows_.back().index + 1;
     heights_->insert(first, count);
-    if (among && scheduler() && scheduler()->animationsEnabled() && count > 0) {
+    if (among && scheduler() && scheduler()->animationsEnabled() && count > 0 && context() && context()->theme.motion.normal.count() > 0) {
         change_ = Change{first, count, heights_->top(first + count) - heights_->top(first), true, {}};
         changeMotion_.set(0);
         changeMotion_.animateTo(scheduler(), 1, context() ? Duration(context()->theme.motion.normal) : Duration::zero(), Easing::OutCubic);
@@ -1218,7 +1251,7 @@ void ListView::itemsRemoved(std::size_t first, std::size_t count) {
     endChange(false);
     // among the rows that show: they go back under the row before them, showing what they showed meanwhile
     if (animatesChanges_ && !rows_.empty() && first > rows_.front().index && first <= rows_.back().index && count > 0 &&
-        scheduler() && scheduler()->animationsEnabled()) {
+        scheduler() && scheduler()->animationsEnabled() && context() && context()->theme.motion.normal.count() > 0) {
         Change change{first, count, removed, false, {}};
         std::erase_if(rows_, [&](Row& row) {
             if (row.index < first || row.index >= first + count)

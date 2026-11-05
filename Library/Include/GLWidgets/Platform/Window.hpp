@@ -92,6 +92,10 @@ public:
     virtual void setParent(Window* parent) = 0;
     // From 0 (not seen) to 1 (opaque), where the system can (not on Wayland).
     virtual void setOpacity(float opacity) = 0;
+    // Its corners rounded by `radius` dips (0: square), where the system can round a window: on Windows (11's own round
+    // corners, 8 dips; before it, the window's shape cut so, its corners not smoothed). Whether they are now: false where
+    // it cannot (macOS and Linux, for now).
+    virtual bool setCornerRadius(float radius) = 0;
 
     // Screen coordinates: the system's, for the whole desktop (pixels on Windows and X11, points on macOS). Its top left
     // corner (of the whole window), and from its dips to the screen and back.

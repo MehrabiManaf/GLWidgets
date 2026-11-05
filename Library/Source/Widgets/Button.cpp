@@ -74,6 +74,7 @@ void Button::onMouse(MouseEvent& event) {
     event.handled = true;
     if (event.type == MouseEventType::Press) {
         pressed_ = true;
+        ripple(event.position);
         invalidatePaint();
         return;
     }
@@ -86,6 +87,7 @@ void Button::onMouse(MouseEvent& event) {
 void Button::onKey(KeyEvent& event) {
     if (event.pressed && !event.repeat && (event.key == platform::Key::Enter || event.key == platform::Key::Space)) {
         event.handled = true;
+        ripple({size().width / 2, size().height / 2});
         click();
     }
 }
@@ -108,10 +110,16 @@ void Button::paint(PaintContext& context) {
     glow_.to(scheduler(), v.focused ? s.focusRing : withAlpha(s.focusRing, 0), context.ui.theme.motion.normal);
     paintFocusGlow(context.painter, r, s.cornerRadius, glow_.value());
     paintRaised(context.painter, r, s.cornerRadius, background_.value(), border_.value(), s.bevel, v.pressed);
+    ripple_.paint(context.painter, r.inflated(-1), std::max(0.0f, s.cornerRadius - 1), s.ripple);
     // the label paints after this, in the color of the state
     label_->setColor(s.text.resolve(v));
 }
 
 void Button::paintOver(PaintContext&) {}
+
+void Button::ripple(Point at) {
+    if (const UiContext* ui = context(); ui && style().ripple.a > 0)
+        ripple_.start(scheduler(), at, ui->theme.motion.ripple);
+}
 
 } // namespace glw

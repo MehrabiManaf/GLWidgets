@@ -105,7 +105,7 @@ protected:
         const MenuStyle& s = context.ui.theme.menu;
         const Rect all{0, 0, size().width, size().height};
         context.painter.fillRect(all, s.background);
-        context.painter.strokeRoundedRect(all, 0, 1, s.border);
+        context.painter.strokeRoundedRect(all, root() ? root()->windowRadius() : 0.0f, 1, s.border);
     }
 
     void onPreviewKey(KeyEvent& event) override {
