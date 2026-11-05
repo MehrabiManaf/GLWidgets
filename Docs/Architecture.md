@@ -336,8 +336,7 @@ bevels fading; a pill's radius as round as a control is high, so that it rounds 
 
 - **Studio** (the default), described below: square, controls raised and lit from above, fields sunk, quick motions (what the tests and
   the benchmarks measure).
-- **Fluid**, modern: lower controls (3 dips above and below a button's or a field's text, panels' headers 30, tool
-  buttons 28, rows 26), and round: buttons, fields, combo boxes and tool buttons pills (a half circle at each end: the
+- **Fluid**, modern: round: buttons, fields, combo boxes and tool buttons pills (a half circle at each end: the
   painter takes a radius past half a box's height as half of it), panels' headers 10, menus' items and the menu bar's titles 6, docks and cards 10, the
   scroll thumbs pills; buttons, combo boxes, tool buttons under the mouse and panels' headers raised a little (lighter at
   their top, a fine light line, a soft shadow), fields flat; deeper palettes with a brighter accent; more motion and longer (150, 260
@@ -371,8 +370,8 @@ stroke by stroke; the item chosen in a menu is in the accent. Everything is squa
 `cornerRadius` is the theme's, 0 (a theme of its own rounds them: controls, panels, tabs, scroll thumbs). Docked
 stacks are islands on the window with gaps between them; the tab shown is raised over the bar and joined to its content
 as Fusion's, and a selected row is on the accent's tint (strong enough to stay orange on the dark, not brown): no bars
-mark them. Text is 13 dips, tabs 28
-high. The painter fills and strokes boxes in vertical gradients (`fillRoundedRect(rect, radius, top, bottom)`), with no
+mark them. Text is 13 dips, tabs 28 high; controls are low in every style: 3 dips above and below a button's, a
+field's or a combo box's text, panels' headers 30, tool buttons 28, rows 26. The painter fills and strokes boxes in vertical gradients (`fillRoundedRect(rect, radius, top, bottom)`), with no
 more vertices than a flat box.
 
 - **A style is a typed struct** (`ButtonStyle`, `LineEditStyle`, `CardStyle`, `TitleBarStyle`...) of colors and measures.

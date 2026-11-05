@@ -28,7 +28,7 @@ struct Animated {
     ~Animated() { tests::testScheduler().setAnimationsEnabled(false); }
 };
 
-// A panel of two boxes 40 high: open, 36 + 8 + 40 + 8 + 40 + 12 = 144.
+// A panel of two boxes 40 high: open, 30 + 8 + 40 + 8 + 40 + 12 = 138.
 struct Panelled {
     UiRoot root{tests::testContext()};
     CollapsiblePanel* panel = nullptr;
@@ -66,7 +66,7 @@ struct Panelled {
 TEST(aCollapsiblePanelsHeightEasesOpenAndClosed) {
     Animated on;
     Panelled p;
-    CHECK(near(p.height(), 36) && !p.panel->content().visible());
+    CHECK(near(p.height(), 30) && !p.panel->content().visible());
     // open: its content shows at once, cut to a height that eases (the theme's slow motion, 300 ms)
     p.panel->setExpanded(true);
     CHECK(p.panel->content().visible() && tests::testScheduler().animating());
@@ -74,16 +74,16 @@ TEST(aCollapsiblePanelsHeightEasesOpenAndClosed) {
     const float half = p.height();
     CHECK(half > 60 && half < 120);
     tests::advance(150ms);
-    CHECK(near(p.height(), 144) && !tests::testScheduler().animating());
+    CHECK(near(p.height(), 138) && !tests::testScheduler().animating());
     // closed: back to its header, its content hidden at the end, not before
     p.panel->setExpanded(false);
     tests::advance(100ms);
-    CHECK(p.panel->content().visible() && p.height() > 36);
+    CHECK(p.panel->content().visible() && p.height() > 30);
     tests::advance(200ms);
-    CHECK(near(p.height(), 36) && !p.panel->content().visible());
+    CHECK(near(p.height(), 30) && !p.panel->content().visible());
     // at once
     p.panel->setExpanded(true, false);
-    CHECK(near(p.height(), 144) && !tests::testScheduler().animating());
+    CHECK(near(p.height(), 138) && !tests::testScheduler().animating());
 }
 
 TEST(aCollapsiblePanelOpensByItsHeaderAndTheKeys) {
@@ -114,7 +114,7 @@ TEST(aCollapsiblePanelOpensByItsHeaderAndTheKeys) {
 
 TEST(aCollapsiblePanelClosingTakesTheFocusOutOfItsContent) {
     Panelled p(true);
-    CHECK(near(p.height(), 144) && p.panel->content().visible());
+    CHECK(near(p.height(), 138) && p.panel->content().visible());
     p.field->focus();
     CHECK(p.field->hasFocus());
     p.panel->setExpanded(false);

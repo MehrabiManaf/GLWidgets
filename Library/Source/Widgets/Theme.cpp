@@ -414,15 +414,12 @@ void Theme::fluid(Theme& t, bool dark) {
     // their height is half of it); panels' headers, rows, menus round; docks and cards a little
     constexpr float pill = 1000;
     t.cornerRadius = 6;
-    t.button.padding = {14, 3, 14, 3};
+    t.button.padding = {14, 3, 14, 3};      // as low as every style's, wider for the round ends
     t.lineEdit.padding = {14, 3, 14, 3};
     t.button.cornerRadius = t.lineEdit.cornerRadius = t.toolBar.cornerRadius = pill;
     t.menuBar.cornerRadius = 6;
-    t.toolBar.buttonSize = 28;
     t.checkBox.cornerRadius = 5;
-    t.itemView.rowHeight = t.table.rowHeight = 26;
     t.itemView.cornerRadius = t.table.cornerRadius = 8;
-    t.collapsiblePanel.headerHeight = 30;
     t.collapsiblePanel.cornerRadius = 10;
     t.menu.cornerRadius = 6;               // its items; its window square (a menu's, in every style)
     t.dock.cornerRadius = t.card.cornerRadius = 10;

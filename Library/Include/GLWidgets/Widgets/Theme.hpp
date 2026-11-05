@@ -98,7 +98,7 @@ struct ButtonStyle {
     Bevel bevel;
     float borderWidth = 1;
     float cornerRadius = 0;
-    Insets padding{12, 5, 12, 5};
+    Insets padding{12, 3, 12, 3};
     Color focusRing;                // a glow around it while it has the focus
     Color ripple{0, 0, 0, 0};                   // a press's: a circle out of where it was pressed, fading (transparent: none)
 };
@@ -116,7 +116,7 @@ struct LineEditStyle {
     float borderWidth = 1;
     float cornerRadius = 0;
     float focusLineWidth = 0;
-    Insets padding{10, 5, 10, 5};
+    Insets padding{10, 3, 10, 3};
     float width = 220;              // what it asks for: fields are usually stretched
 };
 
@@ -153,7 +153,7 @@ struct ItemViewStyle {
     Color expander;                 // a tree's arrow, by a node with children
     Color headerText;               // a table's column headers
     Color headerLine;               // under them, and between them
-    float rowHeight = 28;
+    float rowHeight = 26;
     float cornerRadius = 0;
     float inset = 3;                // rows drawn this much in from the view's sides
     float indent = 16;              // a tree's, for each level
@@ -225,7 +225,7 @@ struct CollapsiblePanelStyle {
     Color shadow{0, 0, 0, 0};       // a soft one under all of it (transparent: none)
     Color title;
     Color arrow;
-    float headerHeight = 36;
+    float headerHeight = 30;
     Insets padding{14, 8, 14, 12};  // around the content
     float spacing = 8;              // between the content's widgets
     float cornerRadius = 0;
@@ -249,7 +249,7 @@ struct ToolBarStyle {
     Bevel bevel;                    // ... raised (pressed, sunk)
     Color icon;                     // a monochrome icon's color
     Color disabledIcon;
-    float buttonSize = 32;          // its buttons are square
+    float buttonSize = 28;          // its buttons are square
     float iconSize = 16;
     float padding = 4;              // around its buttons
     float spacing = 2;              // between them

@@ -57,7 +57,9 @@ TEST(theThemesStylesDifferAsTheySay) {
     // Fluid: rounded, flat, rippling, the selection sliding, slower
     // ... its buttons and fields lower, and pills (a radius past half their height: half of it)
     CHECK(fluid.button.cornerRadius >= 100 && fluid.lineEdit.cornerRadius >= 100 && fluid.dock.cornerRadius > 0);
-    CHECK(fluid.button.padding.top < studio.button.padding.top && fluid.collapsiblePanel.headerHeight < studio.collapsiblePanel.headerHeight);
+    // ... as low as Studio's (3 dips above and below the text, panels' headers 30, rows 26), wider for their ends
+    CHECK(fluid.button.padding.top == studio.button.padding.top && studio.button.padding.top == 3 && fluid.button.padding.start > studio.button.padding.start);
+    CHECK(fluid.collapsiblePanel.headerHeight == 30 && studio.collapsiblePanel.headerHeight == 30 && studio.itemView.rowHeight == 26);
     // panels: Studio's a card with an edge and a shadow; Fluid's without a frame, its header raised, a shadow under it;
     // Plain's crisp, without a shadow; in every one the focus a lighter header (no ring)
     CHECK(studio.collapsiblePanel.shadow.a > 0 && studio.collapsiblePanel.border.a > 0 && plain.collapsiblePanel.shadow.a == 0);
@@ -121,7 +123,7 @@ TEST(aStyleChangedEasesItsShapes) {
     const Theme half = Theme::blend(studio, fluid, 0.5f);
     CHECK(half.style == ThemeStyle::Fluid);
     CHECK(half.button.cornerRadius == 8 && half.dock.cornerRadius == 5);
-    CHECK(half.button.padding.top == 4 && half.collapsiblePanel.headerHeight == 33);
+    CHECK(half.button.padding.start == 13 && half.collapsiblePanel.headerHeight == 30);
     // bevels fading: half of Studio's toward Plain's flat ones
     const Theme flatter = Theme::blend(studio, Theme::dark(ThemeStyle::Plain), 0.5f);
     CHECK(flatter.button.bevel.gradient > 0 && flatter.button.bevel.gradient < studio.button.bevel.gradient);
