@@ -199,17 +199,26 @@ double SmoothScroll::velocity() const {
     return (to_ - from_) * slope(progress_.value()) / seconds_;
 }
 
-double SmoothScroll::aim(double shown, double step, double low, double high) {
+double SmoothScroll::aim(Scheduler* scheduler, double shown, double step, double low, double high) {
     const double from = running() && aiming_ ? aimed_ : target(shown);
-    aimed_ = std::clamp(from + boosted(step), low, high);
+    aimed_ = std::clamp(from + boosted(scheduler, step), low, high);
     return aimed_;
 }
 
-double SmoothScroll::boosted(double step) {
+double SmoothScroll::boosted(Scheduler* scheduler, double step) {
     const bool sameWay = (step > 0) == (lastStep_ > 0) && lastStep_ != 0;
-    boost_ = running() && sameWay ? std::min(boost_ * boostGrowth, maximumBoost) : 1.0;
+    const std::optional<TimePoint> now = scheduler ? std::optional<TimePoint>(scheduler->now()) : std::nullopt;
+    const double gap = now && lastTurn_ && sameWay ? std::chrono::duration<double>(*now - *lastTurn_).count() : slowTurn;
+    lastTurn_ = now;
     lastStep_ = step;
-    return step * boost_;
+    if (gap >= slowTurn) {
+        pace_ = slowTurn;       // a pause, or the other way: a step
+        return step;
+    }
+    // the pace over the last few steps (one quick step among slow ones is not a flick), eased in: slow steps stay steps
+    pace_ = (pace_ + gap) / 2;
+    const double fast = std::clamp((slowTurn - pace_) / (slowTurn - fastTurn), 0.0, 1.0);
+    return step * (1 + (maximumBoost - 1) * fast * fast);
 }
 
 void SmoothScroll::scrollTo(Scheduler* scheduler, double shown, double target, Duration duration, bool aimed) {

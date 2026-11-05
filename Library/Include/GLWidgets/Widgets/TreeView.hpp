@@ -109,6 +109,25 @@ public:
     std::optional<TreeNode> current() const;
     // When it shows.
     void setCurrent(TreeNode node);
+    // The node shown, wherever it is in the tree: its ancestors expanded (as the model says: TreeModel::parent), it made
+    // current and scrolled to. False when it does not show even so (its filter leaves it out).
+    bool reveal(TreeNode node);
+    // Its parent, as the model says (none: at the top level, or the model does not know).
+    std::optional<TreeNode> parentOf(TreeNode node) const { return model_ ? model_->parent(node) : std::nullopt; }
+
+    // ---- the selection ----
+    // Single (by default), Multiple (Ctrl and Shift, as a list's), None. The nodes selected stay so as the tree is sorted
+    // and filtered; those under a node collapsed are not any more.
+    void setSelectionMode(SelectionMode mode) { table_->setSelectionMode(mode); }
+    SelectionMode selectionMode() const { return list_->selectionMode(); }
+    bool isSelected(TreeNode node) const;
+    // In the order they show.
+    std::vector<TreeNode> selectedNodes() const;
+    // Multiple: when it shows.
+    void setSelected(TreeNode node, bool selected);
+    void selectAll() { list_->selectAll(); }
+    void clearSelection() { list_->clearSelection(); }
+    void setOnSelectionChanged(std::function<void()> handler) { list_->setOnSelectionChanged(std::move(handler)); }
 
     // ---- sorting and filtering ----
     // The children of each node sorted by a column, as the model compares them in it; none: in the model's order. A click

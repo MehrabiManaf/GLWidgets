@@ -293,6 +293,13 @@ public:
     }
     ItemFlags flags(TreeNode) const override { return ItemFlags::Editable; }
     std::partial_ordering compare(TreeNode a, TreeNode b) const override { return nodes[a.id].name <=> nodes[b.id].name; }
+    std::optional<TreeNode> parent(TreeNode node) const override {
+        for (std::size_t p = 0; p < nodes.size(); ++p) {
+            if (std::find(nodes[p].children.begin(), nodes[p].children.end(), node.id) != nodes[p].children.end())
+                return TreeNode{p};
+        }
+        return std::nullopt;
+    }
     void rename(TreeNode node) {
         // its place among its siblings
         for (std::size_t p = 0; p < nodes.size(); ++p) {
@@ -731,4 +738,21 @@ TEST(aTouchpadScrollsAListAsTheFingersGoAWheelByWholeRows) {
     root.dispatch(platform::MouseWheelScrolled{1, {0, -1}, {100, 100}});
     root.layout();
     CHECK(std::abs(std::fmod(list->offset(), h)) < 0.01 && list->offset() > 2 * one);
+}
+
+TEST(aTreeRevealsANodeByItsAncestors) {
+    Treed t;
+    CHECK(t.shown() == "a b");
+    CHECK(t.tree->parentOf({3}) == TreeNode{2} && t.tree->parentOf({0}) == std::nullopt);
+    // a2x, deep under a and a2, collapsed: they open, and it is the current one
+    CHECK(t.tree->reveal({3}));
+    CHECK(t.shown() == "a .a1 .a2 ..a2x b" && t.tree->current() == TreeNode{3});
+    // filtered out: not shown even so
+    t.tree->collapseAll();
+    t.tree->setFilter([&](TreeNode n) { return t.nodes->nodes[n.id].name != "a1"; });
+    CHECK(!t.tree->reveal({1}));
+    // a model that knows no parents: only what shows
+    Filed f;
+    f.tree->collapseAll();
+    CHECK(!f.tree->reveal({1}) && f.tree->reveal({4}) && f.tree->current() == TreeNode{4});
 }

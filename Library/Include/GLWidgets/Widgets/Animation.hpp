@@ -155,12 +155,14 @@ public:
 
     // Where a turn of the wheel aims: `step` (boosted) from where it aimed before while it goes there, not from where that
     // was snapped to (a row's top), so that the steps of a turning wheel add up evenly; between `low` and `high`.
-    double aim(double shown, double step, double low, double high);
-    // A step of the wheel, larger as the wheel turns faster: turned again the same way before the last step got there,
-    // it is `boostGrowth` times the last one, up to `maximumBoost` times a step; a pause or the other way, a step again.
-    double boosted(double step);
-    static constexpr double boostGrowth = 1.3;
-    static constexpr double maximumBoost = 6;
+    double aim(Scheduler* scheduler, double shown, double step, double low, double high);
+    // A step of the wheel, larger as the wheel turns faster: by how soon it came after the last one the same way (the
+    // time between them smoothed over the last few), a step at `slowTurn` apart or more, `maximumBoost` steps at
+    // `fastTurn` or less, eased in between; a pause or the other way, a step again. Without a scheduler, a step.
+    double boosted(Scheduler* scheduler, double step);
+    static constexpr double maximumBoost = 4;
+    static constexpr double slowTurn = 0.12;        // seconds between two steps of the wheel
+    static constexpr double fastTurn = 0.02;
     // Its speed at the start, of the distance over the duration: from rest, and at least when sent on.
     static constexpr double startSpeed = 3;
     static constexpr double minimumSpeed = 1;
@@ -176,8 +178,9 @@ private:
     double seconds_ = 0;                    // how long it takes
     bool aiming_ = false;                   // the target is where the wheel aimed, snapped
     double aimed_ = 0;                      // ... that aim
-    double boost_ = 1;
     double lastStep_ = 0;
+    std::optional<TimePoint> lastTurn_;     // when the wheel last turned
+    double pace_ = slowTurn;                // the time between its steps, smoothed
     std::function<void(double)> show_;
 };
 

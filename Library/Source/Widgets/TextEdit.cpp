@@ -818,9 +818,9 @@ void TextEdit::onMouse(MouseEvent& event) {
         const double y = smoothY_.target(offsetY_);
         const float x = static_cast<float>(smoothX_.target(offsetX_));
         if (across)
-            scrollSmoothly(y, x + static_cast<float>(smoothX_.boosted(by * wheelLines * 2 * digitWidth_)));
+            scrollSmoothly(y, x + static_cast<float>(smoothX_.boosted(scheduler(), by * wheelLines * 2 * digitWidth_)));
         else
-            scrollSmoothly(smoothY_.aim(offsetY_, -event.wheelDelta.y * wheelLines * lineHeight_, 0, maximumOffsetY()), x, true);
+            scrollSmoothly(smoothY_.aim(scheduler(), offsetY_, -event.wheelDelta.y * wheelLines * lineHeight_, 0, maximumOffsetY()), x, true);
         event.handled = true;
         break;
     }

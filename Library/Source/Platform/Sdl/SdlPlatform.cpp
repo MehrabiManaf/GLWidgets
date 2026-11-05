@@ -105,6 +105,12 @@ void SdlPlatform::setExposeHandler(std::function<void(WindowId)> handler) {
         watching_ = SDL_AddEventWatch(&SdlPlatform::watch, this);
 }
 
+void SdlPlatform::setMoveHandler(std::function<void(WindowId)> handler) {
+    moveHandler_ = std::move(handler);
+    if (moveHandler_ && !watching_)
+        watching_ = SDL_AddEventWatch(&SdlPlatform::watch, this);
+}
+
 bool SdlPlatform::placesWindows() const {
     const char* driver = SDL_GetCurrentVideoDriver();
     return !driver || std::string_view(driver) != "wayland";
@@ -114,6 +120,10 @@ Point SdlPlatform::mousePosition() const {
     float x = 0, y = 0;
     SDL_GetGlobalMouseState(&x, &y);
     return {x, y};
+}
+
+bool SdlPlatform::mouseHeld() const {
+    return (SDL_GetGlobalMouseState(nullptr, nullptr) & SDL_BUTTON_LMASK) != 0;
 }
 
 void SdlPlatform::captureMouse(bool capture) {
@@ -150,13 +160,15 @@ void SdlPlatform::setClipboardText(std::string_view text) {
 
 bool SDLCALL SdlPlatform::watch(void* data, SDL_Event* event) {
     auto* self = static_cast<SdlPlatform*>(data);
-    // SDL sends an exposure from inside the modal loops of resizing and moving: drawn right there
-    if (event->type == SDL_EVENT_WINDOW_EXPOSED && self->exposeHandler_) {
-        try {
+    // SDL sends an exposure from inside the modal loops of resizing and moving: drawn right there; and the moves, as
+    // they go (from inside the loop of moving too)
+    try {
+        if (event->type == SDL_EVENT_WINDOW_EXPOSED && self->exposeHandler_)
             self->exposeHandler_(event->window.windowID);
-        } catch (...) {
-            // called from inside SDL (and the system): nothing may be thrown through it
-        }
+        else if (event->type == SDL_EVENT_WINDOW_MOVED && self->moveHandler_)
+            self->moveHandler_(event->window.windowID);
+    } catch (...) {
+        // called from inside SDL (and the system): nothing may be thrown through it
     }
     return true;    // the event stays in the queue
 }

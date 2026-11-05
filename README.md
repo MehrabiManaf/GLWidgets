@@ -60,7 +60,8 @@ Then, in `build/<preset>/bin`:
   under it) and toolbar share their actions, with SVG icons and shortcuts. `code_editor FILE` edits a file, `--lines N` adds N
   lines (a million: only what shows is laid out).
 - `hello_window` opens two windows drawn by one GPU device.
-- `GLW_LOG_FRAMES=1` makes any of them say how many frames it draws, each second that has some: idle, none.
+- `GLW_LOG_FRAMES=1` makes any of them say how many frames it draws, each second that has some (idle, none), how far
+  apart, and how many came late (a refresh missed).
 - `glw_benchmarks` times the widget layer with many widgets (laid out, painted, scrolled, a text changed), without a
   window: run it from a Release build to compare a change against what was.
 - `paint_demo` opens a borderless window with its own title bar, tabs and window buttons, and shows what the painter

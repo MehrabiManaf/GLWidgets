@@ -7,7 +7,11 @@
 // estimated until then; what shows stays in place as estimates are corrected).
 //
 // The current item is chosen by a click or the keys (arrows, Page Up / Down, Home, End) and, in Single mode, selected;
-// a double click or Enter activates it.
+// a double click or Enter activates it. In Multiple mode, as a file browser's: a click selects an item alone, Ctrl+click
+// (Cmd on macOS) adds or takes one, Shift+click selects from the anchor (the item last clicked alone or with Ctrl) to it,
+// with Ctrl added to what was; the keys move as they do, Shift with them selecting from the anchor, Ctrl moving the
+// current item only (Ctrl+Space then takes it or leaves it); Ctrl+A selects all. The selection is the model's items',
+// kept as ranges (a million selected cost a range), and stays theirs as the model changes and the order does.
 //
 // It shows its items sorted (setSortOrder: the model's compare) and filtered (setFilter) as asked, without the model
 // changing: its delegate, its handlers and what is asked of it speak of the model's items still (positions are what
@@ -36,6 +40,7 @@ namespace glw {
 class RowHeights;
 class ItemEditor;
 class ItemOrder;
+class IndexSet;
 class Label;
 
 // What makes the widgets of a list's rows, and shows an item in one.
@@ -86,6 +91,7 @@ constexpr bool hasTrigger(EditTriggers triggers, EditTriggers trigger) {
 enum class SelectionMode : std::uint8_t {
     None,                   // a current item, none selected
     Single,                 // the current item is the one selected
+    Multiple,               // any of them: by Ctrl and Shift with the mouse and the keys
 };
 
 class GLW_EXPORT ListView : public Widget, private ListModelObserver {
@@ -109,7 +115,18 @@ public:
     std::optional<std::size_t> current() const;
     // Scrolled to it, when it is one.
     void setCurrent(std::optional<std::size_t> index);
+
+    // ---- the selection: the model's items ----
     bool isSelected(std::size_t index) const;
+    // Those selected, in the model's order (Single: the current one).
+    std::vector<std::size_t> selectedItems() const;
+    std::size_t selectedCount() const;
+    // In Multiple mode: one taken or left, all of those that show, none; those of `indices` only.
+    void setSelected(std::size_t index, bool selected);
+    void selectAll();
+    void clearSelection();
+    void setSelectedItems(const std::vector<std::size_t>& indices);
+    void setOnSelectionChanged(std::function<void()> handler) { onSelectionChanged_ = std::move(handler); }
 
     // ---- sorting and filtering ----
     // Sorted by `compare` (the model's compare by default), ascending or descending; the model's own order among equals.
@@ -232,6 +249,12 @@ private:
     void layRows();
     void activate(std::size_t position);
     void setCurrentAt(std::optional<std::size_t> position);
+    bool selectedAt(std::size_t position) const;
+    // Multiple: the items shown from position `a` to `b` (both) selected; what was, kept or not.
+    void selectBetween(std::size_t a, std::size_t b, bool keep);
+    // Multiple: what a click or a key at `position` does with Shift and Ctrl held.
+    void chose(std::size_t position, bool shift, bool control);
+    void selectionChanged();
     void scrollToPosition(std::size_t position);
     bool ordered() const { return sortOrder_.has_value() || static_cast<bool>(filter_); }
     // ---- the order, as the model changes: the items it names only ----
@@ -267,6 +290,8 @@ private:
     std::function<std::partial_ordering(std::size_t, std::size_t)> compare_;
     std::function<bool(std::size_t)> filter_;
     std::unique_ptr<ItemOrder> order_;      // while sorted or filtered: the items shown, in their order
+    std::unique_ptr<IndexSet> selection_;   // Multiple: the model's items selected
+    std::optional<std::size_t> anchor_;     // ... where Shift selects from (the model's item)
     // a batch of the model's changes: the current item and the one at the top, by their handles (which stay theirs)
     struct Held {
         std::optional<std::uint32_t> current;
@@ -308,6 +333,7 @@ private:
     std::optional<double> thumbGrab_;   // the thumb dragged: where it was pressed, along it
 
     std::function<void(std::optional<std::size_t>)> onCurrentChanged_;
+    std::function<void()> onSelectionChanged_;
     std::function<void(std::size_t)> onActivated_;
 };
 

@@ -155,6 +155,9 @@ public:
 
     virtual std::size_t childCount(std::optional<TreeNode> parent) const = 0;
     virtual TreeNode child(std::optional<TreeNode> parent, std::size_t index) const = 0;
+    // The node a node is a child of (none: it is at the top level). What TreeView::reveal opens the way to a node by;
+    // a model that does not know (by default) has its nodes revealed only where they show.
+    virtual std::optional<TreeNode> parent(TreeNode node) const { return std::nullopt; }
     // Whether it has children, before they are counted (a folder not read yet: read when it is expanded). By default,
     // whether it has any.
     virtual bool hasChildren(TreeNode node) const { return childCount(node) > 0; }

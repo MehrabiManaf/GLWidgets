@@ -236,23 +236,35 @@ TEST(aListScrollsToARowsTop) {
 }
 
 TEST(aFasterWheelScrollsFurtherUpToALimit) {
+    using namespace std::chrono_literals;
     SmoothScroll smooth([](double) {});
     Scheduler& scheduler = tests::testScheduler();
-    scheduler.setAnimationsEnabled(true);
-    // a step at rest: a step
-    CHECK(smooth.boosted(100) == 100);
-    smooth.scrollTo(&scheduler, 0, 100, std::chrono::milliseconds(180));
-    // again, on the way: larger each time, up to the most it goes
-    double step = 0;
-    for (int i = 0; i < 20; ++i) {
-        step = smooth.boosted(100);
-        smooth.scrollTo(&scheduler, 0, 1000, std::chrono::milliseconds(180));
+    // a step at rest: a step; turned slowly: steps
+    CHECK(smooth.boosted(&scheduler, 100) == 100);
+    tests::advance(150ms);
+    CHECK(smooth.boosted(&scheduler, 100) == 100);
+    // turned fast: larger as it goes on, up to the most it goes
+    double last = 100, step = 0;
+    bool growing = true;
+    for (int i = 0; i < 12; ++i) {
+        tests::advance(10ms);
+        step = smooth.boosted(&scheduler, 100);
+        growing = growing && step >= last;
+        last = step;
     }
-    CHECK(step == 100 * SmoothScroll::maximumBoost);
+    CHECK(growing && std::abs(step - 100 * SmoothScroll::maximumBoost) < 1);
+    // a little slower: less
+    for (int i = 0; i < 12; ++i) {
+        tests::advance(60ms);
+        step = smooth.boosted(&scheduler, 100);
+    }
+    CHECK(step > 100 && step < 100 * SmoothScroll::maximumBoost - 50);
     // the other way: a step again
-    CHECK(smooth.boosted(-100) == -100);
-    // a pause (it got there): a step again
-    tests::advance(std::chrono::milliseconds(300));
-    CHECK(smooth.boosted(-100) == -100);
-    scheduler.setAnimationsEnabled(false);
+    tests::advance(10ms);
+    CHECK(smooth.boosted(&scheduler, -100) == -100);
+    // a pause: a step again
+    tests::advance(300ms);
+    CHECK(smooth.boosted(&scheduler, -100) == -100);
+    // without a scheduler: a step
+    CHECK(smooth.boosted(nullptr, -100) == -100);
 }

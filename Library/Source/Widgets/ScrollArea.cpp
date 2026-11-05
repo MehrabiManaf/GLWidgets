@@ -235,9 +235,9 @@ void ScrollArea::onMouse(MouseEvent& event) {
         const Point before = going();
         // turned again on the way: further (by fractions of a step, a touchpad's or a fine wheel's: as it turns)
         if (delta.x != 0 && !event.wheelPrecise)
-            delta.x = static_cast<float>(smoothX_.boosted(delta.x));
+            delta.x = static_cast<float>(smoothX_.boosted(scheduler(), delta.x));
         if (delta.y != 0 && !event.wheelPrecise)
-            delta.y = static_cast<float>(smoothY_.boosted(delta.y));
+            delta.y = static_cast<float>(smoothY_.boosted(scheduler(), delta.y));
         scrollBy(delta);
         // what does not move this one may move a scroll area around it
         event.handled = going() != before;

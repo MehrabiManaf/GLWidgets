@@ -788,7 +788,7 @@ void TableView::onPreviewMouse(MouseEvent& event) {
             break;
         }
         const double before = smoothAcross_.target(horizontalOffset_);
-        scrollAcrossSmoothly(smoothAcross_.aim(horizontalOffset_, across * wheelStep, 0, maximumHorizontalOffset()), true);
+        scrollAcrossSmoothly(smoothAcross_.aim(scheduler(), horizontalOffset_, across * wheelStep, 0, maximumHorizontalOffset()), true);
         event.handled = smoothAcross_.target(horizontalOffset_) != before;
         break;
     }

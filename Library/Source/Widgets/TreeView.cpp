@@ -337,6 +337,43 @@ void TreeView::setCurrent(TreeNode node) {
         list_->setCurrent(*index);
 }
 
+bool TreeView::isSelected(TreeNode node) const {
+    const std::optional<std::size_t> index = shownIndexOf(node);
+    return index && list_->isSelected(*index);
+}
+
+std::vector<TreeNode> TreeView::selectedNodes() const {
+    std::vector<TreeNode> nodes;
+    for (std::size_t index : list_->selectedItems())
+        nodes.push_back(rows_->entries[index].node);
+    return nodes;
+}
+
+void TreeView::setSelected(TreeNode node, bool selected) {
+    if (const std::optional<std::size_t> index = shownIndexOf(node))
+        list_->setSelected(*index, selected);
+}
+
+bool TreeView::reveal(TreeNode node) {
+    if (!model_)
+        return false;
+    // its ancestors, from the top down, expanded (one that does not show yet is when its parent is)
+    std::vector<TreeNode> ancestors;
+    for (std::optional<TreeNode> up = model_->parent(node); up; up = model_->parent(*up)) {
+        if (std::find(ancestors.begin(), ancestors.end(), *up) != ancestors.end())
+            break;          // a model that loops: no further
+        ancestors.push_back(*up);
+    }
+    for (auto it = ancestors.rbegin(); it != ancestors.rend(); ++it)
+        setExpanded(*it, true);
+    const std::optional<std::size_t> index = shownIndexOf(node);
+    if (!index)
+        return false;
+    list_->setCurrent(*index);
+    list_->scrollTo(*index);
+    return true;
+}
+
 // ---- the entries ----
 
 std::vector<TreeNode> TreeView::shownChildren(std::optional<TreeNode> parent) const {
@@ -433,12 +470,26 @@ bool TreeView::edit(TreeNode node, std::size_t column) {
 
 void TreeView::rebuild() {
     table_->cancelEdit();
+    // the nodes selected, kept by node: their entries made again
+    std::unordered_set<std::uint64_t> selected;
+    if (list_->selectionMode() == SelectionMode::Multiple) {
+        for (std::size_t index : list_->selectedItems())
+            selected.insert(rows_->entries[index].node.id);
+    }
     rows_->entries.clear();
     if (model_)
         appendChildren(std::nullopt, 0, rows_->entries);
     // the entries again: all of the rows (the columns' widths kept); the arrow of the column sorted by, again
     rows_->notifyReset();
     table_->setSortIndicator(sortOrder_ ? std::optional<std::size_t>(sortColumn_) : std::nullopt, sortOrder_.value_or(SortOrder::Ascending));
+    if (!selected.empty()) {
+        std::vector<std::size_t> again;
+        for (std::size_t i = 0; i < rows_->entries.size(); ++i) {
+            if (selected.contains(rows_->entries[i].node.id))
+                again.push_back(i);
+        }
+        list_->setSelectedItems(again);
+    }
 }
 
 std::size_t TreeView::subtreeEnd(std::size_t index) const {

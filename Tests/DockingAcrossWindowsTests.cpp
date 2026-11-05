@@ -233,6 +233,20 @@ Point majorTab(const Screen& screen, const MajorTabs& tabs, std::size_t index) {
     return tab.mapToRoot({tab.size().width / 2, tab.size().height / 2}) + screen.windowPosition(*r);
 }
 
+// The strip of `tabs`' window, in its title bar.
+MajorTabStrip* stripOf(const MajorTabs& tabs) {
+    std::vector<Widget*> todo{tabs.root()->content()};
+    while (!todo.empty()) {
+        Widget* w = todo.back();
+        todo.pop_back();
+        if (auto* strip = dynamic_cast<MajorTabStrip*>(w))
+            return strip;
+        for (const auto& child : w->children())
+            todo.push_back(child.get());
+    }
+    return nullptr;
+}
+
 std::vector<std::string> titles(const MajorTabs& tabs) {
     std::vector<std::string> result;
     for (std::size_t i = 0; i < tabs.count(); ++i)
@@ -310,39 +324,38 @@ TEST(windowDraggedByItsOnlyTabMerges) {
           (titles(*b.tabs) == std::vector<std::string>{"three", "one", "four"}));
 }
 
-TEST(windowDraggedByItsStripMergesAllItsTabs) {
+TEST(windowMovedByTheSystemByItsTitleBarMergesAllItsTabs) {
     Screen screen;
     Documents a(screen, {0, 0}, {"one", "two"});
     a.tabs->setActive(1);
-    screen.layout();
-    // alone, its strip is the system's caption (snapped to the screen's edges); with another window's strip to drop it
-    // on, below the gap at its top, its own
-    const Point empty = majorTab(screen, *a.tabs, 1) + Point{200, 0};
-    CHECK(a.window->root->windowHitTest(empty - a.window->position) == platform::HitArea::Caption);
     Documents b(screen, {1000, 0}, {"three"});
     screen.layout();
-    CHECK(a.window->root->windowHitTest(empty - a.window->position) == platform::HitArea::Client);
-    CHECK(a.window->root->windowHitTest({empty.x - a.window->position.x, 1}) != platform::HitArea::Client);
-    // a double click: maximized, as the caption does
-    a.window->root->dispatch(platform::MouseButtonChanged{1, platform::MouseButton::Left, true, 2, empty - a.window->position});
-    a.window->root->dispatch(platform::MouseButtonChanged{1, platform::MouseButton::Left, false, 2, empty - a.window->position});
-    CHECK(a.window->host.toggled == 1);
+    // its title bar stays the system's caption: the system moves the window (snapped to the screen's edges)
+    const Point empty = majorTab(screen, *a.tabs, 1) + Point{200, 0};
+    CHECK(a.window->root->windowHitTest(empty - a.window->position) == platform::HitArea::Caption);
+    MajorTabStrip& strip = *stripOf(*a.tabs);
 
-    // dragged by it: the window follows the mouse, seen through
-    screen.press(*a.window, empty);
-    screen.moveTo(*a.window, {empty.x + 10, empty.y});
-    screen.moveTo(*a.window, {empty.x + 100, empty.y + 50});
-    CHECK(a.window->position.x == 90 && a.window->position.y == 50 && a.window->opacity < 1);
-    // let go over b's strip: all its tabs go there in order, the one it showed shown; the window closes
+    // as it moves (its host tells the strip): seen through; over another window's strip, nothing yet
+    screen.mouse = {empty.x + 100, empty.y + 300};
+    a.window->position = {100, 300};
+    strip.systemMoved();
+    CHECK(a.window->opacity < 1);
+    // let go elsewhere: it stays, as it is
+    strip.systemMoveEnded();
+    screen.closeWindows();
+    CHECK(a.window->opacity == 1 && screen.all.size() == 2 && a.tabs->count() == 2);
+
+    // moved over b's strip and let go there: all its tabs go there in order, the one it showed shown; it closes
     const Point onto = majorTab(screen, *b.tabs, 0) + Point{60, 0};
-    screen.moveTo(*a.window, onto);
-    screen.release(*a.window, onto);
+    screen.mouse = onto;
+    a.window->position = onto - Point{200, 15};
+    strip.systemMoved();
+    strip.systemMoveEnded();
     screen.closeWindows();
     screen.layout();
     CHECK(screen.all.size() == 1);
     CHECK((titles(*b.tabs) == std::vector<std::string>{"three", "one", "two"}));
     CHECK(b.tabs->active() == 2 && b.tabs->content(2)->visible());
-    CHECK(screen.captures == 0);
 }
 
 TEST(majorTabTornOffIntoANewWindow) {

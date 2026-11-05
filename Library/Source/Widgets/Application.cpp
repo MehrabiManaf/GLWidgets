@@ -9,6 +9,7 @@
 #include <GLWidgets/Widgets/DockingHost.hpp>
 #include <GLWidgets/Widgets/Icon.hpp>
 #include <GLWidgets/Widgets/Layout.hpp>
+#include <GLWidgets/Widgets/MajorTabs.hpp>
 #include <GLWidgets/Widgets/WindowFrame.hpp>
 
 #include <algorithm>
@@ -93,10 +94,16 @@ struct Application::Impl final : DockingHost {
     std::optional<Theme> themeTarget;
     Palette themeFrom;
     Animation themeFade{[this] { themeStepped(); }};
-    // GLW_LOG_FRAMES: the frames drawn, each second that had some (what is idle draws none)
+    // GLW_LOG_FRAMES: the frames drawn, each second that had some (what is idle draws none), and how evenly: the time
+    // between two frames of a run (one drawn within 50 ms of the last), on average and at most, and how many of them were
+    // more than one and a half refreshes apart (a refresh missed: a stutter)
     bool logFrames = false;
     int framesLogged = 0;
     TimePoint logSince;
+    std::optional<TimePoint> lastFrame;
+    double gapSum = 0, gapMost = 0;
+    int gaps = 0, missed = 0;
+    Window* systemMoving = nullptr;                     // a window of major tabs the system moves by its title bar
     std::vector<std::unique_ptr<Window>> opened;       // last: closed before what they draw with
     std::vector<Window*> order;                         // the windows from the one in front (focused last) back
     std::unique_ptr<Window> preview;                    // showWindowPreview's, made the first time; not one of `opened`
@@ -309,6 +316,8 @@ struct Application::Impl final : DockingHost {
     // `closed` is destroyed: the windows above it are on their own (the system would close them with it).
     void destroy(std::unique_ptr<Window> closed, bool unparent) {
         std::erase(order, closed.get());
+        if (systemMoving == closed.get())
+            systemMoving = nullptr;
         for (const auto& w : opened) {
             if (w->owner_ == closed.get()) {
                 if (unparent)
@@ -378,10 +387,24 @@ struct Application::Impl final : DockingHost {
     void frameDrawn(std::size_t windows) {
         ++framesLogged;
         const TimePoint now = scheduler.now();
+        if (lastFrame) {
+            const double gap = std::chrono::duration<double, std::milli>(now - *lastFrame).count();
+            if (gap < 50) {
+                gapSum += gap;
+                gapMost = std::max(gapMost, gap);
+                ++gaps;
+                missed += gap > 1.5 * 1000.0 / 60 ? 1 : 0;
+            }
+        }
+        lastFrame = now;
         if (now - logSince >= std::chrono::seconds(1)) {
-            std::fprintf(stderr, "GLWidgets: %d frames in %.1f s (%zu windows in the last)\n", framesLogged,
+            std::fprintf(stderr, "GLWidgets: %d frames in %.1f s (%zu windows in the last)", framesLogged,
                          std::chrono::duration<double>(now - logSince).count(), windows);
-            framesLogged = 0;
+            if (gaps > 0)
+                std::fprintf(stderr, "; %.1f ms apart, at most %.1f; %d of %d late", gapSum / gaps, gapMost, missed, gaps);
+            std::fprintf(stderr, "\n");
+            framesLogged = gaps = missed = 0;
+            gapSum = gapMost = 0;
             logSince = now;
         }
     }
@@ -476,6 +499,53 @@ struct Application::Impl final : DockingHost {
         draw({window});
         // shown before the system goes on resizing: the window and what is drawn in it keep the same size
         device->waitIdle();
+    }
+
+    // ---- a window of major tabs moved by the system, merging into another (MajorTabStrip::systemMoved) ----
+
+    // Its tab strip, in its title bar.
+    static MajorTabStrip* stripOf(const Widget& widget, int depth = 3) {
+        if (auto* strip = dynamic_cast<MajorTabStrip*>(const_cast<Widget*>(&widget)))
+            return strip->tabs() ? strip : nullptr;
+        if (depth == 0)
+            return nullptr;
+        for (const auto& child : widget.children()) {
+            if (MajorTabStrip* strip = child->visible() ? stripOf(*child, depth - 1) : nullptr)
+                return strip;
+        }
+        return nullptr;
+    }
+
+    // A window moved, by the system or not: by its title bar (the mouse held over its caption), its strip is told.
+    void moved(platform::WindowId id) {
+        Window* w = find(id);
+        if (!w || w->closing_ || !w->root_.content() || !placesWindows())
+            return;
+        if (systemMoving != w) {
+            if (systemMoving || !platform->mouseHeld())
+                return;
+            const Point at = w->window_->fromScreen(platform->mousePosition());
+            if (w->root_.windowHitTest(at) != platform::HitArea::Caption || !stripOf(*w->root_.content()))
+                return;
+            systemMoving = w;
+        }
+        if (MajorTabStrip* strip = stripOf(*w->root_.content()))
+            strip->systemMoved();
+        // drawn now, from inside the system's loop too: the strip it would go to shows where
+        if (!inFrame) {
+            const std::vector<Window*> which = windowsToDraw(false);
+            if (!which.empty())
+                draw(which);
+        }
+    }
+
+    // The mouse let go: where it is, the window merges or stays.
+    void systemMoveEnds() {
+        if (!systemMoving || platform->mouseHeld())
+            return;
+        Window* w = std::exchange(systemMoving, nullptr);
+        if (MajorTabStrip* strip = w->root_.content() ? stripOf(*w->root_.content()) : nullptr)
+            strip->systemMoveEnded();
     }
 
     // ---- docking across the windows ----
@@ -846,11 +916,13 @@ Application::Application() : impl_(std::make_unique<Impl>(*this)) {
 #endif
     d.logSince = d.scheduler.now();
     d.platform->setExposeHandler([&d](platform::WindowId id) { d.exposed(id); });
+    d.platform->setMoveHandler([&d](platform::WindowId id) { d.moved(id); });
 }
 
 Application::~Application() {
     Impl& d = *impl_;
     d.platform->setExposeHandler(nullptr);
+    d.platform->setMoveHandler(nullptr);
     d.preview.reset();
     while (!d.popups.empty())       // the last opened (a submenu) first
         d.popups.pop_back();
@@ -876,12 +948,17 @@ int Application::run(int frames) {
     int drawn = 0, attempts = 0;
     while (!d.quitting && !d.opened.empty()) {
         if (frames < 0) {
+            // an animation running: its next step now, so that a frame it draws is drawn at once, at the display's pace
+            // (waitForSurfaces waits for its refresh), not a fixed sleep's after the last (out of step with the refresh,
+            // a frame of it shown twice now and then: a stutter)
+            if (d.scheduler.animating() && d.windowsToDraw(false).empty())
+                d.scheduler.tick();
             // nothing to draw: asleep until an event comes or a timer is due (an animation that runs where nothing is
             // drawn waits a refresh's worth, not a busy loop)
             if (d.windowsToDraw(false).empty()) {
                 std::optional<std::chrono::milliseconds> wait;
-                if (d.scheduler.animating()) {
-                    wait = std::chrono::milliseconds(16);
+                if (d.scheduler.animating() || d.systemMoving) {
+                    wait = std::chrono::milliseconds(16);       // a window moved by the system: till it is let go
                 } else if (const std::optional<TimePoint> next = d.scheduler.nextDeadline()) {
                     const auto left = std::chrono::ceil<std::chrono::milliseconds>(*next - d.scheduler.now());
                     wait = std::max(left, std::chrono::milliseconds(0));
@@ -899,6 +976,7 @@ int Application::run(int frames) {
         platform::Event event;
         while (!d.quitting && d.platform->pollEvent(event))
             d.handle(event);
+        d.systemMoveEnds();
         d.checkFocus();
         // the timers due and the animations' steps: what they change is drawn in this frame
         d.scheduler.tick();

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 #include <GLWidgets/Widgets/ListView.hpp>
 
+#include "Widgets/IndexSet.hpp"
 #include "Widgets/ItemEditor.hpp"
 #include "Widgets/ItemOrder.hpp"
 #include "Widgets/RowHeights.hpp"
@@ -58,7 +59,8 @@ void TextDelegate::commitEdit(Widget& editor, std::size_t index) {
 // ---- the view ----
 
 ListView::ListView()
-    : heights_(std::make_unique<RowHeights>()), order_(std::make_unique<ItemOrder>()), editor_(std::make_unique<ItemEditor>(*this)) {
+    : heights_(std::make_unique<RowHeights>()), order_(std::make_unique<ItemOrder>()), selection_(std::make_unique<IndexSet>()),
+      editor_(std::make_unique<ItemEditor>(*this)) {
     setFocusable(true);
     setClipsChildren(true);
 }
@@ -119,8 +121,19 @@ void ListView::setRowHeight(std::optional<float> height) {
 }
 
 void ListView::setSelectionMode(SelectionMode mode) {
+    if (mode == selectionMode_)
+        return;
+    // Multiple: the current item selected, as it was; else none kept
+    selection_->clear();
+    anchor_.reset();
     selectionMode_ = mode;
+    if (mode == SelectionMode::Multiple && current_) {
+        const std::size_t index = modelIndex(*current_);
+        selection_->insert(index, index + 1);
+        anchor_ = index;
+    }
     invalidatePaint();
+    selectionChanged();
 }
 
 void ListView::resetHeights() {
@@ -135,7 +148,114 @@ std::optional<std::size_t> ListView::current() const {
 }
 
 bool ListView::isSelected(std::size_t index) const {
+    if (selectionMode_ == SelectionMode::Multiple)
+        return selection_->contains(index);
     return selectionMode_ == SelectionMode::Single && current_ && modelIndex(*current_) == index;
+}
+
+bool ListView::selectedAt(std::size_t position) const {
+    if (selectionMode_ == SelectionMode::Multiple)
+        return selection_->contains(modelIndex(position));
+    return selectionMode_ == SelectionMode::Single && current_ == position;
+}
+
+std::vector<std::size_t> ListView::selectedItems() const {
+    std::vector<std::size_t> out;
+    if (selectionMode_ == SelectionMode::Single) {
+        if (const std::optional<std::size_t> index = current())
+            out.push_back(*index);
+    } else if (selectionMode_ == SelectionMode::Multiple) {
+        out.reserve(selection_->count());
+        for (const auto& [first, last] : selection_->ranges())
+            for (std::size_t i = first; i < last; ++i)
+                out.push_back(i);
+    }
+    return out;
+}
+
+std::size_t ListView::selectedCount() const {
+    if (selectionMode_ == SelectionMode::Multiple)
+        return selection_->count();
+    return selectionMode_ == SelectionMode::Single && current_ ? 1 : 0;
+}
+
+void ListView::setSelected(std::size_t index, bool selected) {
+    if (selectionMode_ != SelectionMode::Multiple || !model_ || index >= model_->count() || selection_->contains(index) == selected)
+        return;
+    if (selected)
+        selection_->insert(index, index + 1);
+    else
+        selection_->erase(index, index + 1);
+    selectionChanged();
+}
+
+void ListView::selectAll() {
+    if (selectionMode_ != SelectionMode::Multiple || shownCount() == 0)
+        return;
+    selectBetween(0, shownCount() - 1, false);
+    selectionChanged();
+}
+
+void ListView::clearSelection() {
+    if (selection_->empty())
+        return;
+    selection_->clear();
+    selectionChanged();
+}
+
+void ListView::setSelectedItems(const std::vector<std::size_t>& indices) {
+    if (selectionMode_ != SelectionMode::Multiple)
+        return;
+    selection_->clear();
+    const std::size_t count = model_ ? model_->count() : 0;
+    for (std::size_t index : indices) {
+        if (index < count)
+            selection_->insert(index, index + 1);
+    }
+    selectionChanged();
+}
+
+void ListView::selectBetween(std::size_t a, std::size_t b, bool keep) {
+    if (!keep)
+        selection_->clear();
+    const std::size_t from = std::min(a, b), to = std::max(a, b);
+    if (!ordered()) {
+        selection_->insert(from, to + 1);       // positions are the model's indices: a range
+        return;
+    }
+    for (std::size_t at = from; at <= to; ++at) {
+        const std::size_t index = modelIndex(at);
+        selection_->insert(index, index + 1);
+    }
+}
+
+void ListView::chose(std::size_t position, bool shift, bool control) {
+    const std::size_t index = modelIndex(position);
+    const std::optional<std::size_t> anchorAt = anchor_ ? this->position(*anchor_) : std::nullopt;
+    if (shift) {
+        // from the anchor (the current item without one) to it; with Ctrl, added to what was
+        const std::size_t from = anchorAt.value_or(current_.value_or(position));
+        if (!anchorAt)
+            anchor_ = modelIndex(from);
+        selectBetween(from, position, control);
+    } else if (control) {
+        if (selection_->contains(index))
+            selection_->erase(index, index + 1);
+        else
+            selection_->insert(index, index + 1);
+        anchor_ = index;
+    } else {
+        selection_->clear();
+        selection_->insert(index, index + 1);
+        anchor_ = index;
+    }
+    selectionChanged();
+}
+
+void ListView::selectionChanged() {
+    invalidatePaint();
+    if (onSelectionChanged_)
+        onSelectionChanged_();
 }
 
 void ListView::setCurrent(std::optional<std::size_t> index) {
@@ -236,6 +356,18 @@ void ListView::reorder() {
     current_ = now;
     if (told && onCurrentChanged_)
         onCurrentChanged_(current());
+    // the selection: what the filter leaves out, no longer
+    if (filter_ && !selection_->empty()) {
+        std::vector<std::size_t> hidden;
+        for (const auto& [first, last] : selection_->ranges())
+            for (std::size_t i = first; i < last; ++i)
+                if (!position(i))
+                    hidden.push_back(i);
+        for (std::size_t i : hidden)
+            selection_->erase(i, i + 1);
+        if (!hidden.empty() && onSelectionChanged_)
+            onSelectionChanged_();
+    }
     rebindAll_ = true;
     invalidateLayout();
 }
@@ -715,7 +847,7 @@ void ListView::paint(PaintContext& context) {
         const Rect r = grid ? *rect : Rect{rect->x + s.inset, rect->y + 1, rect->width - 2 * s.inset, rect->height - 2};
         const float radius = grid ? 0.0f : s.cornerRadius;
         const VisualState state{.hovered = hovered_ == row.index, .pressed = pressed_ == row.index && hovered_ == row.index};
-        const bool selected = selectionMode_ == SelectionMode::Single && current_ == row.index;
+        const bool selected = selectedAt(row.index);
         if (selected)
             p.fillRoundedRect(r, radius, s.selected);
         else if (state.hovered)
@@ -776,7 +908,7 @@ void ListView::onMouse(MouseEvent& event) {
         }
         // from where it aimed: turned again, it goes further
         const double before = smooth_.target(offset_);
-        scrollSmoothly(smooth_.aim(offset_, step, 0, maximumOffset()), true);
+        scrollSmoothly(smooth_.aim(scheduler(), offset_, step, 0, maximumOffset()), true);
         event.handled = smooth_.target(offset_) != before;
         break;
     }
@@ -827,6 +959,10 @@ void ListView::onMouse(MouseEvent& event) {
         const std::optional<std::size_t> at = item ? position(*item) : std::nullopt;
         pressed_ = at;
         if (at) {
+            if (selectionMode_ == SelectionMode::Multiple && event.clicks == 1) {
+                chose(*at, platform::hasAny(event.modifiers, platform::KeyModifiers::Shift),
+                      platform::hasAny(event.modifiers, platform::shortcutModifier));
+            }
             setCurrentAt(at);
             // twice: edited (if it can be), activated otherwise
             if (event.clicks == 2 && !(hasTrigger(editTriggers_, EditTriggers::DoubleClick) && editAt(*at)))
@@ -890,6 +1026,21 @@ void ListView::onKey(KeyEvent& event) {
     }
     const std::size_t count = shownCount();
     const std::size_t at = current_.value_or(0);
+    const bool control = platform::hasAny(event.modifiers, platform::shortcutModifier);     // Cmd on macOS
+    const bool shift = platform::hasAny(event.modifiers, platform::KeyModifiers::Shift);
+    if (selectionMode_ == SelectionMode::Multiple && control && !shift) {
+        // all; the current one taken or left
+        if (event.key == platform::Key::A) {
+            selectAll();
+            event.handled = true;
+            return;
+        }
+        if (event.key == platform::Key::Space && current_) {
+            chose(*current_, false, true);
+            event.handled = true;
+            return;
+        }
+    }
     // a page: the rows that show, less one
     const std::size_t page = std::max<std::size_t>(1, rows_.size() > 1 ? rows_.size() - 1 : 1);
     std::optional<std::size_t> to;
@@ -909,6 +1060,9 @@ void ListView::onKey(KeyEvent& event) {
     default: return;
     }
     event.handled = true;
+    // Multiple: it alone selected, or from the anchor with Shift; with Ctrl only, the current item moves
+    if (selectionMode_ == SelectionMode::Multiple && to && !(control && !shift))
+        chose(*to, shift, false);
     setCurrentAt(to);
 }
 
@@ -975,6 +1129,9 @@ void ListView::changesEnded() {
 }
 
 void ListView::itemsInserted(std::size_t first, std::size_t count) {
+    selection_->inserted(first, count);
+    if (anchor_ && *anchor_ >= first)
+        *anchor_ += count;
     if (ordered() && order_->holding()) {      // in a batch: placed at its end
         order_->inserted(first, count, filter_, {});
         return;
@@ -1023,6 +1180,15 @@ void ListView::itemsInserted(std::size_t first, std::size_t count) {
 }
 
 void ListView::itemsRemoved(std::size_t first, std::size_t count) {
+    if (const std::size_t had = selection_->count(); had > 0) {
+        selection_->removed(first, count);
+        if (selection_->count() != had && onSelectionChanged_)
+            onSelectionChanged_();
+    }
+    if (anchor_ && *anchor_ >= first + count)
+        *anchor_ -= count;
+    else if (anchor_ && *anchor_ >= first)
+        anchor_.reset();
     if (ordered() && order_->holding()) {
         order_->removed(first, count);
         return;
@@ -1114,7 +1280,12 @@ void ListView::modelReset() {
     smooth_.stop();
     offset_ = 0;
     current_.reset();
+    anchor_.reset();
+    const bool had = !selection_->empty();
+    selection_->clear();
     reorder();
+    if (had && onSelectionChanged_)
+        onSelectionChanged_();
 }
 
 } // namespace glw

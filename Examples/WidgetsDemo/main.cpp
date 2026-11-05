@@ -55,8 +55,8 @@ constexpr const char* persianCatalog = R"({
     "Enable the buttons": "دکمه‌ها فعال باشند",
     "Item {n}": "مورد {n}",
     "Drag the line between the two sides.": "خط میان دو طرف را بکشید.",
-    "A million items, and only those that show are widgets. Drag the line between the two sides.":
-      "یک میلیون مورد، و فقط آن‌هایی که دیده می‌شوند ویجت‌اند. خط میان دو طرف را بکشید.",
+    "A million items, and only those that show are widgets; Ctrl and Shift select several. Drag the line between the two sides.":
+      "یک میلیون مورد، و فقط آن‌هایی که دیده می‌شوند ویجت‌اند؛ با Ctrl و Shift چند تا را انتخاب کنید. خط میان دو طرف را بکشید.",
     "Close it with its button, Alt+F4, or the one above.": "با دکمه‌اش، Alt+F4 یا دکمه‌ی بالا ببندیدش.",
     "A million rows of fifty columns. Click a header to sort by it; double click a cell (or F2, or type) to edit it; drag a header's edge to resize its column.":
       "یک میلیون سطر در پنجاه ستون. روی سرستونی کلیک کنید تا بر اساس آن مرتب شود؛ روی خانه‌ای دوبار کلیک کنید (یا F2، یا تایپ) تا ویرایش شود؛ لبه‌ی سرستون را بکشید تا ستونش اندازه شود.",
@@ -277,9 +277,11 @@ struct Page {
         view->setModel(std::make_shared<Million>());
         view->setDelegate(std::make_unique<glw::TextDelegate>([](std::size_t i) { return tr("Item {n}").arg("n", std::to_string(i + 1)); }));
         view->setHeader(tr("Items"));           // a click sorts them
+        view->setSelectionMode(glw::SelectionMode::Multiple);
         view->setStretch(1);
         return ui::VStack({.spacing = 8},
-                          ui::Label({.text = tr("A million items, and only those that show are widgets. Drag the line between the two sides."),
+                          ui::Label({.text = tr("A million items, and only those that show are widgets; Ctrl and Shift select several. "
+                                                "Drag the line between the two sides."),
                                      .muted = true,
                                      .wrap = true}),
                           std::move(view))

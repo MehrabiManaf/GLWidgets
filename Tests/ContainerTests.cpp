@@ -82,14 +82,15 @@ TEST(theWheelScrollsEasedAndFurtherWhenTurnedAgain) {
     tests::advance(std::chrono::milliseconds(50));
     const float early = s.area->offset().y;
     CHECK(early > 24 && early < 48);
-    // turned again on the way: further than where it went, by a larger step (the wheel turns faster)
+    // turned again on the way: further than where it went, by a larger step (the wheel turns faster: 50 ms after)
     wheel(-1);
     tests::advance(std::chrono::milliseconds(300));
-    CHECK(near(s.area->offset().y, 48 + 48 * 1.3f) && !tests::testScheduler().animating());
+    const float second = s.area->offset().y - 48;
+    CHECK(second > 48 * 1.2f && second < 48 * 2 && !tests::testScheduler().animating());
     // after a pause: a step again
     wheel(1);
     tests::advance(std::chrono::milliseconds(300));
-    CHECK(near(s.area->offset().y, 48 * 1.3f));
+    CHECK(near(s.area->offset().y, second));
     // the thumb dragged, or the offset set: at once, what was on its way stopped
     wheel(-1);
     s.area->setOffset({0, 10});

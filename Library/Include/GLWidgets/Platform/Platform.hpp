@@ -43,6 +43,9 @@ public:
     // window (Windows, macOS), pollEvent and waitForEvents do not return until the mouse is let go, and the window would
     // show nothing new meanwhile. Also called for windows exposed otherwise (from pollEvent then). None: not called.
     virtual void setExposeHandler(std::function<void(WindowId)> handler) = 0;
+    // Called as a window moves, the system's moves too (dragged by its title bar: from inside its own loop of moving it,
+    // on Windows and macOS). None: not called.
+    virtual void setMoveHandler(std::function<void(WindowId)> handler) = 0;
 
     // Whether windows go where the application puts them, and the mouse is known wherever it is: not on Wayland, where
     // the compositor places windows and an application sees the mouse over its own windows only. Without it, Window's
@@ -50,6 +53,8 @@ public:
     virtual bool placesWindows() const = 0;
     // Where the mouse is, in screen coordinates (Window::position), wherever it is.
     virtual Point mousePosition() const = 0;
+    // Whether its left button is held, wherever it is (a window being moved by the system: not let go yet).
+    virtual bool mouseHeld() const = 0;
     // While on, the window the mouse was pressed in gets the mouse's events outside of it too (dragging out of it).
     virtual void captureMouse(bool capture) = 0;
     // The shape of the pointer while it is over the application's windows (where they are the application's: over the

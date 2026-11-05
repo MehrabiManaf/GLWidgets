@@ -25,8 +25,10 @@ public:
     void waitForEvents(std::optional<std::chrono::milliseconds> timeout) override;
     void wakeUp() override;
     void setExposeHandler(std::function<void(WindowId)> handler) override;
+    void setMoveHandler(std::function<void(WindowId)> handler) override;
     bool placesWindows() const override;
     Point mousePosition() const override;
+    bool mouseHeld() const override;
     void captureMouse(bool capture) override;
     void setCursor(Cursor cursor) override;
     std::string clipboardText() const override;
@@ -45,6 +47,7 @@ private:
     Uint32 wakeUpEvent_ = 0;
     int windows_ = 0;
     std::function<void(WindowId)> exposeHandler_;
+    std::function<void(WindowId)> moveHandler_;
     mutable Uint64 preciseWheel_ = 0;       // when the wheel last turned by a fraction of a step (nanoseconds)
     bool watching_ = false;
     std::array<SDL_Cursor*, cursorCount> cursors_{};       // made the first time they are shown

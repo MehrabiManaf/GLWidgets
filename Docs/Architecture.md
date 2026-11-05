@@ -454,6 +454,20 @@ under it, a click sorting them (ascending, descending, not; an arrow in it), unl
 a tree's (shown when it has several columns or a titled one) and a list's are hidden at will (`setHeaderVisible`), the
 rows taking their place.
 
+**Several items are selected at a time** in `SelectionMode::Multiple`, as in a file browser (Qt's extended selection):
+a click selects an item alone, Ctrl+click (Cmd on macOS: `platform::shortcutModifier`) adds or takes one, Shift+click
+selects from the anchor (the item last clicked alone or with Ctrl) to it, Ctrl+Shift adds that to what was; the keys move
+as they do, Shift with them selecting from the anchor, Ctrl moving the current item only (Ctrl+Space takes or leaves
+it); Ctrl+A selects all. The selection is the model's items' (`selectedItems`, `setSelected`, `selectAll`,
+`setOnSelectionChanged`), kept as ranges of indices (`IndexSet`: a million selected are one range), moved on and back as
+the model inserts and removes items before and among them, the same as the list is sorted; what the filter leaves out is
+no longer selected. A table selects its rows (`selectedRows`); a tree its nodes (`selectedNodes`), kept by node when it
+is sorted, filtered or its model reset, those under a node collapsed no longer.
+
+**A tree reveals a node** wherever it is (`TreeView::reveal`): its ancestors expanded from the top down, it made current
+and scrolled to. The model tells a node's parent (`TreeModel::parent`; one that does not, by default, has its nodes
+revealed only where they show).
+
 **Cells' borders** are the style's (`ItemViewStyle`: `rowLines`, a line under each row; `columnLines`, a line between a
 table's columns, through its header and down to its last row; `gridLine`, `gridLineWidth`). The theme's `table` style
 shows both, as a spreadsheet does; its `itemView`, of lists and trees, the lines between the rows. A view takes its own (`setStyle`), or
@@ -597,9 +611,12 @@ once the first time). Buttons, check boxes, fields, tool buttons and combo boxes
 theme's `motion.fast` (100 ms), the glow of the focus for `motion.normal` (200 ms), as a check mark is drawn; a field's caret blinks half a second each way and rests,
 shown, after twenty, so a field no one types in draws nothing. Animations can be turned off (`setAnimationsEnabled`:
 reduced motion; the tests); the tests run on a clock of their own. An engine driving its own roots calls `tick()` before
-it paints and waits as `nextDeadline` says. Measured with `GLW_LOG_FRAMES` (the frames drawn, each second that had some):
-an idle window draws none; a hover draws about six frames (100 ms at 60 Hz) and its tooltip one; a caret two a second for
-ten seconds, then none.
+it paints and waits as `nextDeadline` says. While an animation runs, its next step is taken before the loop would sleep,
+so that a frame it draws is drawn at once, at the display's pace (the swap chain waits for the refresh), rather than a
+fixed 16 ms after the last, out of step with the refresh (frames 17 to 23 ms apart, some shown twice: a stutter; now
+16.7 ms, at most 18, scrolling a list). Measured with `GLW_LOG_FRAMES` (the frames drawn, each second that had some, how
+far apart and how many late): an idle window draws none; a hover draws about six frames (100 ms at 60 Hz) and its
+tooltip one; a caret two a second for ten seconds, then none.
 
 A `CollapsiblePanel` (`Widgets/CollapsiblePanel.hpp`) is a header over a column of content that opens and closes, as the
 sections of a details panel do. Its height eases between the header's and the header's with all of its content (the
@@ -615,8 +632,10 @@ buttons at the header's end trigger actions (a + that adds an item). `ui::Collap
   editors. From rest it starts as fast as it goes and slows down to a stop; sent on while it moves, it goes on from the
   speed it has (the curve 1 - (1 - t)^3 (1 + c t), its speed at the start 3 - c of the distance over the time, chosen
   to be the speed it had, and at least 1), so a wheel turned on and on moves evenly rather than jumping at each step.
-  Turned again on the way, the wheel goes further from where it aimed, by a step 1.3 times the last, up to 6 times a
-  step (`SmoothScroll::boosted`): turned fast, it flies; a pause or the other way, a step again. In lists, trees and
+  Turned again on the way, the wheel goes further from where it aimed, by a step as large as the wheel turns fast
+  (`SmoothScroll::boosted`): by the time between its steps, smoothed over the last few, a step at 120 ms apart or more,
+  4 steps at 20 ms or less, eased in between, so slow steps stay steps and a flick flies; a pause or the other way, a
+  step again. In lists, trees and
   tables it goes to the nearest row's top (across, a column's edge; in a text editor, a line's), or the end, so that
   what is at the top shows whole; the steps add up from where the wheel aimed, not from where that was snapped to
   (`SmoothScroll::aim`), so they stay even. A thumb let go goes there too. A thumb dragged, an offset set, and what
@@ -743,11 +762,12 @@ The tests use a host of their own, with windows that are only roots at places of
   strip, it goes there and that window comes to the front. Let go anywhere else, it opens in a window of its own where
   it was let go, with a strip and the same handlers (they are given the `MajorTabs` they are for, so + adds to the right
   window). The only tab of a window drags the window instead, and let go over another window's strip, merges it into
-  that window. So does a window dragged by its strip where it has no tab: let go over another window's strip, all its
-  tabs go there in order, the one it showed shown, and it closes. The strip is the system's caption still (snapped to
-  the screen's edges, maximized by a double click) where nothing could take it: in the gap above its tabs, in a
-  maximized window, and while no other window has a strip; elsewhere it moves the window itself
-  (`Widget::windowAreaAt`), and maximizes it by a double click as the caption does. A window left without tabs closes.
+  that window. So does a window moved by its title bar: the system moves it (snapped to the screen's edges, maximized
+  by a double click, as any window), and the application follows (`Platform::setMoveHandler`, told of each move, from
+  inside the system's loop of moving too; `Platform::mouseHeld`): a move with the mouse held over its caption is a drag
+  of the window, which is seen through as it goes, the strip under the mouse showing where its tabs would go
+  (`MajorTabStrip::systemMoved`, drawn from inside the loop); let go over another window's strip, all its tabs go there
+  in order, the one it showed shown, and it closes (`systemMoveEnded`). A window left without tabs closes.
 - **A panel tab** dragged out of its stack's tab bar (by more than a little above or below it) floats at once, as in
   Visual Studio and Unreal Engine, even over its own dock area: its panel goes into a tool window above its area's
   window, with a `DockArea` of its own, and the drag goes on with that window, which follows the mouse. Let go on a

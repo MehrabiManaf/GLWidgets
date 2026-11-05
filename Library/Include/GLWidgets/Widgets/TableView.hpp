@@ -115,6 +115,9 @@ public:
     std::optional<std::size_t> current() const { return list_->current(); }
     void setCurrent(std::optional<std::size_t> row) { list_->setCurrent(row); }
     bool isSelected(std::size_t row) const { return list_->isSelected(row); }
+    // The rows selected (the model's, in its order): its list's selection (ListView), Multiple as Single.
+    std::vector<std::size_t> selectedRows() const { return list_->selectedItems(); }
+    void setOnSelectionChanged(std::function<void()> handler) { list_->setOnSelectionChanged(std::move(handler)); }
     // The widget showing a cell, while it shows.
     Widget* cellWidget(std::size_t row, std::size_t column) const;
     // A header's widget, while it shows.
