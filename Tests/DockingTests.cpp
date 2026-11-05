@@ -384,9 +384,10 @@ TEST(aStackOfOnePanelHidesItsTabBar) {
     CHECK(d.host.open().empty());
     d.root.layout();
     CHECK(d.palette->tabBarHidden() && d.palette->barHeight() == 0);
-    // the panel takes all of the stack
+    // the panel takes all of the stack, inside its edge (a dip at its sides and bottom)
     const Widget& content = *d.palette->panelContent(0);
-    CHECK(near(content.mapToRoot({}).y, d.palette->mapToRoot({}).y) && near(content.size().height, d.palette->size().height));
+    CHECK(near(content.mapToRoot({}).y, d.palette->mapToRoot({}).y) && near(content.size().height, d.palette->size().height - 1));
+    CHECK(near(content.mapToRoot({}).x, d.palette->mapToRoot({}).x + 1) && near(content.size().width, d.palette->size().width - 2));
     // saved hidden, restored hidden
     const std::string saved = d.area->saveLayout();
     CHECK(saved.find("\"hidden\":true") != std::string::npos);

@@ -748,7 +748,9 @@ void DockTabs::arrangeContent(const Rect& content) {
     const float grip = title_ ? std::min(titleGrip, line.width - tools) : 0.0f;
     const float tabs = std::max(0.0f, line.width - tools - grip);
     arrangeInCell(*bar_, {rtl ? line.right() - tabs : line.x, line.y, tabs, full}, rtl);
-    const Rect below{content.x, content.y + bar, content.width, std::max(0.0f, content.height - bar)};
+    // the panel inside the stack's edge (drawn under it: what reaches its side or bottom would cover it)
+    constexpr float edge = 1;
+    const Rect below{content.x + edge, content.y + bar, std::max(0.0f, content.width - 2 * edge), std::max(0.0f, content.height - bar - edge)};
     for (const Entry& e : entries_) {
         if (e.content->visible())
             arrangeInCell(*e.content, below, rtl);
