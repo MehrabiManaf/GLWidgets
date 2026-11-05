@@ -14,7 +14,8 @@
 // at the end of a stack's tab bar floats its panel (docks it back, in a floating window); the Search panel has one more,
 // which clears its field. Tabs that do not fit scroll: by the wheel, or by the thin bar along their bottom.
 //
-//   docking_demo [--frames N] [--language fa] [--light] [--workspace FILE]
+//   docking_demo [--frames N] [--language fa] [--workspace FILE] [--style studio|fluid|plain|plastic|metal]
+//                [--colors dark|light|dusk|sand|turquoise] [--light]
 //
 // --frames N draws N frames and exits: a smoke test. --workspace FILE starts with the windows FILE has (if it is there),
 // and saves them there when the demo ends: the windows, the scripts in each, where every panel is.
@@ -257,8 +258,8 @@ int main(int argc, char** argv) {
     int frames = -1;
     std::string language = "en";
     std::string workspace;
-    bool light = false;
     std::optional<glw::ThemeStyle> style;
+    std::optional<glw::ColorScheme> colors;
     for (int i = 1; i < argc; ++i) {
         const std::string_view arg(argv[i]);
         if (arg == "--frames" && i + 1 < argc)
@@ -268,15 +269,11 @@ int main(int argc, char** argv) {
         else if (arg == "--workspace" && i + 1 < argc)
             workspace = argv[++i];
         else if (arg == "--light")
-            light = true;
-        else if (arg == "--style" && i + 1 < argc) {
-            const std::string_view name(argv[++i]);
-            style = name == "fluid"     ? glw::ThemeStyle::Fluid
-                    : name == "plain"   ? glw::ThemeStyle::Plain
-                    : name == "plastic" ? glw::ThemeStyle::Plastic
-                    : name == "metal"   ? glw::ThemeStyle::Metal
-                                        : glw::ThemeStyle::Studio;
-        }
+            colors = glw::ColorScheme::Light;
+        else if (arg == "--style" && i + 1 < argc)
+            style = glw::themeStyleNamed(argv[++i]);
+        else if (arg == "--colors" && i + 1 < argc)
+            colors = glw::colorSchemeNamed(argv[++i]);
     }
     try {
         glw::Application app;
@@ -284,8 +281,8 @@ int main(int argc, char** argv) {
         app.setLanguage(language);
         if (style)
             app.setStyle(*style, false);
-        if (light)
-            app.setTheme(glw::Theme::light(app.style()));
+        if (colors)
+            app.setColorScheme(*colors, false);
 
         Studio studio{app};
         bool restored = false;

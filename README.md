@@ -33,29 +33,29 @@ On Linux, SDL3 needs the development packages of X11, Wayland and IBus: see `.gi
 
 Then, in `build/<preset>/bin`:
 
-- `docking_demo [--style studio|fluid|plain|plastic|metal] [--light]` is laid out as a script editor: scripts as major tabs in the title bar (+ adds one), each with its
+- `docking_demo [--style studio|fluid|plain|plastic|metal] [--colors dark|light|dusk|sand|turquoise]` is laid out as a script editor: scripts as major tabs in the title bar (+ adds one), each with its
   panels (graph, palette, inspector, output, search) docked around it; drag the tabs to rearrange them. A script's tab
   dragged out of the title bar opens in a window of its own, and dragged onto another window's title bar goes there; a
   panel's tab dragged out of its tab bar floats at once, and its window, dragged by its tab or its title onto a stack's
   guides, docks again. Around the scripts are the application's own panels (files, log), the same whichever script is
   shown, in any window (the files as a tree). `--workspace FILE` saves the windows and everything in them when it ends,
-  and starts with them again; `--light` starts it in the light theme.
-- `widgets_demo [--style studio|fluid|plain|plastic|metal] [--light]` is an application made of widgets, written with the declarative builders (`glw::ui`): a window with its
+  and starts with them again; `--light` starts it in the light colors (as `--colors light`).
+- `widgets_demo [--style ...] [--colors ...]` is an application made of widgets, written with the declarative builders (`glw::ui`): a window with its
   own chrome, split in two by a handle, a form (text field, check boxes, buttons; Tab moves the focus) and, over each
   other, a list of a million items (sorted by a click on its header), a tree of a thousand folders of a thousand files
   in three columns (all open: a million rows, eased as they open and close; a header clicked sorts each folder's files)
   and a table of a million rows of fifty columns, sorted by a click on a header, filtered by a field
   and edited in place (only what shows is widgets); a menu
   (with a submenu, check marks, shortcuts), a combo box, dialogs (a form; the Close button asks first), and panels that
-  open and close, eased (a + in one's header adds a row); buttons switch to Persian (the window is mirrored) and to the light
-  theme. `--language fa` and `--light` start it so.
-- `node_editor [--style ...]` is a node editor on a `Canvas`: nodes with pins and fields for their values, links drawn as curves,
+  open and close, eased (a + in one's header adds a row); a button switches to Persian (the window is mirrored), combo
+  boxes to another style and other colors (Dark, Light, Dusk, Sand, Turquoise), eased. `--language fa` starts it so.
+- `node_editor [--style ...] [--colors ...]` is a node editor on a `Canvas`: nodes with pins and fields for their values, links drawn as curves,
   dragged from pin to pin; nodes moved, selected by a rectangle, framed (F), deleted; comments that carry their nodes;
   a context menu (the right button) to add nodes by category, and a palette to add one by its name (Space, Tab, or a
   link let go on the empty canvas: then only the nodes that have a pin for it, the one added linked).
   The wheel zooms, the middle or right button pans. `--nodes N` adds N more (thousands: only what shows is painted),
   `--rtl` mirrors it.
-- `code_editor` edits C++ (highlighted, line numbers, the system's monospace font) over a log it appends to; Persian in
+- `code_editor [--style ...] [--colors ...]` edits C++ (highlighted, line numbers, the system's monospace font) over a log it appends to; Persian in
   strings and comments is shaped in lines that stay left to right. Its menu bar (in the title bar; `--menu-below` puts it
   under it) and toolbar share their actions, with SVG icons and shortcuts. `code_editor FILE` edits a file, `--lines N` adds N
   lines (a million: only what shows is laid out).

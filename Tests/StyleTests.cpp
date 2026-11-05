@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Abdolmanaf Mehrabi Sisakht
 // SPDX-License-Identifier: MIT
 // The styles of the themes: Studio (square, raised, quick), Fluid (rounded, flat; a press ripples, the selection
-// slides), Plain (square, flat, nothing moving).
+// slides), Plain (square, flat, nothing moving), Plastic and Metal (lit reliefs); the color schemes they are made in.
 #include "Check.hpp"
 #include "TestUi.hpp"
 
@@ -203,4 +203,33 @@ TEST(tabsLookAsTheStylesControls) {
     CHECK(plain.dock.tabRadius == 0 && plain.dock.selectedTab == plain.dock.background);
     // Plastic and Metal: stacks and cards raised, slabs, the tab shown a folder's tab of its stack
     CHECK(plastic.dock.islandBevel.relief > 0 && metal.card.bevel.relief > 0 && studio.dock.islandBevel.relief == 0 && fluid.card.bevel.relief == 0);
+}
+
+TEST(colorSchemesGiveEveryStyleTheirColors) {
+    // Dark and Light: the style's own palettes
+    for (ThemeStyle style : {ThemeStyle::Studio, ThemeStyle::Fluid, ThemeStyle::Metal}) {
+        CHECK(Theme::of(ColorScheme::Dark, style).palette.window == Theme::dark(style).palette.window);
+        CHECK(Theme::of(ColorScheme::Light, style).palette.window == Theme::light(style).palette.window);
+    }
+    CHECK(Theme::dark().scheme == ColorScheme::Dark && Theme::light().scheme == ColorScheme::Light);
+    // the others: dark (Dusk, Turquoise) or light (Sand), of other colors, theirs in every style
+    const Theme dusk = Theme::of(ColorScheme::Dusk), sand = Theme::of(ColorScheme::Sand), turquoise = Theme::of(ColorScheme::Turquoise);
+    CHECK(dusk.scheme == ColorScheme::Dusk && sand.scheme == ColorScheme::Sand && turquoise.scheme == ColorScheme::Turquoise);
+    CHECK(dusk.isDark() && turquoise.isDark() && !sand.isDark());
+    const Theme dark = Theme::dark(), light = Theme::light();
+    CHECK(dusk.palette.window != dark.palette.window && dusk.palette.accent != dark.palette.accent);
+    CHECK(sand.palette.window != light.palette.window && sand.palette.accent != light.palette.accent);
+    CHECK(turquoise.palette.accent != dusk.palette.accent && turquoise.palette.window != dusk.palette.window);
+    const Theme fluidSand = Theme::of(ColorScheme::Sand, ThemeStyle::Fluid);
+    CHECK(fluidSand.style == ThemeStyle::Fluid && fluidSand.palette.window == sand.palette.window);
+    // Metal: its controls further from what they are on
+    CHECK(Theme::of(ColorScheme::Turquoise, ThemeStyle::Metal).palette.surface != turquoise.palette.surface);
+    // its code in its own colors
+    CHECK(turquoise.textEdit.keyword != dark.textEdit.keyword && sand.textEdit.keyword != light.textEdit.keyword);
+    // eased: the scheme the one it goes to, its code's colors mixed
+    const Theme half = Theme::blend(dark, turquoise, 0.5f);
+    CHECK(half.scheme == ColorScheme::Turquoise && half.textEdit.keyword != dark.textEdit.keyword && half.textEdit.keyword != turquoise.textEdit.keyword);
+    // by their names
+    CHECK(colorSchemeNamed("turquoise") == ColorScheme::Turquoise && colorSchemeNamed("sand") == ColorScheme::Sand && !colorSchemeNamed("blue"));
+    CHECK(themeStyleNamed("metal") == ThemeStyle::Metal && themeStyleNamed("studio") == ThemeStyle::Studio && !themeStyleNamed("Metal"));
 }

@@ -138,9 +138,12 @@ public:
     // Eased there (the theme's slow motion): through the themes of the palettes between the one shown and its own, then
     // itself. At once when `animated` is false, with animations off, or before a window opens.
     void setTheme(const Theme& theme, bool animated = true);
-    // The theme of another style (Studio, Fluid, Plain: ThemeStyle), as dark or light as it is now; eased as setTheme.
+    // The theme of another style (ThemeStyle), in the colors it is in now (its ColorScheme); eased as setTheme.
     void setStyle(ThemeStyle style, bool animated = true);
     ThemeStyle style() const;
+    // The theme of other colors (ColorScheme), in the style it is in now; eased as setTheme.
+    void setColorScheme(ColorScheme scheme, bool animated = true);
+    ColorScheme colorScheme() const;
     // The language every window shows its texts in (its catalog loaded in translator()), which shows them at once; a
     // language written right to left mirrors the windows.
     void setLanguage(const std::string& language);

@@ -8,7 +8,8 @@
 // header moves it with the nodes in it, its corner resizes it. Space or Tab searches the nodes to add one by its name;
 // a link let go on the empty canvas searches those that have a pin for it, and links the one added.
 //
-//   node_editor [--nodes N] [--rtl] [--frames N]
+//   node_editor [--nodes N] [--rtl] [--frames N] [--style studio|fluid|plain|plastic|metal]
+//               [--colors dark|light|dusk|sand|turquoise]
 //
 // --nodes adds N more nodes linked in a chain (thousands of them: only those that show are painted).
 #include <GLWidgets/Paint/Painter.hpp>
@@ -860,19 +861,11 @@ void addChain(Graph& g, int count) {
 
 } // namespace
 
-// A style by its name (--style): studio, fluid, plain, plastic, metal.
-glw::ThemeStyle styleNamed(std::string_view name) {
-    return name == "fluid"     ? glw::ThemeStyle::Fluid
-           : name == "plain"   ? glw::ThemeStyle::Plain
-           : name == "plastic" ? glw::ThemeStyle::Plastic
-           : name == "metal"   ? glw::ThemeStyle::Metal
-                               : glw::ThemeStyle::Studio;
-}
-
 int main(int argc, char** argv) {
     int frames = -1, nodes = 0;
     bool rtl = false;
     std::optional<glw::ThemeStyle> style;
+    std::optional<glw::ColorScheme> colors;
     for (int i = 1; i < argc; ++i) {
         const std::string_view arg(argv[i]);
         if (arg == "--frames" && i + 1 < argc)
@@ -882,12 +875,16 @@ int main(int argc, char** argv) {
         else if (arg == "--rtl")
             rtl = true;
         else if (arg == "--style" && i + 1 < argc)
-            style = styleNamed(argv[++i]);
+            style = glw::themeStyleNamed(argv[++i]);
+        else if (arg == "--colors" && i + 1 < argc)
+            colors = glw::colorSchemeNamed(argv[++i]);
     }
     try {
         Application app;
         if (style)
             app.setStyle(*style, false);
+        if (colors)
+            app.setColorScheme(*colors, false);
         auto content = std::make_unique<Widget>();
         content->setLayout(std::make_unique<StackLayout>(Orientation::Vertical, 0.0f));
         Graph& graph = content->add(std::make_unique<Graph>());

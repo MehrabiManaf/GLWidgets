@@ -6,6 +6,7 @@
 
 #include <algorithm>
 #include <tuple>
+#include <utility>
 
 namespace glw {
 
@@ -183,11 +184,153 @@ Palette Palette::light(ThemeStyle style) {
     };
 }
 
+std::optional<ThemeStyle> themeStyleNamed(std::string_view name) {
+    constexpr std::pair<std::string_view, ThemeStyle> names[] = {{"studio", ThemeStyle::Studio}, {"fluid", ThemeStyle::Fluid},
+                                                                 {"plain", ThemeStyle::Plain}, {"plastic", ThemeStyle::Plastic},
+                                                                 {"metal", ThemeStyle::Metal}};
+    for (const auto& [n, style] : names)
+        if (n == name)
+            return style;
+    return std::nullopt;
+}
+
+std::optional<ColorScheme> colorSchemeNamed(std::string_view name) {
+    constexpr std::pair<std::string_view, ColorScheme> names[] = {{"dark", ColorScheme::Dark}, {"light", ColorScheme::Light},
+                                                                  {"dusk", ColorScheme::Dusk}, {"sand", ColorScheme::Sand},
+                                                                  {"turquoise", ColorScheme::Turquoise}};
+    for (const auto& [n, scheme] : names)
+        if (n == name)
+            return scheme;
+    return std::nullopt;
+}
+
+// The other schemes: one palette each, in every style.
+//   Dusk: plum grays, warmer and redder than Dark's, layers a step apart; a soft violet accent, dark marks on it.
+//   Sand: paper and sand, the hairlines and shades warm (brown, not black); a terracotta accent, white marks on it.
+//   Turquoise: the glaze of tiles, a deep turquoise, blue (Persian turquoise); its hairlines and the light under the mouse lapis lazuli, blue;
+//   saffron gold the accent and the selection, the text ivory.
+Palette Palette::of(ColorScheme scheme, ThemeStyle style) {
+    Palette p;
+    switch (scheme) {
+    case ColorScheme::Dark:
+        return dark(style);
+    case ColorScheme::Light:
+        return light(style);
+    case ColorScheme::Dusk:
+        p = {
+            .window = hex(0x1F1B24),
+            .layer = hex(0x29242F),
+            .surface = hex(0x38323F),
+            .base = hex(0x19161D),
+            .titleBar = hex(0x17141B),
+            .text = hex(0xEDE8F2),
+            .mutedText = hex(0xA59CB1),
+            .disabledText = hex(0x605869),
+            .accent = hex(0xAE8FFF),
+            .onAccent = hex(0x170F2B),
+            .border = {1, 1, 1, 0.07f},
+            .outline = {0, 0, 0, 0.55f},
+            .hover = {1, 1, 1, 0.05f},
+            .pressed = {0, 0, 0, 0.10f},
+            .selection = hex(0xAE8FFF, 0.34f),
+            .closeHover = hex(0xC42B1C),
+        };
+        break;
+    case ColorScheme::Sand:
+        p = {
+            .window = hex(0xE9E2D4),
+            .layer = hex(0xF4EFE5),
+            .surface = hex(0xFAF7F0),
+            .base = hex(0xFFFDF8),
+            .titleBar = hex(0xDDD3C1),
+            .text = hex(0x2B251E),
+            .mutedText = hex(0x6E6455),
+            .disabledText = hex(0xAEA492),
+            .accent = hex(0xB5532F),
+            .onAccent = hex(0xFFFFFF),
+            .border = hex(0x4A3518, 0.12f),
+            .outline = hex(0x3A2810, 0.28f),
+            .hover = hex(0x5A3C10, 0.05f),
+            .pressed = hex(0x5A3C10, 0.10f),
+            .selection = hex(0xB5532F, 0.24f),
+            .closeHover = hex(0xC42B1C),
+        };
+        break;
+    case ColorScheme::Turquoise:
+        p = {
+            .window = hex(0x082731),
+            .layer = hex(0x0C3440),
+            .surface = hex(0x134653),
+            .base = hex(0x051B22),
+            .titleBar = hex(0x04161C),
+            .text = hex(0xF3EBDC),
+            .mutedText = hex(0xA2BFCB),
+            .disabledText = hex(0x4D6B76),
+            .accent = hex(0xE3B04B),
+            .onAccent = hex(0x1A1405),
+            .border = hex(0x4A78E0, 0.20f),
+            .outline = {0, 0, 0, 0.50f},
+            .hover = hex(0x4A78E0, 0.12f),
+            .pressed = {0, 0, 0, 0.14f},
+            .selection = hex(0xE3B04B, 0.34f),
+            .closeHover = hex(0xC42B1C),
+        };
+        break;
+    }
+    if (style == ThemeStyle::Metal) {
+        // metal: the controls further from what they are on (lighter in the dark, darker in the light), as Metal's own
+        const bool dark = p.window.r + p.window.g + p.window.b < 1.5f;
+        p.surface = dark ? lerp(p.surface, p.text, 0.10f) : lerp(p.surface, p.mutedText, 0.18f);
+    }
+    return p;
+}
+
+Theme Theme::of(ColorScheme scheme, ThemeStyle style) {
+    Theme t = fromPalette(Palette::of(scheme, style), style);
+    t.scheme = scheme;
+    // the code: in the scheme's colors (Dark's and Light's those of the editors people know)
+    TextEditStyle& e = t.textEdit;
+    switch (scheme) {
+    case ColorScheme::Dark:
+    case ColorScheme::Light:
+        break;
+    case ColorScheme::Dusk:
+        e.keyword = hex(0xB99DFF);
+        e.type = hex(0x7FD3C4);
+        e.string = hex(0xE8B98C);
+        e.number = hex(0xF2A5C2);
+        e.comment = hex(0x7D7591);
+        e.preprocessor = hex(0xE18FDB);
+        e.function = hex(0xEADFA6);
+        break;
+    case ColorScheme::Sand:
+        e.keyword = hex(0x9C3B1E);
+        e.type = hex(0x24766E);
+        e.string = hex(0x5F7418);
+        e.number = hex(0x9A5A00);
+        e.comment = hex(0x968975);
+        e.preprocessor = hex(0x7A4C9A);
+        e.function = hex(0x5A4512);
+        break;
+    case ColorScheme::Turquoise:
+        e.keyword = hex(0x86ABFF);
+        e.type = hex(0x7FD9EE);
+        e.string = hex(0xE9C27A);
+        e.number = hex(0xF2A08F);
+        e.comment = hex(0x6C97A6);
+        e.preprocessor = hex(0xC99CE8);
+        e.function = hex(0xF4DBA6);
+        break;
+    }
+    return t;
+}
+
 Theme Theme::fromPalette(const Palette& p, ThemeStyle style) {
     Theme t;
     t.style = style;
     t.palette = p;
     const bool dark = p.window.r + p.window.g + p.window.b < 1.5f;
+    t.scheme = dark ? ColorScheme::Dark : ColorScheme::Light;
     const Color clear{0, 0, 0, 0};
     const Color white{1, 1, 1, 1};
     const Color black{0, 0, 0, 1};
@@ -422,6 +565,16 @@ Theme Theme::blend(const Theme& a, const Theme& b, float t) {
         .closeHover = color(p.closeHover, q.closeHover),
     };
     Theme r = fromPalette(palette, b.style);
+    r.scheme = b.scheme;
+    // the code's colors (a scheme's own)
+    for (auto [out, x, y] : {std::tuple{&r.textEdit.keyword, a.textEdit.keyword, b.textEdit.keyword},
+                             std::tuple{&r.textEdit.type, a.textEdit.type, b.textEdit.type},
+                             std::tuple{&r.textEdit.string, a.textEdit.string, b.textEdit.string},
+                             std::tuple{&r.textEdit.number, a.textEdit.number, b.textEdit.number},
+                             std::tuple{&r.textEdit.comment, a.textEdit.comment, b.textEdit.comment},
+                             std::tuple{&r.textEdit.preprocessor, a.textEdit.preprocessor, b.textEdit.preprocessor},
+                             std::tuple{&r.textEdit.function, a.textEdit.function, b.textEdit.function}})
+        *out = color(x, y);
     // the shapes
     r.cornerRadius = radius(a.cornerRadius, b.cornerRadius);
     r.button.cornerRadius = radius(a.button.cornerRadius, b.button.cornerRadius);

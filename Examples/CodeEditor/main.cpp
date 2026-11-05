@@ -6,7 +6,8 @@
 // font (the system's); the log is read only and is appended to. Persian in strings and comments is shaped and ordered as
 // it is written, in lines that stay left to right.
 //
-//   code_editor [FILE] [--lines N] [--menu-below] [--frames N]
+//   code_editor [FILE] [--lines N] [--menu-below] [--frames N] [--style studio|fluid|plain|plastic|metal]
+//               [--colors dark|light|dusk|sand|turquoise]
 //
 // FILE: what to edit (a sample otherwise); --lines N: N more lines, to see that a long text costs what shows.
 #include <GLWidgets/Text/Font.hpp>
@@ -23,6 +24,7 @@
 #include <cstdlib>
 #include <exception>
 #include <fstream>
+#include <optional>
 #include <sstream>
 #include <string>
 #include <string_view>
@@ -109,12 +111,18 @@ int main(int argc, char** argv) {
     int frames = -1, extra = 0;
     bool below = false;
     std::string file;
+    std::optional<ThemeStyle> style;
+    std::optional<ColorScheme> colors;
     for (int i = 1; i < argc; ++i) {
         const std::string_view arg(argv[i]);
         if (arg == "--frames" && i + 1 < argc)
             frames = std::max(1, std::atoi(argv[++i]));
         else if (arg == "--lines" && i + 1 < argc)
             extra = std::max(0, std::atoi(argv[++i]));
+        else if (arg == "--style" && i + 1 < argc)
+            style = glw::themeStyleNamed(argv[++i]);
+        else if (arg == "--colors" && i + 1 < argc)
+            colors = glw::colorSchemeNamed(argv[++i]);
         else if (arg == "--menu-below")
             below = true;
         else
@@ -122,6 +130,10 @@ int main(int argc, char** argv) {
     }
     try {
         Application app;
+        if (style)
+            app.setStyle(*style, false);
+        if (colors)
+            app.setColorScheme(*colors, false);
         const text::Font* mono = monospace(app.fonts());
         const Icons icons;
 

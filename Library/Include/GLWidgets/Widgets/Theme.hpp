@@ -15,6 +15,7 @@
 #include <chrono>
 #include <cstdint>
 #include <optional>
+#include <string_view>
 
 namespace glw {
 
@@ -66,6 +67,27 @@ enum class ThemeStyle : std::uint8_t {
     Metal,
 };
 
+// The colors a theme is made in, in any of the looks (Theme::of; Application::setColorScheme):
+//   Dark     the style's own dark colors: grays with a little blue in them, an amber accent.
+//   Light    the style's own light ones: an azure accent.
+//   Dusk     dark too, of other colors: a plum gray, as the sky after the sun has set, a violet accent.
+//   Sand     light too, of other colors: warm, as paper and sand are, a terracotta accent.
+//   Turquoise  dark, of the colors of glazed tiles: a deep, blue turquoise, its hairlines and the mouse's light lapis
+//              lazuli, an accent of saffron gold, its text ivory.
+// The code in a text edit is in the scheme's colors too.
+enum class ColorScheme : std::uint8_t {
+    Dark,
+    Light,
+    Dusk,
+    Sand,
+    Turquoise,
+};
+
+// A style, a scheme by its name, in lower case ("studio", "fluid", "plain", "plastic", "metal"; "dark", "light", "dusk",
+// "sand", "turquoise"), as a command line or a settings file says it; none for another name.
+GLW_EXPORT std::optional<ThemeStyle> themeStyleNamed(std::string_view name);
+GLW_EXPORT std::optional<ColorScheme> colorSchemeNamed(std::string_view name);
+
 // The colors everything is made of, in layers: the title bar the darkest, the window's background over it, panels (layers,
 // the islands of docked panels) over that, raised controls on them; fields sunk into them.
 struct Palette {
@@ -88,6 +110,9 @@ struct Palette {
 
     GLW_EXPORT static Palette dark(ThemeStyle style = ThemeStyle::Studio);
     GLW_EXPORT static Palette light(ThemeStyle style = ThemeStyle::Studio);
+    // A scheme's, in a style: Dark's and Light's the style's own (dark, light); the others the same in every style, but
+    // Metal's controls a little lighter (or darker), as metal stands out of what it is on.
+    GLW_EXPORT static Palette of(ColorScheme scheme, ThemeStyle style = ThemeStyle::Studio);
 };
 
 // How a control stands out of what it is on, lit from above. Raised (a button): its background lighter at its top, a light
@@ -406,6 +431,7 @@ struct WindowFrameStyle {
 
 struct Theme {
     ThemeStyle style = ThemeStyle::Studio;
+    ColorScheme scheme = ColorScheme::Dark;     // what its palette is (one made otherwise: Dark or Light, as dark as it is)
     Palette palette;
     float fontSize = 13;
     float cornerRadius = 0;
@@ -439,6 +465,8 @@ struct Theme {
     // The style's own colors.
     static Theme dark(ThemeStyle style = ThemeStyle::Studio) { return fromPalette(Palette::dark(style), style); }
     static Theme light(ThemeStyle style = ThemeStyle::Studio) { return fromPalette(Palette::light(style), style); }
+    // A scheme's, in a style: its palette's, its code in its own colors.
+    GLW_EXPORT static Theme of(ColorScheme scheme, ThemeStyle style = ThemeStyle::Studio);
     // Between two themes, `t` of the way from `from` to `to` (an application changing theme, or style, eased): the
     // palettes' colors mixed, and the shapes (corners rounding, controls growing lower, bevels fading); what neither
     // mixes (what is on or off, the motions) is `to`'s.

@@ -2,11 +2,15 @@
 // SPDX-License-Identifier: MIT
 // Widgets in an application: a window with chrome of its own (title bar, buttons, borders that resize it, redrawn while it
 // is resized), a text field, buttons that take the focus (Tab moves it), cards that stretch. Its texts are translated: the
-// language button shows them in Persian, which also mirrors the window; the theme button changes the colors of everything.
+// language button shows them in Persian, which also mirrors the window; the style and the colors are chosen in combo boxes,
+// and every widget changes, eased.
 // The interface is written with the builders of Widgets/Declarative.hpp. Its other side is a list of a million items: only
 // those that show are widgets.
 //
-//   widgets_demo [--frames N] [--language fa] [--light] [--style studio|fluid|plain|plastic|metal]
+//   widgets_demo [--frames N] [--language fa] [--style studio|fluid|plain|plastic|metal]
+//                [--colors dark|light|dusk|sand|turquoise] [--light]
+//
+// --light: the same as --colors light.
 //
 // --frames N draws N frames and exits: a smoke test.
 #include <GLWidgets/Widgets/Application.hpp>
@@ -47,9 +51,14 @@ constexpr const char* persianCatalog = R"({
     "Hello, {name}!": "سلام، {name}!",
     "Nothing typed yet.": "هنوز چیزی نوشته نشده.",
     "فارسی": "English",
-    "Light theme": "پوسته‌ی روشن",
     "Style": "سبک",
-    "Dark theme": "پوسته‌ی تیره",
+    "Colors": "رنگ‌ها",
+    "Dark": "تیره",
+    "Light": "روشن",
+    "Dusk": "غروب",
+    "Sand": "ماسه",
+    "Turquoise": "فیروزه",
+    "Every widget, in these colors": "همه‌ی ویجت‌ها، با این رنگ‌ها",
     "Close": "بستن",
     "a share": "یک سهم",
     "two shares": "دو سهم",
@@ -86,7 +95,6 @@ constexpr const char* persianCatalog = R"({
     "{name} made.": "«{name}» ساخته شد.",
     "Close the window?": "پنجره بسته شود؟",
     "What is not saved is lost.": "آنچه ذخیره نشده از دست می‌رود.",
-    "Every widget, in the other theme's colors": "همه‌ی ویجت‌ها، با رنگ‌های پوسته‌ی دیگر",
     "Asks first": "اول می‌پرسد",
     "Appearance": "ظاهر",
     "Variables": "متغیرها",
@@ -202,13 +210,12 @@ struct Page {
     glw::Application& app;
     glw::Window* window = nullptr;
     glw::Label* status = nullptr;
-    glw::Button* themeButton = nullptr;
     glw::Widget* buttons = nullptr;
     glw::Widget* cards = nullptr;
     glw::Button* menuButton = nullptr;
     int variableCount = 0;
-    bool light = false;
     glw::ComboBox* styleBox = nullptr;
+    glw::ComboBox* colorsBox = nullptr;
 
     // The form on one side; on the other a list of a million items, a tree of a million rows and a table of a million rows;
     // handles between them.
@@ -308,9 +315,15 @@ struct Page {
                    ui::HStack({.spacing = 10},
                               // in the other language: the button says which one it goes to
                               ui::Button({.text = tr("فارسی"), .onClick = [this] { switchLanguage(); }}),
-                              ui::Button({.text = tr("Light theme"), .onClick = [this] { switchTheme(); }})
-                                  .bind(themeButton)
-                                  .toolTip(tr("Every widget, in the other theme's colors")),
+                              // the colors: the style's dark and light ones, two more of each, one of glazed tiles' turquoise
+                              ui::Label({.text = tr("Colors")}).alignment(glw::Alignment::Start, glw::Alignment::Center),
+                              ui::ComboBox({.items = {tr("Dark"), tr("Light"), tr("Dusk"), tr("Sand"), tr("Turquoise")},
+                                            .current = 0,
+                                            .onChanged = [this](std::size_t i) {
+                                                app.setColorScheme(static_cast<glw::ColorScheme>(i));
+                                            }})
+                                  .bind(colorsBox)
+                                  .toolTip(tr("Every widget, in these colors")),
                               ui::Button({.text = tr("Close"), .onClick = [this] { confirmClose(); }}).toolTip(tr("Asks first")))
                        .bind(buttons),
                    ui::HStack({.spacing = 10},
@@ -439,13 +452,6 @@ struct Page {
     void switchLanguage() {
         app.setLanguage(app.translator().language() == "fa" ? "en" : "fa");
     }
-
-    // Eased, by its button; at once at the start (--light).
-    void switchTheme(bool animated = true) {
-        light = !light;
-        app.setTheme(light ? glw::Theme::light(app.style()) : glw::Theme::dark(app.style()), animated);
-        themeButton->setText(light ? tr("Dark theme") : tr("Light theme"));
-    }
 };
 
 } // namespace
@@ -453,8 +459,8 @@ struct Page {
 int main(int argc, char** argv) {
     int frames = -1;
     std::string language = "en";
-    bool light = false;
     std::optional<glw::ThemeStyle> style;       // none: the default (Studio)
+    std::optional<glw::ColorScheme> colors;     // none: the default (Dark)
     for (int i = 1; i < argc; ++i) {
         const std::string_view arg(argv[i]);
         if (arg == "--frames" && i + 1 < argc)
@@ -462,15 +468,11 @@ int main(int argc, char** argv) {
         else if (arg == "--language" && i + 1 < argc)
             language = argv[++i];
         else if (arg == "--light")
-            light = true;
-        else if (arg == "--style" && i + 1 < argc) {
-            const std::string_view name(argv[++i]);
-            style = name == "fluid"   ? glw::ThemeStyle::Fluid
-                    : name == "plain"   ? glw::ThemeStyle::Plain
-                    : name == "plastic" ? glw::ThemeStyle::Plastic
-                    : name == "metal"   ? glw::ThemeStyle::Metal
-                                        : glw::ThemeStyle::Studio;
-        }
+            colors = glw::ColorScheme::Light;
+        else if (arg == "--style" && i + 1 < argc)
+            style = glw::themeStyleNamed(argv[++i]);
+        else if (arg == "--colors" && i + 1 < argc)
+            colors = glw::colorSchemeNamed(argv[++i]);
     }
     try {
         glw::Application app;
@@ -482,9 +484,10 @@ int main(int argc, char** argv) {
         page.window = &app.openWindow({.title = tr("Widgets"), .size = {980, 640}}, page.build());
         if (style)
             app.setStyle(*style, false);
+        if (colors)
+            app.setColorScheme(*colors, false);
         page.styleBox->setCurrent(static_cast<std::size_t>(app.style()));
-        if (light)
-            page.switchTheme(false);
+        page.colorsBox->setCurrent(static_cast<std::size_t>(app.colorScheme()));
         return app.run(frames);
     } catch (const std::exception& e) {
         std::fprintf(stderr, "widgets_demo: %s\n", e.what());

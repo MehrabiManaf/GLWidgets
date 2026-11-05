@@ -1033,12 +1033,19 @@ void Application::setTheme(const Theme& theme, bool animated) {
 }
 
 void Application::setStyle(ThemeStyle style, bool animated) {
-    const bool dark = impl_->themeTarget ? impl_->themeTarget->isDark() : impl_->context->theme.isDark();
-    setTheme(dark ? Theme::dark(style) : Theme::light(style), animated);
+    setTheme(Theme::of(colorScheme(), style), animated);
 }
 
 ThemeStyle Application::style() const {
     return impl_->themeTarget ? impl_->themeTarget->style : impl_->context->theme.style;
+}
+
+void Application::setColorScheme(ColorScheme scheme, bool animated) {
+    setTheme(Theme::of(scheme, style()), animated);
+}
+
+ColorScheme Application::colorScheme() const {
+    return impl_->themeTarget ? impl_->themeTarget->scheme : impl_->context->theme.scheme;
 }
 
 void Application::setLanguage(const std::string& language) {

@@ -338,8 +338,14 @@ from markup.
 
 How widgets look is in `Theme` (`Widgets/Theme.hpp`): a `Palette` (the colors everything is made of) and a style for each
 kind of widget, made from the palette by `Theme::fromPalette` in one of the library's looks (`ThemeStyle`), each in the
-dark and in the light (`Theme::dark(style)`, `Theme::light(style)`, with the style's own palettes). An application
-changes look with `Application::setStyle` (as dark or light as it is), eased as `setTheme` is: from the theme shown to
+dark and in the light (`Theme::dark(style)`, `Theme::light(style)`, with the style's own palettes), or in one of three
+more color schemes (`ColorScheme`, `Theme::of(scheme, style)`): **Dusk**, dark of other colors (plum grays, a violet
+accent); **Sand**, light of other colors (paper and sand, warm hairlines and shades, a terracotta accent); **Turquoise**,
+the colors of glazed tiles (a deep turquoise, lapis lazuli hairlines and light under the mouse, a saffron gold
+accent, ivory text). Each is the same in every style, but Metal's controls a little further from what they are on; the
+code in a text edit is in the scheme's colors too. An application changes look with `Application::setStyle` (in the
+colors it is in) and colors with `Application::setColorScheme` (in the style it is in), eased as `setTheme` is; a style
+and a scheme have names (`themeStyleNamed`, `colorSchemeNamed`: what the demos' `--style` and `--colors` take). From the theme shown to
 the new one, the palettes' colors mixed and the shapes too (`Theme::blend`: corners rounding, controls growing lower,
 bevels fading; a pill's radius as round as a control is high, so that it rounds as it goes):
 
