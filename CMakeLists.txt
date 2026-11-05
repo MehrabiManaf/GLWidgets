@@ -34,6 +34,11 @@ if(MSVC)
     add_compile_options(/W4 /permissive- /Zc:__cplusplus /utf-8 /wd4100 /wd4127 /wd4251 /wd4275)
 else()
     add_compile_options(-Wall -Wextra -Wno-unused-parameter)
+    # Props are made with designated initializers that leave out what keeps its default ({.text = ...}): GCC warns of
+    # every member left out, even with a default of its own (Clang only of those without one, which is kept).
+    if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+        add_compile_options(-Wno-missing-field-initializers)
+    endif()
 endif()
 
 add_subdirectory(Library)

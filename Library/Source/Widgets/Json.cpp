@@ -7,6 +7,8 @@
 #include <charconv>
 #include <cstdint>
 #include <cstdio>
+#include <locale>
+#include <sstream>
 #include <type_traits>
 
 namespace glw::json {
@@ -155,10 +157,23 @@ private:
                                        text_[pos_] == '+' || text_[pos_] == '.' || text_[pos_] == 'e' || text_[pos_] == 'E'))
             ++pos_;
         double value = 0;
-        const auto result = std::from_chars(text_.data() + start, text_.data() + pos_, value);
-        if (start == pos_ || result.ec != std::errc())
+        if (start == pos_ || !toDouble(text_.substr(start, pos_ - start), value))
             return fail("a value expected");
         return Value{value};
+    }
+
+    // The number all of `text` is, as C writes it whatever the locale.
+    static bool toDouble(std::string_view text, double& value) {
+#if defined(__cpp_lib_to_chars) && __cpp_lib_to_chars >= 201611L
+        const auto result = std::from_chars(text.data(), text.data() + text.size(), value);
+        return result.ec == std::errc() && result.ptr == text.data() + text.size();
+#else
+        // a library without from_chars for doubles (Apple's): a stream of the classic locale
+        std::istringstream in{std::string(text)};
+        in.imbue(std::locale::classic());
+        in >> value;
+        return !in.fail() && in.peek() == std::char_traits<char>::eof();
+#endif
     }
 
     bool hex4(std::uint32_t& value) {

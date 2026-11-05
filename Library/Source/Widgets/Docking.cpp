@@ -1535,7 +1535,11 @@ void DockArea::dragTo(Point point) {
     }
     if (side == DockSide::Center && !middle)
         side.reset();       // where it is already
-    area->guides_ = Guides{node, side, middle};
+    // made in place, member by member (a copy of the optional side: GCC sees it as maybe uninitialized)
+    area->guides_.emplace();
+    area->guides_->node = node;
+    area->guides_->hovered = side;
+    area->guides_->center = middle;
     area->indicator_.reset();
     if (side) {
         Rect zone = dropRoom(*node);

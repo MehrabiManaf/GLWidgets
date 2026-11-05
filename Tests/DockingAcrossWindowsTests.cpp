@@ -266,10 +266,6 @@ Point panelTab(const Screen& screen, const DockArea& area, const std::string& id
     return tab.mapToRoot({10, 10}) + screen.windowPosition(*tabs->root());
 }
 
-Point middleOf(const Screen& screen, const Widget& w) {
-    return w.mapToRoot({w.size().width / 2, w.size().height / 2 + 15}) + screen.windowPosition(*w.root());
-}
-
 } // namespace
 
 TEST(majorTabMovesToAnotherWindow) {

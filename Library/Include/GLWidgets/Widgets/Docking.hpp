@@ -259,7 +259,7 @@ private:
         DockSide side = DockSide::Center;
         DockArea* shownArea = nullptr;      // the one showing guides (and where it would go)
         const UiRoot* window = nullptr;     // the window following the mouse: a floating one, or the one torn off
-        Point grab;                         // the mouse on the screen less that window's position
+        Point grab{};                       // the mouse on the screen less that window's position
         bool tearing = false;               // the panel goes into a window of its own, after the event
         bool outOfWindow = false;           // the mouse is out of the window (where windows are not placed)
     };
