@@ -823,6 +823,15 @@ void ListView::endChange(bool lay) {
 
 // ---- painting ----
 
+void ListView::highlight(paint::Painter& p, const Rect& r, float radius, Color color, bool pressed) const {
+    // a row's highlight: flat, or raised as a control (a style's)
+    const ItemViewStyle& s = style();
+    if (s.rowBevel.relief > 0)
+        paintRaised(p, r, radius, color, {0, 0, 0, 0}, s.rowBevel, pressed);
+    else
+        p.fillRoundedRect(r, radius, color);
+}
+
 void ListView::paint(PaintContext& context) {
     // behind the rows: under the mouse, pressed, selected (a pill of the accent's tint)
     const ItemViewStyle& s = style();
@@ -830,9 +839,11 @@ void ListView::paint(PaintContext& context) {
     if (headerShown()) {
         // its header: a pill under the mouse, the arrow of the order, a line under it
         const Rect& h = headerRect_;
+        if (s.headerBackground.a > 0)
+            paintRaised(p, {h.x, h.y, h.width, h.height - 1}, s.cornerRadius, s.headerBackground, {0, 0, 0, 0}, s.headerBevel);
         if (headerHovered_) {
             const VisualState state{.hovered = true, .pressed = headerPressed_};
-            p.fillRoundedRect({h.x + s.inset, h.y + 2, h.width - 2 * s.inset, h.height - 4}, s.cornerRadius, s.row.resolve(state));
+            highlight(p, {h.x + s.inset, h.y + 2, h.width - 2 * s.inset, h.height - 4}, s.cornerRadius, s.row.resolve(state), state.pressed);
         }
         if (sortOrder_) {
             const bool rtl = rightToLeft();
@@ -852,7 +863,7 @@ void ListView::paint(PaintContext& context) {
         const auto [top, height] = selectionPill();
         const Rect full{viewport_.x, viewport_.y + static_cast<float>(top - offset_), viewport_.width, static_cast<float>(height)};
         const Rect pill = grid ? full : Rect{full.x + s.inset, full.y + 1, full.width - 2 * s.inset, full.height - 2};
-        p.fillRoundedRect(pill, grid ? 0.0f : s.cornerRadius, s.selected);
+        highlight(p, pill, grid ? 0.0f : s.cornerRadius, s.selected, false);
     }
     for (const Row& row : rows_) {
         const std::optional<Rect> rect = itemRect(modelIndex(row.index));
@@ -876,9 +887,9 @@ void ListView::paint(PaintContext& context) {
         const VisualState state{.hovered = hovered_ == row.index, .pressed = pressed_ == row.index && hovered_ == row.index};
         const bool selected = selectedAt(row.index);
         if (selected && !sliding)
-            p.fillRoundedRect(r, radius, s.selected);
+            highlight(p, r, radius, s.selected, false);
         else if (state.hovered && !selected)
-            p.fillRoundedRect(r, radius, s.row.resolve(state));
+            highlight(p, r, radius, s.row.resolve(state), state.pressed);
         if (rippled_ == row.index)
             ripple_.paint(p, r, radius, s.ripple);
         // the current row ringed, unless the selection already shows it

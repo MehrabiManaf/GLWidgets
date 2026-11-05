@@ -6,6 +6,7 @@
 
 #include <GLWidgets/Core/Assert.hpp>
 #include <GLWidgets/Paint/Painter.hpp>
+#include <GLWidgets/Widgets/Bevel.hpp>
 #include <GLWidgets/Widgets/DockingHost.hpp>
 #include <GLWidgets/Widgets/Label.hpp>
 #include <GLWidgets/Widgets/Layout.hpp>
@@ -73,29 +74,64 @@ protected:
         paint::Painter& p = context.painter;
         const Rect r{0, 0, size().width, size().height};
         const VisualState state{.hovered = hovered(), .pressed = pressed_ && hovered()};
-        if (active_) {
+        if (!s.tabsJoined) {
+            // standing on the bar as a control: the one shown raised, one under the mouse lighter (raised too)
+            const Rect key = r.inflated(-3);
+            const float radius = std::min(s.tabRadius, key.height / 2);
+            if (active_)
+                paintRaised(p, key, radius, s.selectedTab, {0, 0, 0, 0}, s.tabBevel, state.pressed);
+            else if (state.hovered && s.tabBevel.relief > 0)
+                paintRaised(p, key, radius, s.tab.resolve(state), {0, 0, 0, 0}, s.tabBevel, state.pressed);
+            else
+                p.fillRoundedRect(key, radius, s.tab.resolve(state));
+        } else if (active_) {
             // as Fusion's: raised over the bar, lit at its top, its edge around it but under it, where it joins its
             // content (its lower corners and edge below the bar, cut)
-            const Rect shape{0, selectedTabTop, r.width, r.height - selectedTabTop + std::max(s.cornerRadius, 2.0f)};
-            const float radius = std::min(s.cornerRadius, 4.0f);
+            const Rect shape{0, selectedTabTop, r.width, r.height - selectedTabTop + std::max(s.tabRadius, 2.0f)};
+            const float radius = s.tabRadius;
+            if (s.islandBevel.relief > 0) {
+                // a raised stack's: the stack draws it, joined to its slab (DockTabs::paint); its title only
+                label_->setColor(s.text);
+                paintClose(context, s);
+                return;
+            }
+            if (s.tabBevel.relief > 0) {
+                // a relief of its content's color, its lower edge under the bar (cut): its face the content's
+                const Rect taller{shape.x, shape.y, shape.width, shape.height + s.tabBevel.roundness + 2};
+                p.pushClip(r);
+                p.fillRelief(taller, radius, s.tabBevel.relief, s.tabBevel.roundness, s.selectedTab);
+                p.popClip();
+                p.fillRect({1, r.height - 1, r.width - 2, 1}, s.background);
+                label_->setColor(s.text);
+                paintClose(context, s);
+                return;
+            }
             p.pushClip(r);
             p.fillRoundedRect(shape, radius, s.selectedTab, s.background);
             p.strokeRoundedRect(shape.inflated(-1), std::max(0.0f, radius - 1), 1, s.selectedTabHighlight, withAlpha(s.selectedTabHighlight, 0));
             p.strokeRoundedRect(shape, radius, 1, s.selectedTabBorder);
             p.popClip();
             p.fillRect({1, r.height - 1, r.width - 2, 1}, s.background);     // the hairline under the bar open under it
+        } else if (state.hovered && s.tabBevel.relief > 0) {
+            const Rect key = r.inflated(-3);
+            paintRaised(p, key, std::min(s.tabRadius, key.height / 2), s.tab.resolve(state), {0, 0, 0, 0}, s.tabBevel, state.pressed);
         } else {
             p.fillRoundedRect(r.inflated(-3), s.cornerRadius, s.tab.resolve(state));
         }
         label_->setColor(active_ || hovered() ? s.text : s.mutedText);
-        if (closable_ && (hovered() || active_)) {
-            const Rect c = closeRect();
-            if (closeHovered_)
-                p.fillRoundedRect(c, s.cornerRadius, context.ui.theme.palette.hover);
-            const Point m = c.center();
-            p.drawLine({m.x - 4, m.y - 4}, {m.x + 4, m.y + 4}, 1.2f, s.text);
-            p.drawLine({m.x - 4, m.y + 4}, {m.x + 4, m.y - 4}, 1.2f, s.text);
-        }
+        paintClose(context, s);
+    }
+
+    void paintClose(PaintContext& context, const DockStyle& s) {
+        if (!closable_ || !(hovered() || active_))
+            return;
+        paint::Painter& p = context.painter;
+        const Rect c = closeRect();
+        if (closeHovered_)
+            p.fillRoundedRect(c, s.cornerRadius, context.ui.theme.palette.hover);
+        const Point m = c.center();
+        p.drawLine({m.x - 4, m.y - 4}, {m.x + 4, m.y + 4}, 1.2f, s.text);
+        p.drawLine({m.x - 4, m.y + 4}, {m.x + 4, m.y - 4}, 1.2f, s.text);
     }
 
     // What can be done with its panel: floated (or docked again), its stack's tab bar hidden (a stack of one panel,
@@ -746,8 +782,11 @@ void DockTabs::arrangeContent(const Rect& content) {
     arrangeInCell(*tools_, {rtl ? line.x : line.right() - tools, line.y, tools, full}, rtl);
     // a window's title keeps a little room after its tabs, to drag the window by
     const float grip = title_ ? std::min(titleGrip, line.width - tools) : 0.0f;
-    const float tabs = std::max(0.0f, line.width - tools - grip);
-    arrangeInCell(*bar_, {rtl ? line.right() - tabs : line.x, line.y, tabs, full}, rtl);
+    // a raised stack's tabs: the first after its rounded corner (a folder's tab off it), not over it
+    const DockStyle& s = style();
+    const float lead = s.islandBevel.relief > 0 ? std::min(s.cornerRadius + s.islandBevel.roundness + 2, line.width / 4) : 0.0f;
+    const float tabs = std::max(0.0f, line.width - tools - grip - lead);
+    arrangeInCell(*bar_, {rtl ? line.right() - lead - tabs : line.x + lead, line.y, tabs, full}, rtl);
     // the panel inside the stack's edge (drawn under it: what reaches its side or bottom would cover it)
     constexpr float edge = 1;
     const Rect below{content.x + edge, content.y + bar, std::max(0.0f, content.width - 2 * edge), std::max(0.0f, content.height - bar - edge)};
@@ -780,6 +819,29 @@ void DockTabs::paint(PaintContext& context) {
     // an island: a rounded layer on the window; its tabs over a hairline
     const DockStyle& s = style();
     const Rect r{0, 0, size().width, size().height};
+    if (s.islandBevel.relief > 0) {
+        // raised: a slab of its background under its bar, the tab shown a relief as high joined to it, its lower part
+        // over the slab's top edge (cut there): a folder's tab, its face the slab's
+        paint::Painter& p = context.painter;
+        const float bar = barHeight();
+        const Bevel& slab = s.islandBevel;
+        paintRaised(p, {0, bar, r.width, std::max(0.0f, r.height - bar)}, s.cornerRadius, s.background, {0, 0, 0, 0}, slab);
+        if (bar >= 1 && active_ < bar_->children().size()) {
+            const Widget& tab = *bar_->children()[active_];
+            const Point at = mapFromRoot(tab.mapToRoot({}));
+            const Point row = mapFromRoot(bar_->mapToRoot({}));
+            const float top = std::max(0.0f, at.y + selectedTabTop);
+            const Rect shape{at.x, top, tab.size().width, bar - top + slab.roundness + s.tabBevel.roundness + 2};
+            // within the row (scrolled), down to the slab's edge
+            const float left = std::max(at.x, row.x) - 1, right = std::min(at.x + tab.size().width, row.x + bar_->size().width) + 1;
+            if (right > left) {
+                p.pushClip({left, 0, right - left, bar + slab.roundness});
+                p.fillRelief(shape, s.tabRadius, slab.relief, s.tabBevel.roundness, s.background);
+                p.popClip();
+            }
+        }
+        return;
+    }
     context.painter.fillRoundedRect(r, s.cornerRadius, s.background);
     context.painter.strokeRoundedRect(r, s.cornerRadius, 1, s.border);
     if (const float bar = barHeight(); bar >= 1)
@@ -797,6 +859,7 @@ void DockTabs::setTabBarHidden(bool hidden) {
         return;
     barHidden_ = hidden;
     cornerHovered_ = false;
+    cornerGrown_.set(0);
     // eased away or back (the theme's motion), its tabs shown meanwhile
     bar_->setVisible(true);
     tools_->setVisible(true);
@@ -819,21 +882,35 @@ bool DockTabs::barGone() const {
 }
 
 Rect DockTabs::revealCorner() const {
-    constexpr float size = 14;
-    return rightToLeft() ? Rect{this->size().width - size, 0, size, size} : Rect{0, 0, size, size};
+    // the tongue's room at the start of the top edge, with some around it for the mouse
+    constexpr float width = 40, height = 14;
+    return rightToLeft() ? Rect{this->size().width - width, 0, width, height} : Rect{0, 0, width, height};
 }
 
 void DockTabs::paintOver(PaintContext& context) {
-    if (!barGone())
+    // the tongue: as much of it as the bar is gone, longer under the mouse (eased), a tab's shape and bevel
+    const float shown = barHidden_ ? 1 - barShown_.value() : 0.0f;
+    if (shown <= 0.01f)
         return;
-    // the corner the bar went to: a little triangle, the accent's under the mouse
-    const Rect c = revealCorner();
-    const float inset = 3, length = cornerHovered_ ? 11.0f : 8.0f;
-    const bool rtl = rightToLeft();
-    const float x = rtl ? c.right() - inset : c.x + inset, dx = rtl ? -length : length;
-    const Point triangle[] = {{x, c.y + inset}, {x + dx, c.y + inset}, {x, c.y + inset + length}};
     const DockStyle& s = style();
-    context.painter.fillConvexPolygon(triangle, cornerHovered_ ? s.activeLine : s.mutedText);
+    paint::Painter& p = context.painter;
+    const bool rtl = rightToLeft();
+    const float grown = cornerGrown_.value();
+    const float width = 26 + 6 * grown, height = (6 + 5 * grown) * shown;
+    const float x = rtl ? size().width - 8 - width : 8.0f;
+    const float radius = std::min(std::max(s.tabRadius, 3.0f), (height + 6) / 2);
+    // hanging from the top edge: its upper corners above it, cut
+    p.pushClip({0, 0, size().width, size().height});
+    const Rect tongue{x, -6, width, height + 6};
+    const Color color = grown > 0 ? mix(s.selectedTab, s.activeLine, 0.35f * grown) : s.selectedTab;
+    paintRaised(p, tongue, radius, withAlpha(color, color.a * shown), withAlpha(s.selectedTabBorder, s.selectedTabBorder.a * shown), s.tabBevel);
+    // a chevron down in it, under the mouse: the bar comes down
+    if (grown > 0.05f) {
+        const float cx = x + width / 2, cy = height / 2 + 0.5f;
+        const Point chevron[] = {{cx - 3.5f, cy - 1.5f}, {cx, cy + 2}, {cx + 3.5f, cy - 1.5f}};
+        p.drawPolyline(chevron, 1.3f, withAlpha(s.text, grown * shown));
+    }
+    p.popClip();
 }
 
 void DockTabs::onPreviewMouse(MouseEvent& event) {
@@ -842,6 +919,8 @@ void DockTabs::onPreviewMouse(MouseEvent& event) {
     const bool over = revealCorner().contains(event.position);
     if (over != cornerHovered_) {
         cornerHovered_ = over;
+        const UiContext* ui = context();
+        cornerGrown_.animateTo(scheduler(), over ? 1.0f : 0.0f, ui ? Duration(ui->theme.motion.fast) : Duration::zero());
         invalidatePaint();
     }
     // pressed: the bar back (before the panel under it gets the press)
@@ -854,6 +933,8 @@ void DockTabs::onPreviewMouse(MouseEvent& event) {
 void DockTabs::onHoverChanged(bool hovered) {
     if (!hovered && cornerHovered_) {
         cornerHovered_ = false;
+        const UiContext* ui = context();
+        cornerGrown_.animateTo(scheduler(), 0.0f, ui ? Duration(ui->theme.motion.fast) : Duration::zero());
         invalidatePaint();
     }
 }

@@ -3,6 +3,7 @@
 #include <GLWidgets/Widgets/MajorTabs.hpp>
 
 #include <GLWidgets/Paint/Painter.hpp>
+#include <GLWidgets/Widgets/Bevel.hpp>
 #include <GLWidgets/Widgets/Docking.hpp>
 #include <GLWidgets/Widgets/DockingHost.hpp>
 #include <GLWidgets/Widgets/Label.hpp>
@@ -67,10 +68,25 @@ protected:
         paint::Painter& p = context.painter;
         const Rect r{0, 0, size().width, size().height};
         const VisualState state{.hovered = hovered(), .pressed = pressed_ && hovered()};
-        // rounded at the top only: the bottom corners go below the tab and are cut
-        p.pushClip(r);
-        p.fillRoundedRect({0, 0, r.width, r.height + std::max(s.cornerRadius, 1.0f)}, s.cornerRadius, active_ ? s.active : s.background.resolve(state));
-        p.popClip();
+        if (!s.joined) {
+            // standing on the strip as a control: the one shown raised, one under the mouse lighter
+            const Rect key{r.x + 1, r.y + 1, r.width - 2, r.height - 5};
+            const float radius = std::min(s.cornerRadius, key.height / 2);
+            if (active_)
+                paintRaised(p, key, radius, s.raised, {0, 0, 0, 0}, s.bevel, state.pressed);
+            else
+                p.fillRoundedRect(key, radius, s.background.resolve(state));
+        } else if (active_ && s.bevel.relief > 0) {
+            // a relief of the window's color, its lower edge under the strip (cut): its face the window's content
+            p.pushClip(r);
+            p.fillRelief({0, 0, r.width, r.height + s.bevel.roundness + 2}, s.cornerRadius, s.bevel.relief, s.bevel.roundness, s.active);
+            p.popClip();
+        } else {
+            // rounded at the top only: the bottom corners go below the tab and are cut
+            p.pushClip(r);
+            p.fillRoundedRect({0, 0, r.width, r.height + std::max(s.cornerRadius, 1.0f)}, s.cornerRadius, active_ ? s.active : s.background.resolve(state));
+            p.popClip();
+        }
         label_->setColor(active_ ? s.text : s.mutedText);
         if (closable_ && (hovered() || active_)) {
             const Rect c = closeRect();

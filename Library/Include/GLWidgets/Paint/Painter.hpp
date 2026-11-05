@@ -40,6 +40,9 @@ public:
     void strokeRoundedRect(const Rect& rect, float radius, float width, Color top, Color bottom);
     // A blurred rounded rectangle: the shadow of something of that shape (offset the rectangle to cast it).
     void drawShadow(const Rect& rect, float radius, float blur, Color color);
+    // A rounded rectangle as a relief: `height` dips above what it is on (below it when negative: sunk), its edge rounding
+    // down over `bevel` dips, lit by the light of the target (Lighting, the Renderer's): its flat top in `color`.
+    void fillRelief(const Rect& rect, float radius, float height, float bevel, Color color);
     void fillCircle(Point center, float radius, Color color);
     void strokeCircle(Point center, float radius, float width, Color color);
 

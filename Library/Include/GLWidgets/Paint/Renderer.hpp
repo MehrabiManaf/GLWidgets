@@ -48,6 +48,10 @@ public:
     void setTexture(TextureId id, const rhi::Texture* texture);
     void removeTexture(TextureId id);
 
+    // The light reliefs are lit by (Painter::fillRelief), from the next draw on.
+    void setLighting(const Lighting& lighting) { lighting_ = lighting; }
+    const Lighting& lighting() const { return lighting_; }
+
     // Outside passes, before the pass that draws `list`.
     void upload(rhi::CommandList& commands, const DrawList& list, RenderBuffers& buffers);
     // Inside the pass of a target of `format`, `size` pixels, with `scale` pixels per dip.
@@ -67,6 +71,7 @@ private:
     std::unordered_map<rhi::TextureFormat, std::unique_ptr<rhi::Pipeline>> pipelines_;
     std::unordered_map<TextureId, const rhi::Texture*> textures_;
     TextureId nextTexture_ = 1;
+    Lighting lighting_;
 };
 
 } // namespace glw::paint

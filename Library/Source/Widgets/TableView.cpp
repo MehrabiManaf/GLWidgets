@@ -648,6 +648,9 @@ void TableView::paint(PaintContext& context) {
     paint::Painter& p = context.painter;
     const Rect h = headerRect();
     const bool rtl = rightToLeft();
+    // behind its titles, raised as a control (a style's)
+    if (s.headerBackground.a > 0)
+        paintRaised(p, {area_.x, h.y, area_.width, h.height - 1}, s.cornerRadius, s.headerBackground, {0, 0, 0, 0}, s.headerBevel);
     p.pushClip(h);
     const auto [first, last] = shownColumns();
     for (std::size_t column = first; column < last; ++column) {
@@ -655,7 +658,11 @@ void TableView::paint(PaintContext& context) {
         // under the mouse, pressed
         if (hoveredHeader_ == column && !hoveredEdge_ && !resizing_) {
             const VisualState state{.hovered = true, .pressed = pressedHeader_ == column};
-            p.fillRoundedRect({x + s.inset, h.y + 2, w - 2 * s.inset, h.height - 4}, s.cornerRadius, s.row.resolve(state));
+            const Rect pill{x + s.inset, h.y + 2, w - 2 * s.inset, h.height - 4};
+            if (s.rowBevel.relief > 0)
+                paintRaised(p, pill, s.cornerRadius, s.row.resolve(state), {0, 0, 0, 0}, s.rowBevel, state.pressed);
+            else
+                p.fillRoundedRect(pill, s.cornerRadius, s.row.resolve(state));
         }
         // sorted by it: an arrow at its end side, up ascending, down descending
         if (indicatorColumn_ == column) {

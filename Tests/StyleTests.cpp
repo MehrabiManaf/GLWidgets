@@ -5,6 +5,8 @@
 #include "Check.hpp"
 #include "TestUi.hpp"
 
+#include <GLWidgets/Paint/Painter.hpp>
+#include <GLWidgets/Widgets/Bevel.hpp>
 #include <GLWidgets/Widgets/Button.hpp>
 #include <GLWidgets/Widgets/ListView.hpp>
 #include <GLWidgets/Widgets/UiRoot.hpp>
@@ -140,4 +142,65 @@ TEST(studioIsTheDefault) {
     // Fluid: its splitters seen; its buttons raised as its panels' headers
     const Theme fluid = Theme::dark(ThemeStyle::Fluid);
     CHECK(fluid.splitter.handle.a > 0 && fluid.button.bevel.gradient > 0 && fluid.button.bevel.gradient == fluid.collapsiblePanel.bevel.gradient);
+}
+
+TEST(plasticAndMetalDrawTheirControlsAsLitReliefs) {
+    const Theme plastic = Theme::dark(ThemeStyle::Plastic);
+    // raised buttons, sunk fields, a light from the upper left
+    CHECK(plastic.button.bevel.relief > 0 && plastic.lineEdit.bevel.relief > 0 && plastic.collapsiblePanel.bevel.relief > 0);
+    CHECK(plastic.lighting.x < 0 && plastic.lighting.y < 0 && plastic.lighting.z > 0 && Theme::dark().button.bevel.relief == 0);
+    // low reliefs; item views' headers and highlights raised too (not in the other styles)
+    CHECK(plastic.button.bevel.relief < 2 && plastic.button.bevel.roundness < 3);
+    CHECK(plastic.table.headerBackground.a > 0 && plastic.table.headerBevel.relief > 0 && plastic.itemView.rowBevel.relief > 0);
+    CHECK(Theme::dark().itemView.rowBevel.relief == 0);
+    // a raised control, a sunk one: reliefs (the vertices of a lit kind), up and down
+    paint::DrawList list;
+    {
+        paint::Painter p(list, {0, 0, 200, 200}, 1);
+        paintRaised(p, {10, 10, 80, 26}, 7, {0.3f, 0.3f, 0.3f, 1}, {0, 0, 0, 0}, plastic.button.bevel);
+        paintSunken(p, {10, 50, 80, 26}, 6, {0.1f, 0.1f, 0.1f, 1}, {0, 0, 0, 0}, plastic.lineEdit.bevel);
+    }
+    int up = 0, down = 0;
+    for (const paint::Vertex& v : list.vertices) {
+        if (v.kind == static_cast<float>(paint::VertexKind::Relief)) {
+            up += v.blur > 0 ? 1 : 0;
+            down += v.blur < 0 ? 1 : 0;
+        }
+    }
+    CHECK(up == 4 && down == 4);
+    // eased to it: its relief and its light between
+    const Theme half = Theme::blend(Theme::dark(), plastic, 0.5f);
+    CHECK(half.button.bevel.relief == plastic.button.bevel.relief / 2 && half.lighting.specular > 0);
+    // plastic: a white, tight highlight; metal: its highlight of its color, broad, its surfaces brushed, its own grays
+    const Theme metal = Theme::dark(ThemeStyle::Metal);
+    CHECK(plastic.lighting.metal == 0 && plastic.lighting.brushed == 0 && plastic.lighting.shininess > metal.lighting.shininess);
+    CHECK(metal.lighting.metal > 0.5f && metal.lighting.brushed > 0 && metal.button.bevel.relief == plastic.button.bevel.relief);
+    CHECK(metal.palette.window != plastic.palette.window && Theme::light(ThemeStyle::Metal).isDark() == false);
+}
+
+TEST(viewsHeadersAndNodesLookAsTheStylesControls) {
+    // every style: its views' headers behind their titles, raised as its controls are (flat in Plain)
+    const Theme studio = Theme::dark(ThemeStyle::Studio), fluid = Theme::dark(ThemeStyle::Fluid), plain = Theme::dark(ThemeStyle::Plain);
+    const Theme plastic = Theme::dark(ThemeStyle::Plastic), metal = Theme::dark(ThemeStyle::Metal);
+    for (const Theme* theme : {&studio, &fluid, &plain, &plastic, &metal})
+        CHECK(theme->itemView.headerBackground.a > 0 && theme->table.headerBackground.a > 0);
+    CHECK(studio.table.headerBevel.gradient > 0 && fluid.table.headerBevel.gradient > 0 && plain.table.headerBevel.gradient == 0);
+    CHECK(plastic.table.headerBevel.relief > 0);
+    // nodes: square-ish and raised in Studio, round in Fluid, square and flat in Plain, reliefs in Plastic and Metal
+    CHECK(studio.node.cornerRadius < fluid.node.cornerRadius && plain.node.cornerRadius == 0 && plain.node.shadow.a == 0);
+    CHECK(studio.node.bevel.gradient > 0 && plastic.node.bevel.relief > 0 && metal.node.bodyBevel.relief > 0);
+}
+
+TEST(tabsLookAsTheStylesControls) {
+    // Studio, Plain, Plastic and Metal: the tab shown joined to its content (Plastic's and Metal's a relief of its color);
+    // Fluid: standing on the bar, raised
+    const Theme studio = Theme::dark(ThemeStyle::Studio), fluid = Theme::dark(ThemeStyle::Fluid), plain = Theme::dark(ThemeStyle::Plain);
+    const Theme plastic = Theme::dark(ThemeStyle::Plastic), metal = Theme::dark(ThemeStyle::Metal);
+    CHECK(studio.dock.tabsJoined && plain.dock.tabsJoined && plastic.dock.tabsJoined && metal.dock.tabsJoined);
+    CHECK(studio.majorTab.joined && plain.majorTab.joined && plastic.majorTab.joined && metal.majorTab.joined);
+    CHECK(!fluid.dock.tabsJoined && !fluid.majorTab.joined && plastic.dock.selectedTab == plastic.dock.background);
+    CHECK(fluid.dock.tabRadius >= 100 && fluid.dock.tabBevel.gradient > 0 && plastic.dock.tabBevel.relief > 0 && plastic.majorTab.bevel.relief > 0);
+    CHECK(plain.dock.tabRadius == 0 && plain.dock.selectedTab == plain.dock.background);
+    // Plastic and Metal: stacks and cards raised, slabs, the tab shown a folder's tab of its stack
+    CHECK(plastic.dock.islandBevel.relief > 0 && metal.card.bevel.relief > 0 && studio.dock.islandBevel.relief == 0 && fluid.card.bevel.relief == 0);
 }

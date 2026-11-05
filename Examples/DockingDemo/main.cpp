@@ -258,6 +258,7 @@ int main(int argc, char** argv) {
     std::string language = "en";
     std::string workspace;
     bool light = false;
+    std::optional<glw::ThemeStyle> style;
     for (int i = 1; i < argc; ++i) {
         const std::string_view arg(argv[i]);
         if (arg == "--frames" && i + 1 < argc)
@@ -268,11 +269,21 @@ int main(int argc, char** argv) {
             workspace = argv[++i];
         else if (arg == "--light")
             light = true;
+        else if (arg == "--style" && i + 1 < argc) {
+            const std::string_view name(argv[++i]);
+            style = name == "fluid"     ? glw::ThemeStyle::Fluid
+                    : name == "plain"   ? glw::ThemeStyle::Plain
+                    : name == "plastic" ? glw::ThemeStyle::Plastic
+                    : name == "metal"   ? glw::ThemeStyle::Metal
+                                        : glw::ThemeStyle::Studio;
+        }
     }
     try {
         glw::Application app;
         app.translator().loadCatalog(persianCatalog);
         app.setLanguage(language);
+        if (style)
+            app.setStyle(*style, false);
         if (light)
             app.setTheme(glw::Theme::light(app.style()));
 

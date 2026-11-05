@@ -59,6 +59,7 @@ Renderer::Renderer(rhi::Device& device) : device_(device) {
     fragment.code = {shaders::painterFragmentSpirv, shaders::painterFragmentDxbc, shaders::painterFragmentMsl};
     fragment.entryPoint = "fragmentMain";
     fragment.samplers = 1;
+    fragment.uniformBuffers = 1;        // the light
     fragmentShader_ = device_.createShader(fragment);
 
     sampler_ = device_.createSampler({rhi::Filter::Linear, rhi::AddressMode::ClampToEdge});
@@ -110,6 +111,11 @@ void Renderer::draw(rhi::CommandList& commands, const DrawList& list, const Rend
     // dips to clip space (Painter.hlsl's Transform)
     const float transform[4] = {2.0f * scale / size.width, -2.0f * scale / size.height, -1.0f, 1.0f};
     commands.setVertexUniforms(0, std::as_bytes(std::span(transform)));
+    // the light of reliefs (Painter.hlsl's Lighting)
+    const float lighting[12] = {lighting_.x,       lighting_.y,        lighting_.z,         lighting_.ambient,
+                                lighting_.diffuse, lighting_.specular, lighting_.shininess, lighting_.rimShadow,
+                                lighting_.metal,   lighting_.brushed,  0,                   0};
+    commands.setFragmentUniforms(0, std::as_bytes(std::span(lighting)));
     commands.setVertexBuffer(*buffers.vertices_);
     commands.setIndexBuffer(*buffers.indices_, rhi::IndexType::UInt32);
 

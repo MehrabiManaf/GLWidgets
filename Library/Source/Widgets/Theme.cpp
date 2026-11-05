@@ -42,6 +42,26 @@ Palette Palette::dark(ThemeStyle style) {
             .closeHover = hex(0xC42B1C),
         };
     }
+    if (style == ThemeStyle::Metal) {
+        return {
+            .window = hex(0x1C1E21),
+            .layer = hex(0x282B2F),
+            .surface = hex(0x4A4F57),
+            .base = hex(0x16181A),
+            .titleBar = hex(0x161719),
+            .text = hex(0xE8EAED),
+            .mutedText = hex(0x9AA0A8),
+            .disabledText = hex(0x5C6168),
+            .accent = hex(0xE0913F),
+            .onAccent = hex(0x1C1409),
+            .border = {1, 1, 1, 0.07f},
+            .outline = {0, 0, 0, 0.55f},
+            .hover = {1, 1, 1, 0.06f},
+            .pressed = {0, 0, 0, 0.12f},
+            .selection = hex(0xE0913F, 0.38f),
+            .closeHover = hex(0xC42B1C),
+        };
+    }
     if (style == ThemeStyle::Plain) {
         return {
             .window = hex(0x2A2A2A),
@@ -100,6 +120,26 @@ Palette Palette::light(ThemeStyle style) {
             .hover = {0, 0, 0, 0.04f},
             .pressed = {0, 0, 0, 0.08f},
             .selection = hex(0x2B6BE8, 0.22f),
+            .closeHover = hex(0xC42B1C),
+        };
+    }
+    if (style == ThemeStyle::Metal) {
+        return {
+            .window = hex(0xD3D6DA),
+            .layer = hex(0xE0E3E6),
+            .surface = hex(0xC6CBD1),
+            .base = hex(0xF2F3F5),
+            .titleBar = hex(0xC4C8CD),
+            .text = hex(0x1C1F23),
+            .mutedText = hex(0x565D66),
+            .disabledText = hex(0x9AA0A8),
+            .accent = hex(0x2F6FDB),
+            .onAccent = hex(0xFFFFFF),
+            .border = {0, 0, 0, 0.10f},
+            .outline = {0, 0, 0, 0.28f},
+            .hover = {0, 0, 0, 0.04f},
+            .pressed = {0, 0, 0, 0.09f},
+            .selection = hex(0x2F6FDB, 0.26f),
             .closeHover = hex(0xC42B1C),
         };
     }
@@ -204,6 +244,9 @@ Theme Theme::fromPalette(const Palette& p, ThemeStyle style) {
     t.itemView.gridLine = withAlpha(p.text, dark ? 0.08f : 0.10f);
     t.itemView.cornerRadius = t.cornerRadius;
     t.itemView.rowLines = true;         // lists and trees: a line between their rows
+    // ... their headers raised as controls are (as a panel's header)
+    t.itemView.headerBackground = mix(p.layer, p.surface, 0.45f);
+    t.itemView.headerBevel = {.gradient = raised.gradient, .highlight = raised.highlight};
     // tables: the cells' borders, as a spreadsheet's
     t.table = t.itemView;
     t.table.columnLines = true;
@@ -227,6 +270,8 @@ Theme Theme::fromPalette(const Palette& p, ThemeStyle style) {
     t.dock.dropZone = withAlpha(p.accent, 0.22f);
     t.dock.scrollThumb = withAlpha(p.mutedText, 0.55f);
     t.dock.cornerRadius = t.cornerRadius;
+    t.dock.tabRadius = 4;
+    t.dock.tabBevel = raised;               // what stands as a tab: the tongue of a hidden bar
 
     t.majorTab.background = {.normal = clear, .hovered = p.hover, .pressed = p.pressed};
     t.majorTab.active = p.window;
@@ -234,6 +279,7 @@ Theme Theme::fromPalette(const Palette& p, ThemeStyle style) {
     t.majorTab.mutedText = p.mutedText;
     t.majorTab.insertion = p.accent;
     t.majorTab.cornerRadius = t.cornerRadius;
+    t.majorTab.raised = p.surface;
 
     // a raised header over its content, sunk a little into the panel; lighter under the mouse or with the focus
     t.collapsiblePanel.header = {.normal = mix(p.layer, p.surface, 0.45f),
@@ -302,6 +348,13 @@ Theme Theme::fromPalette(const Palette& p, ThemeStyle style) {
     t.dialog.border = p.outline;
     t.dialog.scrim = Color{0, 0, 0, 0.40f};
     t.canvas.background = p.window;
+    // nodes: a body a layer above the canvas, a header raised (its kind's color), a shadow under them
+    t.node.body = p.layer;
+    t.node.border = dark ? withAlpha(black, 0.55f) : withAlpha(black, 0.18f);
+    t.node.shadow = withAlpha(black, dark ? 0.45f : 0.15f);
+    t.node.selection = p.accent;
+    t.node.bevel = {.gradient = 0.08f, .highlight = withAlpha(white, 0.18f)};
+    t.node.cornerRadius = 3;
     t.canvas.grid = Color{p.text.r, p.text.g, p.text.b, 0.035f};
     t.canvas.majorGrid = Color{p.text.r, p.text.g, p.text.b, 0.08f};
     t.card.background = p.layer;
@@ -321,6 +374,10 @@ Theme Theme::fromPalette(const Palette& p, ThemeStyle style) {
         fluid(t, dark);
     else if (style == ThemeStyle::Plain)
         plain(t);
+    else if (style == ThemeStyle::Plastic)
+        plastic(t, dark);
+    else if (style == ThemeStyle::Metal)
+        metal(t, dark);
     return t;
 }
 
@@ -338,7 +395,11 @@ Theme Theme::blend(const Theme& a, const Theme& b, float t) {
         return Insets{number(x.start, y.start), number(x.top, y.top), number(x.end, y.end), number(x.bottom, y.bottom)};
     };
     const auto bevel = [&](const Bevel& x, const Bevel& y) {
-        return Bevel{number(x.gradient, y.gradient), color(x.highlight, y.highlight), color(x.shadow, y.shadow)};
+        return Bevel{.gradient = number(x.gradient, y.gradient),
+                     .highlight = color(x.highlight, y.highlight),
+                     .shadow = color(x.shadow, y.shadow),
+                     .relief = number(x.relief, y.relief),
+                     .roundness = number(x.roundness, y.roundness)};
     };
     const Palette& p = a.palette;
     const Palette& q = b.palette;
@@ -400,6 +461,26 @@ Theme Theme::blend(const Theme& a, const Theme& b, float t) {
     panel.separator = color(from.separator, to.separator);
     panel.shadow = color(from.shadow, to.shadow);
     r.dock.selectedTabHighlight = color(a.dock.selectedTabHighlight, b.dock.selectedTabHighlight);
+    r.node.cornerRadius = radius(a.node.cornerRadius, b.node.cornerRadius);
+    r.dock.tabBevel = bevel(a.dock.tabBevel, b.dock.tabBevel);
+    r.dock.islandBevel = bevel(a.dock.islandBevel, b.dock.islandBevel);
+    r.card.bevel = bevel(a.card.bevel, b.card.bevel);
+    r.dock.tabRadius = radius(a.dock.tabRadius, b.dock.tabRadius);
+    r.majorTab.bevel = bevel(a.majorTab.bevel, b.majorTab.bevel);
+    r.node.bevel = bevel(a.node.bevel, b.node.bevel);
+    r.node.bodyBevel = bevel(a.node.bodyBevel, b.node.bodyBevel);
+    for (ItemViewStyle* view : {&r.itemView, &r.table}) {
+        const ItemViewStyle& x = view == &r.itemView ? a.itemView : a.table;
+        const ItemViewStyle& y = view == &r.itemView ? b.itemView : b.table;
+        view->headerBackground = color(x.headerBackground, y.headerBackground);
+        view->headerBevel = bevel(x.headerBevel, y.headerBevel);
+        view->rowBevel = bevel(x.rowBevel, y.rowBevel);
+    }
+    const paint::Lighting& la = a.lighting;
+    const paint::Lighting& lb = b.lighting;
+    r.lighting = {number(la.x, lb.x), number(la.y, lb.y), number(la.z, lb.z), number(la.ambient, lb.ambient),
+                  number(la.diffuse, lb.diffuse), number(la.specular, lb.specular), number(la.shininess, lb.shininess),
+                  number(la.rimShadow, lb.rimShadow), number(la.metal, lb.metal), number(la.brushed, lb.brushed)};
     return r;
 }
 
@@ -448,6 +529,23 @@ void Theme::fluid(Theme& t, bool dark) {
                                  .focused = lighter};
     t.collapsiblePanel.content = dark ? mix(p.layer, p.surface, 0.15f) : lit(p.window, -0.015f);
     t.collapsiblePanel.bevel = raised;
+    // tabs: standing on their bars as pills, raised as buttons (the one shown), the others lighter under the mouse
+    t.dock.tabsJoined = false;
+    t.dock.tabBevel = raised;
+    t.dock.tabRadius = 1000;
+    t.dock.selectedTab = t.button.background.normal;
+    t.majorTab.joined = false;
+    t.majorTab.bevel = raised;
+    t.majorTab.raised = t.button.background.normal;
+    t.majorTab.cornerRadius = 1000;
+    for (ItemViewStyle* view : {&t.itemView, &t.table}) {
+        view->headerBackground = strip;
+        view->headerBevel = raised;
+    }
+    t.node.cornerRadius = 10;
+    t.node.border = p.border;
+    t.node.bevel = raised;
+    t.node.shadow = withAlpha(black, dark ? 0.40f : 0.12f);
     t.collapsiblePanel.border = clear;
     t.collapsiblePanel.separator = withAlpha(black, dark ? 0.22f : 0.05f);
     t.collapsiblePanel.shadow = withAlpha(black, dark ? 0.30f : 0.08f);
@@ -470,6 +568,77 @@ void Theme::fluid(Theme& t, bool dark) {
     t.motion.popupSlide = 12;
 }
 
+void Theme::reliefs(Theme& t, bool dark) {
+    const Color black{0, 0, 0, 1};
+    // round a little; the controls reliefs: buttons, combo boxes, tool buttons under the mouse, panels' headers and a
+    // checked box raised, fields and boxes sunk, a soft shadow under what is raised
+    t.cornerRadius = 4;
+    t.button.cornerRadius = 5;
+    t.lineEdit.cornerRadius = 4;
+    t.checkBox.cornerRadius = 3;
+    t.toolBar.cornerRadius = t.menuBar.cornerRadius = t.menu.cornerRadius = 4;
+    t.collapsiblePanel.cornerRadius = 6;
+    t.itemView.cornerRadius = t.table.cornerRadius = 4;
+    t.dock.cornerRadius = t.card.cornerRadius = 5;     // stacks and cards a little round only
+    t.majorTab.cornerRadius = 10;
+    t.scrollBar.cornerRadius = 1000;
+    t.frame.popupRadius = 8;
+    const Color shadow = withAlpha(black, dark ? 0.50f : 0.22f);
+    // low reliefs, their edges rounding over a few dips
+    t.button.bevel = {.shadow = shadow, .relief = 1.6f, .roundness = 2.5f};
+    t.toolBar.bevel = {.shadow = shadow, .relief = 1.4f, .roundness = 2};
+    t.collapsiblePanel.bevel = {.shadow = shadow, .relief = 1.4f, .roundness = 2.5f};
+    t.lineEdit.bevel = {.relief = 1.4f, .roundness = 2};
+    t.checkBox.bevel = {.relief = 1.2f, .roundness = 1.5f};
+    t.checkBox.checkedBevel = {.shadow = shadow, .relief = 1.2f, .roundness = 1.5f};
+    // lists', trees' and tables' headers raised as controls, and the rows' highlights
+    for (ItemViewStyle* view : {&t.itemView, &t.table}) {
+        view->headerBackground = t.collapsiblePanel.header.normal;
+        view->headerBevel = {.shadow = withAlpha(black, dark ? 0.35f : 0.12f), .relief = 1.2f, .roundness = 2};
+        view->rowBevel = {.relief = 1.2f, .roundness = 2};
+    }
+    // tabs: the one shown a relief of its stack's color joined to it (its lower edge under the bar, cut: its top and sides
+    // lit, its face the stack's), one under the mouse a little raised
+    t.dock.tabsJoined = true;
+    t.dock.tabBevel = {.shadow = withAlpha(black, dark ? 0.40f : 0.15f), .relief = 1.2f, .roundness = 1.5f};
+    // the stacks a little raised, slabs, the tab shown a folder's tab of theirs
+    t.dock.islandBevel = {.shadow = withAlpha(black, dark ? 0.45f : 0.14f), .relief = 0.8f, .roundness = 1.5f};
+    t.card.bevel = t.dock.islandBevel;      // cards too (a dock's center)
+    t.dock.tabRadius = 4;
+    t.dock.selectedTab = t.dock.background;
+    t.majorTab.joined = true;
+    t.majorTab.bevel = t.dock.tabBevel;
+    t.majorTab.cornerRadius = 6;
+    t.node.cornerRadius = 8;
+    t.node.bevel = {.relief = 2.2f, .roundness = 3.5f};
+    t.node.bodyBevel = {.relief = 1.6f, .roundness = 4};
+    t.node.border = withAlpha(black, dark ? 0.45f : 0.15f);
+}
+
+void Theme::plastic(Theme& t, bool dark) {
+    reliefs(t, dark);
+    // glossy: a strong, tight, white highlight where a surface turns toward the light, from the upper left
+    t.lighting = {.x = -0.42f, .y = -0.62f, .z = 0.66f,
+                  .ambient = dark ? 0.58f : 0.64f,
+                  .diffuse = dark ? 0.42f : 0.36f,
+                  .specular = dark ? 0.42f : 0.50f,
+                  .shininess = 42,
+                  .rimShadow = dark ? 0.45f : 0.30f};
+}
+
+void Theme::metal(Theme& t, bool dark) {
+    reliefs(t, dark);
+    // a metal's highlight of its own color, broad; its surfaces brushed
+    t.lighting = {.x = -0.42f, .y = -0.62f, .z = 0.66f,
+                  .ambient = dark ? 0.50f : 0.56f,
+                  .diffuse = dark ? 0.50f : 0.44f,
+                  .specular = dark ? 0.85f : 0.70f,
+                  .shininess = 14,
+                  .rimShadow = dark ? 0.50f : 0.35f,
+                  .metal = 0.85f,
+                  .brushed = dark ? 0.07f : 0.05f};
+}
+
 void Theme::plain(Theme& t) {
     const Color clear{0, 0, 0, 0};
     // flat: no light from above, no shadows, no glow of the focus (its edge says it)
@@ -478,9 +647,15 @@ void Theme::plain(Theme& t) {
         *bevel = {};
     t.button.focusRing = t.lineEdit.focusRing = t.checkBox.focusRing = clear;
     t.collapsiblePanel.shadow = clear;
+    t.itemView.headerBevel = t.table.headerBevel = t.node.bevel = t.node.bodyBevel = {};
+    t.node.shadow = clear;
+    t.node.cornerRadius = 0;
+    t.node.border = t.palette.outline;
     t.collapsiblePanel.content = t.palette.layer;
     t.collapsiblePanel.border = t.collapsiblePanel.separator = t.palette.outline;
     t.dock.selectedTabHighlight = clear;
+    t.dock.selectedTab = t.dock.background;     // flat: the tab shown of the color of what it shows
+    t.dock.tabRadius = 0;
     // nothing moves: every motion at once
     t.motion.fast = t.motion.normal = t.motion.slow = t.motion.scroll = t.motion.ripple = std::chrono::milliseconds(0);
     t.motion.popupSlide = 0;

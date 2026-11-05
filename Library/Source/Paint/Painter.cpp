@@ -12,6 +12,7 @@ namespace glw::paint {
 namespace {
 
 constexpr float boxKind = static_cast<float>(VertexKind::Box);
+constexpr float reliefKind = static_cast<float>(VertexKind::Relief);
 
 Vertex texturedVertex(Point position, Point uv, std::uint32_t color, VertexKind kind = VertexKind::Textured) {
     Vertex v;
@@ -78,6 +79,36 @@ void Painter::strokeRoundedRect(const Rect& rect, float radius, float width, Col
 void Painter::drawShadow(const Rect& rect, float radius, float blur, Color color) {
     const Transform& t = transform();
     box(t.map(rect), radius * t.scale, 0, blur * t.scale, color, color);
+}
+
+void Painter::fillRelief(const Rect& rect, float radius, float height, float bevel, Color color) {
+    const Transform& t = transform();
+    const Rect r = t.map(rect);
+    if (r.empty() || color.a <= 0)
+        return;
+    const Rect quad = r.inflated(1.0f / pixelsPerDip_);
+    if (culled(quad))
+        return;
+    const Point center = r.center();
+    const Point half{r.width / 2, r.height / 2};
+    DrawCommand& cmd = command(whiteTexture, true);
+    const auto base = static_cast<std::uint32_t>(list_.vertices.size());
+    const std::uint32_t packed = packColor(color);
+    for (Point corner : {Point{quad.left(), quad.top()}, Point{quad.right(), quad.top()}, Point{quad.right(), quad.bottom()},
+                         Point{quad.left(), quad.bottom()}}) {
+        Vertex v;
+        v.position = corner;
+        v.uv = corner - center;
+        v.halfSize = half;
+        v.radius = std::clamp(radius * t.scale, 0.0f, std::min(half.x, half.y));
+        v.border = std::max(bevel * t.scale, 0.5f);         // the bevel
+        v.kind = reliefKind;
+        v.blur = height * t.scale;                          // the height
+        v.color = packed;
+        list_.vertices.push_back(v);
+    }
+    list_.indices.insert(list_.indices.end(), {base, base + 1, base + 2, base, base + 2, base + 3});
+    cmd.indexCount += 6;
 }
 
 void Painter::fillCircle(Point center, float radius, Color color) {

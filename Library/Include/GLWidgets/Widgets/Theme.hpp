@@ -9,6 +9,7 @@
 // aggregates C++26 reflection will load from files. Selectors in the manner of style sheets can come on top of them.
 #include <GLWidgets/Core/Color.hpp>
 #include <GLWidgets/Export.hpp>
+#include <GLWidgets/Paint/DrawList.hpp>
 #include <GLWidgets/Widgets/Widget.hpp>
 
 #include <chrono>
@@ -52,10 +53,17 @@ struct StateColor {
 //   Fluid   modern: rounded, flat with soft shadows; more motion and longer: a press ripples out of where it was, the
 //           selection slides from row to row, popups come in from further.
 //   Plain   simple: square and flat, no shadows, no glows, and nothing animated (every motion at once).
+//   Plastic real: its controls reliefs lit by a light (the theme's lighting): buttons rise out of the panel, rounding
+//           down to it, fields are sunk into it, their rims shadowing their floors; pressed, a button goes down.
+//           Glossy: sharp white highlights where they turn toward the light.
+//   Metal   ... of metal: its highlights of its own color, its surfaces brushed; gunmetal in the dark, aluminum in the
+//           light.
 enum class ThemeStyle : std::uint8_t {
     Studio,
     Fluid,
     Plain,
+    Plastic,
+    Metal,
 };
 
 // The colors everything is made of, in layers: the title bar the darkest, the window's background over it, panels (layers,
@@ -89,6 +97,10 @@ struct Bevel {
     float gradient = 0;             // the background mixed toward white by this at its top, toward black by half of it at its bottom
     Color highlight{0, 0, 0, 0};    // raised: the line inside, at the top; sunken: the line under its bottom edge (none: none)
     Color shadow{0, 0, 0, 0};       // raised: under it; sunken: inside, along its top
+    // A relief instead (Plastic, Metal): raised (sunken) this many dips, lit by the theme's light, its edge rounding over
+    // `roundness` dips; the gradient and the highlight then left to the light. 0: painted as above.
+    float relief = 0;
+    float roundness = 4;
 };
 
 struct ButtonStyle {
@@ -165,6 +177,9 @@ struct ItemViewStyle {
     float gridLineWidth = 1;
     Color ripple{0, 0, 0, 0};                   // a press on a row: a circle out of where it was pressed (transparent: none)
     bool slideSelection = false;    // the selection slides from the row it was on to the one it goes to
+    Color headerBackground{0, 0, 0, 0};         // behind a header's titles (transparent: none)
+    Bevel headerBevel;              // ... raised as a control (Plastic, Metal)
+    Bevel rowBevel;                 // the rows' highlights (under the mouse, pressed, selected) raised as controls (Plastic, Metal)
 };
 
 struct SplitterStyle {
@@ -193,6 +208,15 @@ struct DockStyle {
     float tabHeight = 28;
     float tabMinimumWidth = 56;     // a tab is as wide as its title, between these (a longer title is cut with …)
     float tabMaximumWidth = 200;
+    // The tab shown: joined to its content under the bar (Studio's, Plain's; a relief of the content's color in Plastic
+    // and Metal, its face the content's), or standing on the bar as a control does, raised by `tabBevel` (a pill in
+    // Fluid); a tab under the mouse, the same.
+    bool tabsJoined = true;
+    Bevel tabBevel;
+    float tabRadius = 4;            // a tab's corners (a standing one's: at most half its height, a pill)
+    // A stack raised as a control (Plastic, Metal): under its tab bar, a slab of its background, the tab shown a relief
+    // of it as high, joined to it as a folder's tab is (its face the slab's, no seam), the other tabs on the window.
+    Bevel islandBevel;
 };
 
 // The major tabs in a window's title bar, as a browser's.
@@ -206,6 +230,11 @@ struct MajorTabStyle {
     float maximumWidth = 220;
     float cornerRadius = 0;
     float topGap = 4;               // above the tabs: the caption, to drag the window by
+    // The tab shown: joined to the window's content under it (as a browser's; a relief of its color in Plastic and Metal),
+    // or standing on the strip as a control does, raised by `bevel` in `raised` (a pill in Fluid).
+    bool joined = true;
+    Bevel bevel;
+    Color raised{0, 0, 0, 0};
 };
 
 struct CardStyle {
@@ -213,6 +242,7 @@ struct CardStyle {
     Color border;
     float borderWidth = 1;
     float cornerRadius = 0;
+    Bevel bevel;                    // raised as a control (a slab in Plastic and Metal, as a dock's stacks); none: flat
 };
 
 // A header over content that opens and closes (CollapsiblePanel), as Fluent's expander: a card.
@@ -328,6 +358,18 @@ struct DialogStyle {
     float maximumWidth = 460;       // its text wraps past it
 };
 
+// A node of a node editor (a graph on a Canvas): a body with a header of the node's own color (its kind's) over it, as the
+// theme's controls are (raised, flat, a relief), a shadow under it, an edge around it.
+struct NodeStyle {
+    Color body;
+    Color border;
+    Color shadow{0, 0, 0, 0};       // under it (transparent: none)
+    Color selection;                // around it, selected
+    Bevel bevel;                    // its header's
+    Bevel bodyBevel;                // its body's
+    float cornerRadius = 8;
+};
+
 struct CanvasStyle {
     Color background;
     Color grid;                     // its lines, every gridSpacing dips of the canvas
@@ -378,6 +420,7 @@ struct Theme {
     MajorTabStyle majorTab;
     CardStyle card;
     CanvasStyle canvas;
+    NodeStyle node;
     MenuStyle menu;
     CollapsiblePanelStyle collapsiblePanel;
     MenuBarStyle menuBar;
@@ -389,6 +432,7 @@ struct Theme {
     TitleBarStyle titleBar;
     WindowButtonStyle windowButton;
     WindowFrameStyle frame;
+    paint::Lighting lighting;       // what lights reliefs (Bevel::relief): the renderer's, as the theme changes
 
     // The styles of every widget made from `palette`, in `style`.
     GLW_EXPORT static Theme fromPalette(const Palette& palette, ThemeStyle style = ThemeStyle::Studio);
@@ -405,6 +449,9 @@ struct Theme {
 private:
     static void fluid(Theme& theme, bool dark);
     static void plain(Theme& theme);
+    static void reliefs(Theme& theme, bool dark);       // Plastic's and Metal's shapes
+    static void plastic(Theme& theme, bool dark);
+    static void metal(Theme& theme, bool dark);
 };
 
 } // namespace glw

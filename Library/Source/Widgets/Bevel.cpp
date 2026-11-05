@@ -20,6 +20,15 @@ void paintRaised(paint::Painter& p, const Rect& rect, float radius, Color backgr
                  bool pressed) {
     if (rect.empty())
         return;
+    if (bevel.relief > 0 && background.a > 0) {
+        // a relief, lit: its shadow under it, a little down; pressed, it goes down (lower, no shadow)
+        if (!pressed && bevel.shadow.a > 0 && background.a >= 1)
+            p.drawShadow({rect.x, rect.y + bevel.relief * 0.5f, rect.width, rect.height}, radius, 1.5f + bevel.relief, bevel.shadow);
+        p.fillRelief(rect, radius, pressed ? bevel.relief * 0.3f : bevel.relief, bevel.roundness, background);
+        if (outline.a > 0)
+            p.strokeRoundedRect(rect, radius, 1, outline);
+        return;
+    }
     const float g = bevel.gradient;
     const Rect inner = rect.inflated(-1);
     if (!pressed) {
@@ -42,6 +51,13 @@ void paintRaised(paint::Painter& p, const Rect& rect, float radius, Color backgr
 void paintSunken(paint::Painter& p, const Rect& rect, float radius, Color background, Color outline, const Bevel& bevel) {
     if (rect.empty())
         return;
+    if (bevel.relief > 0) {
+        // a relief sunk into what it is on, lit: its rim shadowing its floor away from the light
+        p.fillRelief(rect, radius, -bevel.relief, bevel.roundness, background);
+        if (outline.a > 0)
+            p.strokeRoundedRect(rect, radius, 1, outline);
+        return;
+    }
     // the light line: what of a box a dip lower shows under it
     if (bevel.highlight.a > 0)
         p.fillRoundedRect({rect.x, rect.y + 1, rect.width, rect.height}, radius, bevel.highlight);

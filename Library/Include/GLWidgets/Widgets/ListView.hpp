@@ -251,6 +251,7 @@ private:
     void activate(std::size_t position);
     void setCurrentAt(std::optional<std::size_t> position);
     bool selectedAt(std::size_t position) const;
+    void highlight(paint::Painter& painter, const Rect& rect, float radius, Color color, bool pressed) const;
     // Multiple: the items shown from position `a` to `b` (both) selected; what was, kept or not.
     void selectBetween(std::size_t a, std::size_t b, bool keep);
     // Multiple: what a click or a key at `position` does with Shift and Ctrl held.

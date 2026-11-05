@@ -115,12 +115,14 @@ public:
     Rect guide(DockSide side) const;
 
     // With one panel only: its tab bar hidden (by its tab's menu, the right button), the panel taking all of the stack; the
-    // triangle in its start corner shows the bar again (pressed). Shown again by itself when another panel joins it. Not
+    // tongue hanging from its top edge, at its start, shows the bar again (pressed): drawn as the style's tabs are, it
+    // comes as the bar goes and goes as it comes, and grows under the mouse, a chevron in it. Shown again by itself when another panel joins it. Not
     // in a floating window, whose tab bar is its title. The bar slides away and back (the theme's normal motion).
     void setTabBarHidden(bool hidden);
     bool tabBarHidden() const { return barHidden_; }
     float barHeight() const;                // its tab bar's: none while it is hidden, less while it slides
-    // Where the triangle that shows the bar again is (its coordinates), while the bar is hidden.
+    // Where the tongue that shows the bar again is (its coordinates; what the mouse presses: a little more), while the
+    // bar is hidden.
     Rect revealCorner() const;
     // Takes the panel at `index` out: the caller has it now.
     DockPanel take(std::size_t index);
@@ -162,6 +164,7 @@ private:
     bool barHidden_ = false;
     Animation barShown_{[this] { barStepped(); }};      // how much of the bar shows, from 0 to 1
     bool cornerHovered_ = false;
+    Animation cornerGrown_{[this] { invalidatePaint(); }};      // the tongue under the mouse: from 0 to 1
 };
 
 // Nodes side by side (horizontal) or one above the other, with handles between them.

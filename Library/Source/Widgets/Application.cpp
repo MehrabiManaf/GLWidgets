@@ -338,6 +338,7 @@ struct Application::Impl final : DockingHost {
     // window is shown or resized): it stays to be drawn.
     bool draw(const std::vector<Window*>& which) {
         inFrame = true;
+        renderer->setLighting(context->theme.lighting);     // what lights reliefs (a style's that has them)
         for (Window* w : which)
             w->root_.paint(w->list_);       // paint fills the glyph atlas: before the atlas goes to the GPU
         auto commands = device->beginCommands();

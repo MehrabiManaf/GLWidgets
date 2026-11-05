@@ -6,7 +6,7 @@
 // The interface is written with the builders of Widgets/Declarative.hpp. Its other side is a list of a million items: only
 // those that show are widgets.
 //
-//   widgets_demo [--frames N] [--language fa] [--light] [--style studio|fluid|plain]
+//   widgets_demo [--frames N] [--language fa] [--light] [--style studio|fluid|plain|plastic|metal]
 //
 // --frames N draws N frames and exits: a smoke test.
 #include <GLWidgets/Widgets/Application.hpp>
@@ -323,10 +323,11 @@ struct Page {
                                             .onChanged = [this](std::size_t i) { chosen(i == 0 ? tr("Small") : i == 1 ? tr("Medium") : tr("Large")); }}),
                               // the looks of the library: as a tool's, modern and moving, plain and still
                               ui::Label({.text = tr("Style")}).alignment(glw::Alignment::Start, glw::Alignment::Center),
-                              ui::ComboBox({.items = {glw::LocalizedText("Studio"), glw::LocalizedText("Fluid"), glw::LocalizedText("Plain")},
+                              ui::ComboBox({.items = {glw::LocalizedText("Studio"), glw::LocalizedText("Fluid"), glw::LocalizedText("Plain"),
+                                                      glw::LocalizedText("Plastic"), glw::LocalizedText("Metal")},
                                             .current = 0,
                                             .onChanged = [this](std::size_t i) {
-                                                app.setStyle(i == 0 ? glw::ThemeStyle::Studio : i == 1 ? glw::ThemeStyle::Fluid : glw::ThemeStyle::Plain);
+                                                app.setStyle(static_cast<glw::ThemeStyle>(i));
                                             }})
                                   .bind(styleBox)),
                    ui::HStack({.spacing = 12}, card(1, tr("a share")), card(2, tr("two shares")), card(1, tr("a share"))).bind(cards),
@@ -464,7 +465,11 @@ int main(int argc, char** argv) {
             light = true;
         else if (arg == "--style" && i + 1 < argc) {
             const std::string_view name(argv[++i]);
-            style = name == "studio" ? glw::ThemeStyle::Studio : name == "plain" ? glw::ThemeStyle::Plain : glw::ThemeStyle::Fluid;
+            style = name == "fluid"   ? glw::ThemeStyle::Fluid
+                    : name == "plain"   ? glw::ThemeStyle::Plain
+                    : name == "plastic" ? glw::ThemeStyle::Plastic
+                    : name == "metal"   ? glw::ThemeStyle::Metal
+                                        : glw::ThemeStyle::Studio;
         }
     }
     try {
@@ -477,7 +482,7 @@ int main(int argc, char** argv) {
         page.window = &app.openWindow({.title = tr("Widgets"), .size = {980, 640}}, page.build());
         if (style)
             app.setStyle(*style, false);
-        page.styleBox->setCurrent(app.style() == glw::ThemeStyle::Studio ? 0 : app.style() == glw::ThemeStyle::Fluid ? 1 : 2);
+        page.styleBox->setCurrent(static_cast<std::size_t>(app.style()));
         if (light)
             page.switchTheme(false);
         return app.run(frames);

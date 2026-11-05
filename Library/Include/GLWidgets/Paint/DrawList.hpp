@@ -19,7 +19,23 @@ namespace glw::paint {
 using TextureId = std::uint64_t;
 inline constexpr TextureId whiteTexture = 0;
 
-enum class VertexKind : std::uint8_t { Textured = 0, Box = 1, Mask = 2 };
+enum class VertexKind : std::uint8_t { Textured = 0, Box = 1, Mask = 2, Relief = 3 };
+
+// The light reliefs are lit by (Painter::fillRelief): the Renderer's (setLighting), the fragment shader's uniforms
+// (Painter.hlsl's Lighting). One for all of a target.
+struct Lighting {
+    float x = -0.42f;               // toward the light: from the left, above (y down the screen), in front (out of it)
+    float y = -0.62f;
+    float z = 0.66f;
+    float ambient = 0.60f;          // what lights it from everywhere
+    float diffuse = 0.40f;          // ... from the light, as a surface faces it
+    float specular = 0.16f;         // a highlight where it turns toward the light
+    float shininess = 18;           // ... how tight
+    float rimShadow = 0.40f;        // a sunk relief's floor, where its rim hides the light: this much darker
+    float metal = 0;                // how metal its surfaces are: their highlights of their own color (0: white, a plastic's)
+    float brushed = 0;              // ... how brushed: fine lines along them, this much lighter and darker
+};
+static_assert(sizeof(Lighting) == 40);
 
 // What the fields mean for each kind is in Painter.hlsl. The layout is the shader's input: TEXCOORD0 position, 1 uv,
 // 2 halfSize, 3 (radius, border, kind, blur) as one float4, 4 color as four normalized bytes.

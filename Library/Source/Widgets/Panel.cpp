@@ -3,6 +3,7 @@
 #include <GLWidgets/Widgets/Panel.hpp>
 
 #include <GLWidgets/Paint/Painter.hpp>
+#include <GLWidgets/Widgets/Bevel.hpp>
 #include <GLWidgets/Widgets/UiRoot.hpp>
 
 #include <utility>
@@ -57,6 +58,11 @@ const CardStyle& Card::style() const {
 void Card::paint(PaintContext& context) {
     const CardStyle& s = style();
     const Rect r{0, 0, size().width, size().height};
+    if (s.bevel.relief > 0) {
+        // raised as a control (a style's): a slab, lit
+        paintRaised(context.painter, r, s.cornerRadius, s.background, {0, 0, 0, 0}, s.bevel);
+        return;
+    }
     context.painter.fillRoundedRect(r, s.cornerRadius, s.background);
     if (s.borderWidth > 0)
         context.painter.strokeRoundedRect(r, s.cornerRadius, s.borderWidth, s.border);

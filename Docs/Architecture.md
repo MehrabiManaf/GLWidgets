@@ -153,6 +153,15 @@ for zooming and panning a canvas) and a stack of clip rectangles apply to what i
 - **Boxes:** rectangles, rounded rectangles, circles, their borders, and blurred shadows. They are drawn as a signed
   distance field in the fragment shader, so their edges are anti-aliased at any scale and a box is four vertices whatever
   its corner radius or blur.
+- **Reliefs** (`Painter::fillRelief`): a rounded box raised above what it is on (sunk into it, below zero), its edge
+  rounding down over a bevel as a quarter circle, lit by a light. Still four vertices and no mesh: the fragment shader
+  takes its height at each pixel from the same distance field, its normal from the slope of that height (the field's
+  gradient, exact, along its nearest edge or out of its corner), and lights it with a diffuse and a specular term,
+  scaled so that its flat top shows its color as it is; sunk, its rim casts a shadow on its floor (the field asked
+  where a ray toward the light leaves it); a metal's highlight is of its color, and its surface brushed (lines half a
+  dip high, each a little lighter or darker). The light (`paint::Lighting`: a direction, ambient, diffuse, specular,
+  shininess, the rim's shadow, the finish: metal, brushed) is the fragment shader's uniform buffer, the Renderer's (`setLighting`, the theme's); an
+  engine drawing the draw lists itself pushes it too.
 - **Lines and polygons:** polylines of any width with mitered joins, and convex polygons, tessellated on the CPU with a
   one-pixel anti-aliasing fringe. This is what charts and node connections are made of.
 - **Images:** a texture (by id) on a rectangle, tinted.
@@ -356,6 +365,18 @@ bevels fading; a pill's radius as round as a control is high, so that it rounds 
 - **Plain**, simple: square and flat, no light from above, no shadows, no glow of the focus (its edge says it), gray
   palettes without a tint; nothing moves (`MotionStyle::still`: every motion at once, the wheel's too; rows inserted
   and removed, panels opened and closed, popups, all at once).
+- **Plastic** and **Metal**, real: their controls reliefs lit by the theme's light (`Theme::lighting`, from the upper
+  left, a little in front; `Bevel::relief`, `roundness`): buttons, combo boxes, tool buttons under the mouse, panels'
+  headers and a checked box rise out of what they are on, their edges turning toward the light lit, those turning away
+  in shade, a soft shadow under them; pressed, a button goes down; fields and boxes are sunk, their rims shadowing their
+  floors. Low reliefs (a button 1.6 dips high, its edge rounding over 2.5), and as controls are: the headers of lists,
+  trees and tables (`ItemViewStyle::headerBackground`, `headerBevel`) and the rows' highlights, under the mouse and
+  selected (`rowBevel`); corners a little round (4 to 6 dips), Studio's motions. They differ by their finish:
+  - **Plastic**: glossy, a strong, tight, white highlight where a surface turns toward the light; Studio's palettes.
+  - **Metal**: its highlights of the metal's own color, broad (`Lighting::metal`), its surfaces brushed: fine lines along
+    them a little lighter and darker (`Lighting::brushed`); gunmetal grays in the dark, aluminum in the light.
+  `paintRaised` and `paintSunken` draw every control's relief, so a widget of one's own that draws with them has one
+  too.
 
 Studio's look is of the family of Qt's Fusion, compact and softer: neutral grays with a little blue in them,
 in layers (the title bar the darkest, the window's background, panels over it), controls that stand out of them lit from
@@ -475,6 +496,10 @@ indent and the arrow, the delegate's cell after them (a `TreeDelegate` makes cel
 column, as a table's delegate does). The table's header says which column sorts, the tree sorting each node's children
 by it (the table's rows left as they are: `TableView::setSortIndicator`); a cell of the first column is edited after
 the arrow (`TableView::setEditorArea`). A tree of one column is a list still: no header unless that column has a title.
+
+**Headers look as controls do**, in every style: a strip behind their titles (`ItemViewStyle::headerBackground`)
+raised as the style's controls are (`headerBevel`: lit from above in Studio, raised a little in Fluid, flat in Plain, a
+relief in Plastic and Metal).
 
 **Headers show and hide.** A list has a header of one column when it has a title (`ListView::setHeader`): its rows
 under it, a click sorting them (ascending, descending, not; an arrow in it), unless sorting is off. A table's header,
@@ -610,6 +635,20 @@ log: `append` adds lines and keeps it at its end while it was there. With a mill
 takes 0.4 ms, scrolling a page 1.3 ms, typing a character 0.6 ms; reading it 0.2 s, going to its end (colored from the top
 once) 0.14 s; some 250 lines are laid out at any time (`glw_benchmarks`). Still to come: find and replace, folding,
 wrapped lines, completion (on the search popup), several carets.
+
+**Tabs look as the style's controls do**: in Studio the tab shown is raised over its bar and joined to its content,
+as Fusion's (a browser's in the title bar), in Plain the same, flat; in Plastic and Metal the stacks and cards are
+raised too, slabs (`DockStyle::islandBevel`, `CardStyle::bevel`), and the tab shown is a folder's tab of its stack: a
+relief as high in its color, its lower part over the slab's top edge (cut there), so that its face is the slab's with no
+seam; the slabs only a little round (5 dips) and low, the first tab after the slab's rounded corner, not over it; the
+other tabs are on the window, one under the mouse a little raised (a major tab joined to the window's content
+the same way); in Fluid it stands on its bar as a control does, a pill raised a little (`DockStyle::tabsJoined`,
+`tabBevel`, `tabRadius`; `MajorTabStyle::joined`, `bevel`, `raised`).
+
+**A node of a node editor looks as the style's controls do** (`NodeStyle`, `Theme::node`: what node_editor draws its
+nodes with): its corners (3 dips in Studio, 10 in Fluid, square in Plain, 8 in Plastic and Metal), its body and its
+header of its kind's color raised as controls are (`bevel`, `bodyBevel`: lit from above, flat, reliefs), a shadow under
+it (none in Plain), its edge and the ring around it selected. On a zoomed canvas its relief is scaled with it.
 
 **A canvas is a surface without edges with widgets on it** (`Widgets/Canvas.hpp`): the ground of a node editor, a
 diagram, a level map. A widget may give its children coordinates of their own (`childrenTransform`: a uniform scale and a
@@ -771,7 +810,9 @@ In a dock area:
   Close (when the panel can be closed).
 - **A stack of one panel can hide its tab bar** (by its tab's menu, `DockTabs::setTabBarHidden`), as Unreal Engine's "hide
   tab well": the bar slides up out of the stack (the theme's normal motion, 200 ms) and the panel takes all of it; a little
-  triangle in its start corner shows the bar again, sliding back. It comes back by itself when another panel joins the
+  tongue hanging from its top edge at its start shows the bar again, sliding back. The tongue is drawn as the style's
+  tabs are (`DockStyle::tabBevel`: raised, flat or a relief); it comes out as the bar goes and goes back in as it comes,
+  and under the mouse it grows longer and wider (eased), tinted toward the accent, a chevron down in it. It comes back by itself when another panel joins the
   stack; a floating window keeps its bar, which is its title. Saved layouts keep it.
 - **`addPanel(panel, nextTo, side, share)`** builds a layout in code: beside a stack on its Start, End, Top or Bottom
   side, or in it.

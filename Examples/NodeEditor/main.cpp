@@ -13,6 +13,7 @@
 // --nodes adds N more nodes linked in a chain (thousands of them: only those that show are painted).
 #include <GLWidgets/Paint/Painter.hpp>
 #include <GLWidgets/Widgets/Application.hpp>
+#include <GLWidgets/Widgets/Bevel.hpp>
 #include <GLWidgets/Widgets/Canvas.hpp>
 #include <GLWidgets/Widgets/CheckBox.hpp>
 #include <GLWidgets/Widgets/Label.hpp>
@@ -27,6 +28,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <exception>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -698,21 +700,26 @@ NodeView::NodeView(Graph& graph, const NodeSpec& spec) : graph_(graph), header_(
 }
 
 void NodeView::paint(PaintContext& context) {
+    // as the theme's nodes are (NodeStyle): a shadow under it, its body, its header in its kind's color over it
     paint::Painter& p = context.painter;
-    const Palette& palette = context.ui.theme.palette;
+    const NodeStyle& s = context.ui.theme.node;
     const Rect r{0, 0, size().width, size().height};
-    p.drawShadow({r.x, r.y + 3, r.width, r.height}, nodeRadius, 12, {0, 0, 0, 0.45f});
-    p.fillRoundedRect(r, nodeRadius, palette.layer);
-    // the header: rounded at the top only
+    const float radius = s.cornerRadius;
+    if (s.shadow.a > 0)
+        p.drawShadow({r.x, r.y + 3, r.width, r.height}, radius, 12, s.shadow);
+    paintRaised(p, r, radius, s.body, {0, 0, 0, 0}, s.bodyBevel);
+    // the header: rounded at the top only (cut out of a taller box)
     const float h = title_->bounds().bottom();
-    p.fillRoundedRect({0, 0, r.width, h}, nodeRadius, header_);
-    p.fillRect({0, h - nodeRadius, r.width, nodeRadius}, header_);
-    p.strokeRoundedRect(r, nodeRadius, 1, palette.border);
+    p.pushClip({0, 0, r.width, h});
+    paintRaised(p, {0, 0, r.width, h + radius}, radius, header_, {0, 0, 0, 0}, s.bevel);
+    p.popClip();
+    p.strokeRoundedRect(r, radius, 1, s.border);
 }
 
 void NodeView::paintOver(PaintContext& context) {
+    const NodeStyle& s = context.ui.theme.node;
     if (selected_)
-        context.painter.strokeRoundedRect({-2, -2, size().width + 4, size().height + 4}, nodeRadius + 2, 2, context.ui.theme.palette.accent);
+        context.painter.strokeRoundedRect({-2, -2, size().width + 4, size().height + 4}, s.cornerRadius + 2, 2, s.selection);
 }
 
 void NodeView::onMouse(MouseEvent& event) {
@@ -750,10 +757,12 @@ CommentView::CommentView(Graph& graph, std::string text, Size size, Color color)
 void CommentView::paint(PaintContext& context) {
     paint::Painter& p = context.painter;
     const Rect r{0, 0, size().width, size().height};
-    p.fillRoundedRect(r, nodeRadius, {color_.r, color_.g, color_.b, 0.16f});
-    p.fillRoundedRect({0, 0, r.width, headerHeight}, nodeRadius, {color_.r, color_.g, color_.b, 0.55f});
-    p.fillRect({0, headerHeight - nodeRadius, r.width, nodeRadius}, {color_.r, color_.g, color_.b, 0.55f});
-    p.strokeRoundedRect(r, nodeRadius, 1, {color_.r, color_.g, color_.b, 0.7f});
+    const float radius = context.ui.theme.node.cornerRadius;
+    p.fillRoundedRect(r, radius, {color_.r, color_.g, color_.b, 0.16f});
+    p.pushClip({0, 0, r.width, headerHeight});
+    p.fillRoundedRect({0, 0, r.width, headerHeight + radius}, radius, {color_.r, color_.g, color_.b, 0.55f});
+    p.popClip();
+    p.strokeRoundedRect(r, radius, 1, {color_.r, color_.g, color_.b, 0.7f});
     // the grip that resizes it, at its bottom end corner
     const float x = rightToLeft() ? 4.0f : r.width - 4, d = rightToLeft() ? 1.0f : -1.0f;
     for (int i = 1; i <= 3; ++i)
@@ -851,9 +860,19 @@ void addChain(Graph& g, int count) {
 
 } // namespace
 
+// A style by its name (--style): studio, fluid, plain, plastic, metal.
+glw::ThemeStyle styleNamed(std::string_view name) {
+    return name == "fluid"     ? glw::ThemeStyle::Fluid
+           : name == "plain"   ? glw::ThemeStyle::Plain
+           : name == "plastic" ? glw::ThemeStyle::Plastic
+           : name == "metal"   ? glw::ThemeStyle::Metal
+                               : glw::ThemeStyle::Studio;
+}
+
 int main(int argc, char** argv) {
     int frames = -1, nodes = 0;
     bool rtl = false;
+    std::optional<glw::ThemeStyle> style;
     for (int i = 1; i < argc; ++i) {
         const std::string_view arg(argv[i]);
         if (arg == "--frames" && i + 1 < argc)
@@ -862,9 +881,13 @@ int main(int argc, char** argv) {
             nodes = std::max(0, std::atoi(argv[++i]));
         else if (arg == "--rtl")
             rtl = true;
+        else if (arg == "--style" && i + 1 < argc)
+            style = styleNamed(argv[++i]);
     }
     try {
         Application app;
+        if (style)
+            app.setStyle(*style, false);
         auto content = std::make_unique<Widget>();
         content->setLayout(std::make_unique<StackLayout>(Orientation::Vertical, 0.0f));
         Graph& graph = content->add(std::make_unique<Graph>());
