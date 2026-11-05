@@ -194,6 +194,8 @@ private:
     void itemsRemoved(std::size_t first, std::size_t count) override;
     void itemsChanged(std::size_t first, std::size_t count) override;
     void modelReset() override;
+    void changesBegun() override;
+    void changesEnded() override;
 
     void resetHeights();
     void show(double offset);           // the offset shown: clamped, the rows laid again
@@ -249,6 +251,15 @@ private:
     std::function<std::partial_ordering(std::size_t, std::size_t)> compare_;
     std::function<bool(std::size_t)> filter_;
     std::unique_ptr<ItemOrder> order_;      // while sorted or filtered: the items shown, in their order
+    // a batch of the model's changes: the current item and the one at the top, by their handles (which stay theirs)
+    struct Held {
+        std::optional<std::uint32_t> current;
+        std::size_t currentAt = 0;
+        std::optional<std::uint32_t> top;
+        double within = 0;
+    };
+    Held held_;
+    int batch_ = 0;
     EditTriggers editTriggers_ = EditTriggers::All;
     std::unique_ptr<ItemEditor> editor_;
     std::optional<std::size_t> edited_;     // the position edited

@@ -509,9 +509,21 @@ void TreeView::onPreviewKey(KeyEvent& event) {
 
 // ---- the model's changes ----
 
-void TreeView::childrenInserted(std::optional<TreeNode> parent, std::size_t first, std::size_t count) {
-    if (ordered()) {        // where they go is the order's
+void TreeView::changesBegun() {
+    ++batch_;
+}
+
+void TreeView::changesEnded() {
+    if (batch_ > 0 && --batch_ == 0 && std::exchange(reorderLater_, false))
         reorder();
+}
+
+void TreeView::childrenInserted(std::optional<TreeNode> parent, std::size_t first, std::size_t count) {
+    if (ordered()) {        // where they go is the order's (once, at the end of a batch)
+        if (batch_ > 0)
+            reorderLater_ = true;
+        else
+            reorder();
         return;
     }
     if (parent) {
@@ -545,7 +557,10 @@ void TreeView::childrenInserted(std::optional<TreeNode> parent, std::size_t firs
 
 void TreeView::childrenRemoved(std::optional<TreeNode> parent, std::size_t first, std::size_t count) {
     if (ordered()) {
-        reorder();
+        if (batch_ > 0)
+            reorderLater_ = true;
+        else
+            reorder();
         return;
     }
     const std::optional<std::size_t> at = childPosition(parent, first);
@@ -571,7 +586,10 @@ void TreeView::childrenRemoved(std::optional<TreeNode> parent, std::size_t first
 
 void TreeView::childrenChanged(std::optional<TreeNode> parent, std::size_t first, std::size_t count) {
     if (ordered()) {        // they may go elsewhere, or not show
-        reorder();
+        if (batch_ > 0)
+            reorderLater_ = true;
+        else
+            reorder();
         return;
     }
     std::optional<std::size_t> at = childPosition(parent, first);

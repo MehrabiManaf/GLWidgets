@@ -154,4 +154,48 @@ void TableModel::notifyReset() {
         o->modelReset();
 }
 
+// ---- batches ----
+
+void ListModel::beginChanges() {
+    if (batch_++ == 0) {
+        for (ListModelObserver* o : observers_)
+            o->changesBegun();
+    }
+}
+
+void ListModel::endChanges() {
+    if (batch_ > 0 && --batch_ == 0) {
+        for (ListModelObserver* o : observers_)
+            o->changesEnded();
+    }
+}
+
+void TreeModel::beginChanges() {
+    if (batch_++ == 0) {
+        for (TreeModelObserver* o : observers_)
+            o->changesBegun();
+    }
+}
+
+void TreeModel::endChanges() {
+    if (batch_ > 0 && --batch_ == 0) {
+        for (TreeModelObserver* o : observers_)
+            o->changesEnded();
+    }
+}
+
+void TableModel::beginChanges() {
+    if (batch_++ == 0) {
+        for (TableModelObserver* o : observers_)
+            o->changesBegun();
+    }
+}
+
+void TableModel::endChanges() {
+    if (batch_ > 0 && --batch_ == 0) {
+        for (TableModelObserver* o : observers_)
+            o->changesEnded();
+    }
+}
+
 } // namespace glw

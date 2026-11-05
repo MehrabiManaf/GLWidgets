@@ -457,6 +457,17 @@ one inserted first 18 µs, the oldest removed 11 µs (`glw_benchmarks`: a thousa
 once (more than a quarter of what shows) sort it all again. A tree sorted or filtered sorts and filters all of it again
 as its model changes.
 
+**A model tells a batch of changes** (`beginChanges` / `endChanges`: all that came since the last frame, nested, the
+outermost counting) as it tells each, and the views put what they mean in order once, at its end. In a list or table
+sorted or filtered, the items inserted and changed in it wait out of the order (what was removed goes at once), and at
+its end each is placed once where it sorts then, however many times it changed; many waiting (more than a two
+thousandth of what shows) are sorted among themselves and merged into the order in one pass, each found from where the
+one before it went. The current item and the item at the top are kept by their handles through it. A tree sorted or
+filtered sorts and filters all of it again once, at its end. An order book sorted by price then time, its frame's
+changes a thousand orders gone, a thousand new and two thousand repriced: 4 ms told in a batch for ten thousand orders
+(13 ms one by one), 10 ms for a hundred thousand (23 ms), 64 ms for a million (94 ms; sorting it all again, 660 ms).
+Nothing is to be asked of a view in a batch: what it shows meanwhile is not in order.
+
 An editable item is edited in place, in any widget its delegate makes for it (`makeEditor`: a field, a check box, a combo
 box...), in a frame over it (over a tree's node after its arrow; a table's cell, within its rows): by a double click
 (which then does not activate it), F2, or typing on it (what is typed goes into the editor), as `setEditTriggers` says.

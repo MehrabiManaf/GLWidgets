@@ -832,7 +832,47 @@ void ListView::onStyleChanged() {
 
 // ---- the model's changes ----
 
+void ListView::changesBegun() {
+    if (batch_++ > 0 || !ordered())
+        return;
+    // what shows is kept by the items' handles, which the changes do not move
+    cancelEdit();
+    endChange(false);
+    smooth_.stop();
+    const Kept kept = keep();
+    held_ = {};
+    if (kept.current)
+        held_.current = order_->handle(*kept.current);
+    held_.currentAt = kept.currentAt;
+    if (kept.top)
+        held_.top = order_->handle(*kept.top);
+    held_.within = kept.within;
+    order_->hold();
+}
+
+void ListView::changesEnded() {
+    if (batch_ == 0 || --batch_ > 0 || !order_->holding())
+        return;
+    // what it held, by the model's indices now (settling may make the handles again)
+    Kept kept;
+    kept.currentAt = held_.currentAt;
+    if (held_.current) {
+        kept.current = order_->indexOfHandle(*held_.current);
+        kept.lost = !kept.current;
+    }
+    if (held_.top)
+        kept.top = order_->indexOfHandle(*held_.top);
+    kept.within = held_.within;
+    // each item inserted or changed placed once, where it sorts now
+    const ItemOrder::Span span = order_->settle(filter_, [this](std::size_t a, std::size_t b) { return before(a, b); });
+    reordered(kept, span.from, span.to, true);
+}
+
 void ListView::itemsInserted(std::size_t first, std::size_t count) {
+    if (ordered() && order_->holding()) {      // in a batch: placed at its end
+        order_->inserted(first, count, filter_, {});
+        return;
+    }
     if (ordered()) {
         // the items after them move on; those accepted go where they sort
         cancelEdit();
@@ -877,6 +917,10 @@ void ListView::itemsInserted(std::size_t first, std::size_t count) {
 }
 
 void ListView::itemsRemoved(std::size_t first, std::size_t count) {
+    if (ordered() && order_->holding()) {
+        order_->removed(first, count);
+        return;
+    }
     if (ordered()) {
         // those that showed go; the items after them move back
         cancelEdit();
@@ -930,6 +974,10 @@ void ListView::itemsRemoved(std::size_t first, std::size_t count) {
 }
 
 void ListView::itemsChanged(std::size_t first, std::size_t count) {
+    if (ordered() && order_->holding()) {
+        order_->changed(first, count, filter_, {});
+        return;
+    }
     if (ordered()) {
         // many at once: all of it again
         if (count > std::max<std::size_t>(4096, order_->shown() / 4)) {

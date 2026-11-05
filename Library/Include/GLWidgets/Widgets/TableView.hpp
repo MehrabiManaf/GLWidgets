@@ -174,6 +174,8 @@ private:
     void rowsChanged(std::size_t first, std::size_t count) override;
     void columnsChanged() override;
     void modelReset() override;
+    void changesBegun() override;
+    void changesEnded() override;
 
     void resetColumns();                    // the widths for the model's columns: those set kept
     void updateLefts();

@@ -31,6 +31,8 @@ public:
     std::optional<std::size_t> find(std::uint32_t handle) const;
     void insert(std::size_t position, std::uint32_t handle);
     void erase(std::size_t position);
+    // All of them, in order.
+    std::vector<std::uint32_t> items() const;
     // The first position whose handle `goesBefore` says no of (what it says is yes, then no, along the order).
     template <class F>
     std::size_t lowerBound(F&& goesBefore) const;
@@ -45,8 +47,11 @@ private:
     std::pair<std::size_t, std::size_t> locate(std::size_t position) const;     // the block, and the place in it
     void renumber(std::size_t from);
 
+    void place(Block& block, std::size_t from);    // where its handles are, from `from` on
+
     std::vector<std::unique_ptr<Block>> blocks_;
     std::vector<Block*> where_;             // by handle: the block it is in (none: not in it)
+    std::vector<std::uint32_t> offsets_;    // ... and where in it: found at once
     mutable std::vector<std::size_t> starts_;
     mutable bool dirty_ = true;
     std::size_t size_ = 0;
@@ -105,16 +110,35 @@ public:
     Span removed(std::size_t first, std::size_t count);
     Span changed(std::size_t first, std::size_t count, const Accepts& accepts, const Before& before);
 
+    // A batch of the model's changes (ListModel::beginChanges): from `hold` to `settle`, the items inserted and changed
+    // wait out of the order, and are put in at the end, each once, where it sorts then; what was removed goes at once.
+    // A position asked meanwhile may not be the item's. Many waiting (more than a two thousandth of what shows): sorted
+    // among themselves, and merged into the order in one pass (the handles made again: those held before are not
+    // theirs after it).
+    void hold();
+    bool holding() const { return holding_; }
+    Span settle(const Accepts& accepts, const Before& before);
+
+    // An item by its handle (which stays its as the model changes around it), and back.
+    std::optional<std::uint32_t> handle(std::size_t index) const;
+    std::optional<std::size_t> indexOfHandle(std::uint32_t handle) const { return model_.find(handle); }
+
 private:
     void assign(std::size_t count, std::vector<std::uint32_t> shown);
     std::size_t indexOf(std::uint32_t handle) const { return *model_.find(handle); }
     std::size_t placeOf(std::size_t index, const Before& before) const;    // where the model's item goes, shown
     std::uint32_t newHandle();
 
+    void mark(std::uint32_t handle);        // waiting, in a batch
+    Span merge(const Accepts& accepts, const Before& before);       // settle, many waiting
+
     BlockList model_;
     BlockList view_;
     std::vector<std::uint32_t> free_;
     std::uint32_t next_ = 0;
+    bool holding_ = false;
+    std::vector<std::uint32_t> waiting_;    // in a batch: the items inserted and changed
+    std::vector<char> marked_;              // ... by handle
 };
 
 template <class Less>

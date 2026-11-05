@@ -60,6 +60,9 @@ public:
     virtual void itemsChanged(std::size_t first, std::size_t count) = 0;
     // All of it changed.
     virtual void modelReset() = 0;
+    // A batch of changes begins / ends (beginChanges): told in between as they happen still.
+    virtual void changesBegun() {}
+    virtual void changesEnded() {}
 };
 
 class GLW_EXPORT ListModel {
@@ -77,6 +80,12 @@ public:
     void addObserver(ListModelObserver& observer);
     void removeObserver(ListModelObserver& observer);
 
+    // A batch of changes (all that came since the last frame): each still told as it happens, the views put what they mean
+    // in order once, at the end (sorted: each item inserted or changed placed once, where it sorts then). Nested: the
+    // outermost counts. Nothing is to be asked of the views in between.
+    void beginChanges();
+    void endChanges();
+
 protected:
     // What a model calls once it changed: its views follow.
     void notifyInserted(std::size_t first, std::size_t count);
@@ -86,6 +95,7 @@ protected:
 
 private:
     std::vector<ListModelObserver*> observers_;
+    int batch_ = 0;
 };
 
 // Texts: a list of what a ListView shows with a TextDelegate.
@@ -130,6 +140,9 @@ public:
     virtual void childrenRemoved(std::optional<TreeNode> parent, std::size_t first, std::size_t count) = 0;
     virtual void childrenChanged(std::optional<TreeNode> parent, std::size_t first, std::size_t count) = 0;
     virtual void modelReset() = 0;
+    // A batch of changes begins / ends (beginChanges): told in between as they happen still.
+    virtual void changesBegun() {}
+    virtual void changesEnded() {}
 };
 
 // Nodes, each with its children (TreeView). The top level is the children of no node.
@@ -152,6 +165,12 @@ public:
     void addObserver(TreeModelObserver& observer);
     void removeObserver(TreeModelObserver& observer);
 
+    // A batch of changes (all that came since the last frame): each still told as it happens, the views put what they mean
+    // in order once, at the end (sorted: each item inserted or changed placed once, where it sorts then). Nested: the
+    // outermost counts. Nothing is to be asked of the views in between.
+    void beginChanges();
+    void endChanges();
+
 protected:
     void notifyInserted(std::optional<TreeNode> parent, std::size_t first, std::size_t count);
     void notifyRemoved(std::optional<TreeNode> parent, std::size_t first, std::size_t count);
@@ -160,6 +179,7 @@ protected:
 
 private:
     std::vector<TreeModelObserver*> observers_;
+    int batch_ = 0;
 };
 
 // ---- tables ----
@@ -175,6 +195,9 @@ public:
     // The columns: how many, their headers.
     virtual void columnsChanged() = 0;
     virtual void modelReset() = 0;
+    // A batch of changes begins / ends (beginChanges): told in between as they happen still.
+    virtual void changesBegun() {}
+    virtual void changesEnded() {}
 };
 
 // Rows of cells, in columns with headers (TableView).
@@ -198,6 +221,12 @@ public:
     void addObserver(TableModelObserver& observer);
     void removeObserver(TableModelObserver& observer);
 
+    // A batch of changes (all that came since the last frame): each still told as it happens, the views put what they mean
+    // in order once, at the end (sorted: each item inserted or changed placed once, where it sorts then). Nested: the
+    // outermost counts. Nothing is to be asked of the views in between.
+    void beginChanges();
+    void endChanges();
+
 protected:
     void notifyRowsInserted(std::size_t first, std::size_t count);
     void notifyRowsRemoved(std::size_t first, std::size_t count);
@@ -207,6 +236,7 @@ protected:
 
 private:
     std::vector<TableModelObserver*> observers_;
+    int batch_ = 0;
 };
 
 } // namespace glw

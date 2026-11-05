@@ -347,6 +347,97 @@ void aLiveFeedInATableView(glw::UiContext& ui, std::size_t rows) {
                 changedFiltered);
 }
 
+// An order book's orders, as a table model: in a vector in no order (the view sorts them by price, then time), an order
+// removed by moving the last one into its place, so that a change costs the model nothing either.
+class Orders final : public glw::TableModel {
+public:
+    struct Order {
+        double price;
+        std::uint64_t time;
+    };
+    explicit Orders(std::size_t count) {
+        for (std::size_t i = 0; i < count; ++i)
+            orders.push_back(make());
+    }
+    std::size_t rowCount() const override { return orders.size(); }
+    std::size_t columnCount() const override { return 3; }
+    bool sortable(std::size_t) const override { return true; }
+    std::partial_ordering compare(std::size_t a, std::size_t b, std::size_t) const override {
+        if (const auto o = orders[a].price <=> orders[b].price; o != 0)
+            return o;
+        return orders[a].time <=> orders[b].time;
+    }
+
+    void add() {
+        orders.push_back(make());
+        notifyRowsInserted(orders.size() - 1, 1);
+    }
+    void remove(std::size_t at) {
+        // the last one into its place: it changed there, and the last place went
+        const std::size_t last = orders.size() - 1;
+        if (at != last) {
+            orders[at] = orders[last];
+            notifyRowsChanged(at, 1);
+        }
+        orders.pop_back();
+        notifyRowsRemoved(last, 1);
+    }
+    void reprice(std::size_t at) {
+        orders[at] = make();
+        notifyRowsChanged(at, 1);
+    }
+    std::size_t any() { return static_cast<std::size_t>(random_() % orders.size()); }
+    std::vector<Order> orders;
+
+private:
+    Order make() { return {static_cast<double>(random_() % 20000) / 100, ++time_}; }
+    std::uint64_t random_() { return seed_ = seed_ * 6364136223846793005ull + 1442695040888963407ull, seed_ >> 33; }
+    std::uint64_t seed_ = 3;
+    std::uint64_t time_ = 0;
+};
+
+// What came since the last frame: a thousand orders gone, a thousand new, two thousand repriced; then the frame.
+void anOrderBookInATableView(glw::UiContext& ui, std::size_t count) {
+    glw::UiRoot root(ui);
+    root.setSize({800, 600});
+    auto orders = std::make_shared<Orders>(count);
+    auto made = std::make_unique<glw::TableView>();
+    glw::TableView& table = *made;
+    table.setModel(orders);
+    table.setDelegate(std::make_unique<glw::TableTextDelegate>([o = orders.get()](std::size_t r, std::size_t) {
+        return glw::LocalizedText(std::to_string(o->orders[r].price));
+    }));
+    root.setContent(std::move(made));
+    table.sortBy(0);
+    glw::paint::DrawList drawn;
+    root.paint(drawn);
+    const auto changes = [&] {
+        for (int i = 0; i < 1000; ++i)
+            orders->remove(orders->any());
+        for (int i = 0; i < 1000; ++i)
+            orders->add();
+        for (int i = 0; i < 2000; ++i)
+            orders->reprice(orders->any());
+    };
+    const double each = best(3, [&] {
+        changes();
+        root.paint(drawn);
+    });
+    // told as a batch: placed once, at its end
+    const double batch = best(3, [&] {
+        orders->beginChanges();
+        changes();
+        orders->endChanges();
+        root.paint(drawn);
+    });
+    // the same told as one reset: all of it sorted again
+    const double reset = best(3, [&] {
+        table.reorder();
+        root.paint(drawn);
+    });
+    std::printf("%9zu | %8.2f | %8.2f | %8.2f\n", count, each, batch, reset);
+}
+
 // Nodes of a canvas: a box with a title and two lines each, `count` of them in a grid.
 void nodesOnACanvas(glw::UiContext& ui, int count) {
     glw::UiRoot root(ui);
@@ -472,6 +563,12 @@ int main(int argc, char** argv) {
     std::printf("\nA live feed in a table view, sorted by price: sorting in milliseconds, then each change in microseconds\n");
     std::printf("     rows |     sort |   change |   append | at first |   oldest | filtered\n");
     aLiveFeedInATableView(ui, 1'000'000);
+
+    std::printf("\nAn order book in a table view, sorted by price then time: 1000 removed, 1000 added, 2000 repriced, then a frame;\n"
+                "or all of it sorted again; milliseconds\n");
+    std::printf("   orders |     each |    batch | sort all\n");
+    for (std::size_t count : {std::size_t{10'000}, std::size_t{100'000}, std::size_t{1'000'000}})
+        anOrderBookInATableView(ui, count);
 
     std::printf("\nNodes on a canvas, milliseconds (all: every one in view, zoomed out)\n");
     std::printf("    nodes |    build |   layout |    paint |      pan |     zoom |      all | vertices\n");

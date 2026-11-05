@@ -128,6 +128,8 @@ private:
     void childrenRemoved(std::optional<TreeNode> parent, std::size_t first, std::size_t count) override;
     void childrenChanged(std::optional<TreeNode> parent, std::size_t first, std::size_t count) override;
     void modelReset() override;
+    void changesBegun() override;
+    void changesEnded() override;
 
     // The children of `parent` (with those of its expanded children, and so on) as entries, at `depth`.
     void appendChildren(std::optional<TreeNode> parent, std::uint32_t depth, std::vector<Entry>& out) const;
@@ -159,6 +161,8 @@ private:
     std::function<bool(TreeNode)> filter_;
     std::unordered_set<std::uint64_t> kept_;        // filtered: the nodes accepted, and their ancestors
     std::unordered_set<std::uint64_t> opened_;      // ... the ancestors, shown expanded (until collapsed)
+    int batch_ = 0;                                 // in a batch of the model's changes
+    bool reorderLater_ = false;                     // ... sorted or filtered: all of it again at its end
     std::unordered_map<std::uint64_t, std::unique_ptr<Animation>> turning_;    // the arrows turning, by node
     std::function<void(std::optional<TreeNode>)> onCurrentChanged_;
     std::function<void(TreeNode)> onActivated_;

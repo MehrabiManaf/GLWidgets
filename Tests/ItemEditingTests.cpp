@@ -351,6 +351,16 @@ TEST(aTreeSortsItsChildrenAndFiltersItsNodes) {
     CHECK(t.shown() == "a .a2");
     t.tree->setFilter({});
     CHECK(t.shown() == "a b");
+    // in a batch: sorted again once, at its end
+    t.tree->setSortOrder(SortOrder::Ascending);
+    t.nodes->beginChanges();
+    t.nodes->nodes[0].name = "z";
+    t.nodes->rename({0});
+    t.nodes->nodes[4].name = "c";
+    t.nodes->rename({4});
+    CHECK(t.shown() == "z c");                  // in the order it was, their new names, until the batch ends
+    t.nodes->endChanges();
+    CHECK(t.shown() == "c z");
 }
 
 TEST(aTreesNodeIsEditedAfterItsArrow) {
@@ -392,7 +402,7 @@ public:
 
 // A thousand random changes of a list sorted (`order`) and filtered or not: after each, the order must be what a sort and
 // a filter from nothing give.
-bool followsItemByItem(unsigned seed, std::optional<SortOrder> order, bool filtered) {
+bool followsItemByItem(unsigned seed, std::optional<SortOrder> order, bool filtered, bool batched = false) {
     UiRoot root(tests::testContext());
     auto values = std::make_shared<Values>();
     for (int i = 0; i < 300; ++i)
@@ -441,7 +451,13 @@ bool followsItemByItem(unsigned seed, std::optional<SortOrder> order, bool filte
         return made;
     };
     bool all = true;
+    int left = 0;                   // batched: the changes left in the batch
     for (int step = 0; step < 1000 && all; ++step) {
+        if (batched && left == 0) {
+            // a few changes (each placed where it goes), or many (sorted among themselves, merged in one pass)
+            left = random() % 4 == 0 ? 60 + static_cast<int>(random() % 80) : 1 + static_cast<int>(random() % 25);
+            values->beginChanges();
+        }
         const std::size_t n = values->values.size();
         switch (random() % 5) {
         case 0: values->insert(any(n + 1), numbers(1 + any(3))); break;
@@ -459,9 +475,15 @@ bool followsItemByItem(unsigned seed, std::optional<SortOrder> order, bool filte
             }
             break;
         }
+        if (batched && --left > 0)
+            continue;       // in the batch: what shows meanwhile is not asked
+        if (batched)
+            values->endChanges();
         all = matches();
     }
-    if (!all)
+    if (left > 0)
+        values->endChanges();
+    if (!all || !matches())
         return false;
     // the current item followed, by the model's index: through an insert before it, and moved by a change
     list.setCurrent(list.modelIndex(5));
@@ -482,5 +504,7 @@ TEST(aSortedFilteredListFollowsItsModelItemByItem) {
         CHECK(followsItemByItem(seed, SortOrder::Descending, true));
         CHECK(followsItemByItem(seed, SortOrder::Ascending, false));
         CHECK(followsItemByItem(seed, std::nullopt, true));
+        CHECK(followsItemByItem(seed, SortOrder::Ascending, true, true));
+        CHECK(followsItemByItem(seed, SortOrder::Descending, false, true));
     }
 }

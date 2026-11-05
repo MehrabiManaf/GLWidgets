@@ -842,6 +842,14 @@ void TableView::rowsChanged(std::size_t first, std::size_t count) {
     rows_->notifyChanged(first, count);
 }
 
+void TableView::changesBegun() {
+    rows_->beginChanges();
+}
+
+void TableView::changesEnded() {
+    rows_->endChanges();
+}
+
 void TableView::columnsChanged() {
     cancelEdit();
     if (sortColumn_ && *sortColumn_ >= (model_ ? model_->columnCount() : 0))
