@@ -25,6 +25,8 @@ double number(double v) {
 
 } // namespace
 
+BarRace::BarRace() : BarRace(Props{}) {}
+
 BarRace::BarRace(Props props)
     : props_(std::move(props)), progress_([this] { invalidatePaint(); }), scrolling_([this](double rank) {
           scroll_ = std::clamp(rank, 0.0, lastTop());

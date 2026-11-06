@@ -137,7 +137,8 @@ public:
         bool includeZero = false;           // a fitted y axis shows 0 too
     };
 
-    explicit LineChart(Props props = {});
+    LineChart();
+    explicit LineChart(Props props);
     ~LineChart() override;
 
     LineSeries& addSeries(LineSeries::Props props);

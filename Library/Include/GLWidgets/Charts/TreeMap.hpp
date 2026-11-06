@@ -43,7 +43,8 @@ public:
         int depth = 2;                  // the levels shown at once under the node zoomed into
     };
 
-    explicit TreeMap(Props props = {});
+    TreeMap();
+    explicit TreeMap(Props props);
     ~TreeMap() override;
 
     // Its data (eased to, from what shows). What it was zoomed into stays, as far down as the new data has it.

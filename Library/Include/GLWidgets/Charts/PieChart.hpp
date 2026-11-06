@@ -60,7 +60,8 @@ public:
     // The place of the others' slice in a path (what nodeAt and a click on it give).
     static constexpr std::size_t othersIndex = static_cast<std::size_t>(-1);
 
-    explicit PieChart(Props props = {});
+    PieChart();
+    explicit PieChart(Props props);
     ~PieChart() override;
 
     // Its slices (matched to those it had by their labels' paths): eased to. What it was zoomed into stays, as far down as

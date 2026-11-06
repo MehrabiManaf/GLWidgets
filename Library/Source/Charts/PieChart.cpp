@@ -38,6 +38,8 @@ double PieSlice::total() const {
     return sum;
 }
 
+PieChart::PieChart() : PieChart(Props{}) {}
+
 PieChart::PieChart(Props props)
     : props_(std::move(props)), progress_([this] { invalidatePaint(); }), sweep_([this] { invalidatePaint(); }),
       zoom_([this] { invalidatePaint(); }) {

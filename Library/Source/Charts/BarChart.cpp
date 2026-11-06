@@ -31,6 +31,8 @@ double number(double v) {
 
 } // namespace
 
+BarChart::BarChart() : BarChart(Props{}) {}
+
 BarChart::BarChart(Props props)
     : props_(std::move(props)), progress_([this] { invalidatePaint(); }), viewProgress_([this] { invalidatePaint(); }) {
     setTitle(props_.title);

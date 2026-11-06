@@ -88,6 +88,8 @@ double TreeMapNode::total() const {
     return sum;
 }
 
+TreeMap::TreeMap() : TreeMap(Props{}) {}
+
 TreeMap::TreeMap(Props props) : props_(std::move(props)), progress_([this] { invalidatePaint(); }) {
     setTitle(props_.title);
     setFocusable(true);

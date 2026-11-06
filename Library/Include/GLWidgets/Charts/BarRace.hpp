@@ -53,7 +53,8 @@ public:
     // What itemAt gives for the others' bar.
     static constexpr std::size_t othersItem = static_cast<std::size_t>(-1);
 
-    explicit BarRace(Props props = {});
+    BarRace();
+    explicit BarRace(Props props);
     ~BarRace() override;
 
     // An item (its values 0): its index. Its color: its own, or the style's in turn (a bar of parts: the parts' colors).

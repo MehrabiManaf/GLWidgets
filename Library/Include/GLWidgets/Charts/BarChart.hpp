@@ -40,7 +40,8 @@ public:
         std::size_t window = 0;         // its last `window` categories shown, following (a live chart); 0: all
     };
 
-    explicit BarChart(Props props = {});
+    BarChart();
+    explicit BarChart(Props props);
     ~BarChart() override;
 
     // A series (its values 0 in every category): its index.

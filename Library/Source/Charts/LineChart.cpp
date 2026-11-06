@@ -139,6 +139,8 @@ void AreaSeries::setVisible(bool visible) {
 
 // ---- the chart ----
 
+LineChart::LineChart() : LineChart(Props{}) {}
+
 LineChart::LineChart(Props props) : props_(std::move(props)), progress_([this] { invalidatePaint(); }) {
     setTitle(props_.title);
     window_ = props_.window;
