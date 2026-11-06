@@ -13,6 +13,10 @@
 // fitted to what shows (ending on its ticks), or a range of its own. A change of what shows is eased to: the axes glide
 // as data comes, and a live chart scrolls on smoothly.
 //
+// Areas (AreaSeries, as Qt's QAreaSeries): of a color of their own, under a series's line down to the axis, or between
+// two series's lines (a band: a range, a spread around a mean), drawn under the lines; a series may show its area only
+// (Props::line false).
+//
 // With the mouse: the wheel zooms the x axis at the mouse (a live chart: its window, still following), with Ctrl the y
 // axis; with Shift (or a wheel turned sideways) it pans along x. A drag pans (a live chart stops following, and follows
 // again when dragged back to its newest data); the right button drags a rectangle to zoom into. A double click shows what
@@ -31,6 +35,7 @@
 #include <optional>
 #include <span>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace glw {
@@ -45,12 +50,13 @@ enum class ChartAxisKind : std::uint8_t {
 class GLW_EXPORT LineSeries {
 public:
     struct Props {
-        LocalizedText name;
+        LocalizedText name;             // none: not in the legend (an area's edge)
         std::optional<Color> color;     // none: the chart's style's, in turn
         float width = 0;                // of its line; 0: the style's
         bool area = false;              // an area under its line, of its color, fading down to the axis (or to 0)
         bool steps = false;             // a step at each point: a value held until the next
         bool markers = false;           // a dot at each point, when they are far enough apart to be told apart
+        bool line = true;               // its line drawn (false: an area's edge only, its area if it has one)
         std::size_t capacity = 0;       // the newest kept, the oldest dropped as more come; 0: all
     };
 
@@ -88,6 +94,37 @@ private:
     Animation shown_;               // 1 shown, 0 hidden: eased between
 };
 
+// An area between a series's line and another's, or down to the axis: of its own color, under the lines.
+class GLW_EXPORT AreaSeries {
+public:
+    struct Props {
+        LocalizedText name;
+        const LineSeries* upper = nullptr;      // its top edge
+        const LineSeries* lower = nullptr;      // its bottom edge; none: the axis (0, or the side of the plot its data is past)
+        std::optional<Color> color;             // none: its upper series's
+        float opacity = 0.35f;                  // of its color
+        bool gradient = false;                  // fading down from its top edge
+    };
+
+    ~AreaSeries();
+
+    const Props& props() const { return props_; }
+    void setColor(std::optional<Color> color);
+    void setOpacity(float opacity);
+    // Hidden: faded out (its legend item dimmed); what a click on its legend item does.
+    void setVisible(bool visible);
+    bool visible() const { return visible_; }
+
+private:
+    friend class LineChart;
+    AreaSeries(LineChart& chart, Props props);
+
+    LineChart& chart_;
+    Props props_;
+    bool visible_ = true;
+    Animation shown_;
+};
+
 class GLW_EXPORT LineChart : public Chart {
 public:
     struct Props {
@@ -104,7 +141,12 @@ public:
     ~LineChart() override;
 
     LineSeries& addSeries(LineSeries::Props props);
+    // A series taken off it, and the areas along it.
     void removeSeries(LineSeries& series);
+    // An area along series of it (its upper one required).
+    AreaSeries& addArea(AreaSeries::Props props);
+    void removeArea(AreaSeries& area);
+    std::span<const std::unique_ptr<AreaSeries>> areas() const { return areas_; }
     std::span<const std::unique_ptr<LineSeries>> series() const { return series_; }
 
     void setXAxisKind(ChartAxisKind kind);
@@ -146,6 +188,7 @@ protected:
 
 private:
     friend class LineSeries;
+    friend class AreaSeries;
     enum class XMode : std::uint8_t { Fit, Window, Manual };
     void dataChanged();
     // The x and y it goes to; the view eased there when it changed (at once when `immediate_`).
@@ -156,12 +199,18 @@ private:
     std::string formatX(double v, double step) const;
     std::string formatY(double v, double step) const;
     void paintSeries(PaintContext& context, const LineSeries& series, std::size_t index);
+    void paintArea(PaintContext& context, const AreaSeries& area);
+    // A series's line as it shows, in the plot's coordinates, left to right, its gaps left out: what each column of pixels
+    // shows of it when it has more points than columns.
+    void project(const LineSeries& series, float pixelsPerDip, std::vector<Point>& out) const;
+    Color colorOf(const LineSeries& series) const;
     void paintHover(PaintContext& context);
     void zoomX(double factor, double anchor);
     void zoomY(double factor, double anchor);
 
     Props props_;
     std::vector<std::unique_ptr<LineSeries>> series_;
+    std::vector<std::unique_ptr<AreaSeries>> areas_;
     std::function<std::string(double, double)> formatX_, formatY_;
 
     XMode xMode_ = XMode::Fit;
@@ -190,6 +239,9 @@ private:
     bool dragFollowing_ = false;
     std::vector<Point> points_;         // scratch: a series as it is drawn
     std::vector<Rect> spans_;           // ... its columns' strokes, from their lowest to their highest
+    std::vector<Point> lower_;          // ... an area's lower edge
+    // What its legend's items are, in order: an area (true) or a series, and its place.
+    mutable std::vector<std::pair<bool, std::size_t>> legendTargets_;
 };
 
 } // namespace glw

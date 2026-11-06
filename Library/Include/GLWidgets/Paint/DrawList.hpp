@@ -19,7 +19,7 @@ namespace glw::paint {
 using TextureId = std::uint64_t;
 inline constexpr TextureId whiteTexture = 0;
 
-enum class VertexKind : std::uint8_t { Textured = 0, Box = 1, Mask = 2, Relief = 3 };
+enum class VertexKind : std::uint8_t { Textured = 0, Box = 1, Mask = 2, Relief = 3, RingRelief = 4 };
 
 // The light reliefs are lit by (Painter::fillRelief): the Renderer's (setLighting), the fragment shader's uniforms
 // (Painter.hlsl's Lighting). One for all of a target.

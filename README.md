@@ -60,8 +60,11 @@ Then, in `build/<preset>/bin`:
   strings and comments is shaped in lines that stay left to right. Its menu bar (in the title bar; `--menu-below` puts it
   under it) and toolbar share their actions, with SVG icons and shortcuts. `code_editor FILE` edits a file, `--lines N` adds N
   lines (a million: only what shows is laid out).
-- `chart_demo [--rate N] [--style ...] [--colors ...]` shows charts fed live: CPU, memory and network over the last
-  minute (`--rate` points a second each, ten minutes of history to zoom out and pan into), a donut of shares that drift,
+- `chart_demo [--rate N] [--race N] [--style ...] [--colors ...]` shows charts fed live: a bar race of `--race` packages'
+  monthly downloads, stacked by system (all of them, scrolled; or the top ten, the rest one bar of others); CPU, memory and network over the last
+  minute (`--rate` points a second each, ten minutes of history to zoom out and pan into; an area under CPU, a band of
+  memory's range), a donut of shares that drift in rings (regions, countries, cities: a click goes into a slice, a click
+  in the hole out),
   stacked bars of each second's counts, a treemap of a project's files (a click goes into a folder, a right click out).
   The wheel zooms, a drag pans (back to the newest, it follows again), the right button drags a rectangle to zoom into,
   a double click shows all; a legend's item hides its series.

@@ -5,6 +5,7 @@
 //
 //   glw_benchmarks [--count N]...     (1000, 10000 and 100000 labels by default)
 #include <GLWidgets/Charts/BarChart.hpp>
+#include <GLWidgets/Charts/BarRace.hpp>
 #include <GLWidgets/Charts/LineChart.hpp>
 #include <GLWidgets/Charts/TreeMap.hpp>
 #include <GLWidgets/Paint/DrawList.hpp>
@@ -589,6 +590,55 @@ void barsAndTiles(glw::UiContext& ui, std::size_t categories, std::size_t nodes)
     std::printf("%10zu | %8.2f | %8.2f | %8zu | %8.2f | %8.2f\n", categories, bars, appended, nodes, tiles, retiled);
 }
 
+// A bar race of `count` items of three parts: all of them changed at random (the worst: ranked all over again), or each a
+// little (as a race goes), then a frame (all ranked, the rows that show painted); scrolled half way down.
+void itemsInABarRace(glw::UiContext& ui, std::size_t count) {
+    glw::UiRoot root(ui);
+    root.setSize({1280, 720});
+    auto made = std::make_unique<glw::BarRace>(glw::BarRace::Props{.shown = 15, .parts = {"a", "b", "c"}});
+    glw::BarRace& race = *made;
+    root.setContent(std::move(made));
+    std::mt19937 random(2);
+    std::uniform_real_distribution<double> value(0, 1000);
+    for (std::size_t i = 0; i < count; ++i)
+        race.addItem("item " + std::to_string(i));
+    const auto change = [&] {
+        for (std::size_t i = 0; i < count; ++i) {
+            const double parts[] = {value(random), value(random), value(random)};
+            race.setValues(i, parts);
+        }
+    };
+    glw::paint::DrawList drawn;
+    change();
+    root.paint(drawn);
+    // the frame alone, its changes made before it
+    double changing = 0, frame = 1e30, drifting = 1e30;
+    for (int i = 0; i < 5; ++i) {
+        changing += once(change);
+        frame = std::min(frame, once([&] { root.paint(drawn); }));
+    }
+    // each a few percent up or down: most keep their places, some pass a neighbour
+    std::normal_distribution<double> drift(1, 0.02);
+    const auto step = [&] {
+        for (std::size_t i = 0; i < count; ++i) {
+            const double t = race.total(i) / 3;
+            const double parts[] = {t * drift(random), t * drift(random), t * drift(random)};
+            race.setValues(i, parts);
+        }
+    };
+    for (int i = 0; i < 5; ++i) {
+        step();
+        drifting = std::min(drifting, once([&] { root.paint(drawn); }));
+    }
+    race.scrollTo(static_cast<double>(count) / 2, false);
+    root.paint(drawn);
+    const double scrolled = best(5, [&] {
+        race.scrollTo(race.scrollPosition() + 1, false);
+        root.paint(drawn);
+    });
+    std::printf("%9zu | %8.2f | %8.2f | %8.2f | %8.2f | %8zu\n", count, changing / 5, frame, drifting, scrolled, drawn.vertices.size());
+}
+
 // A text of `count` lines of C++, highlighted.
 void linesInATextEdit(glw::UiContext& ui, int count) {
     std::string code;
@@ -697,6 +747,12 @@ int main(int argc, char** argv) {
     std::printf("\nBars and tiles, milliseconds: a bar chart's last 200 painted, one appended and painted; a treemap painted, a value changed\n");
     std::printf("categories |     bars | appended |    nodes |    tiles |  retiled\n");
     barsAndTiles(ui, 10'000, 10'000);
+
+    std::printf("\nA bar race of three parts, milliseconds: every item changed; a frame with them (all ranked): at random, or each a\n"
+                "little (with its changes); a row scrolled\n");
+    std::printf("    items |  changed |   random |  drifted | scrolled | vertices\n");
+    for (std::size_t count : {std::size_t{1'000}, std::size_t{20'000}, std::size_t{200'000}})
+        itemsInABarRace(ui, count);
 
     std::printf("\nLines of C++ in a text edit, highlighted, milliseconds\n");
     std::printf("    lines |     load |    first |    paint |   scroll |     type | to the end |     laid\n");

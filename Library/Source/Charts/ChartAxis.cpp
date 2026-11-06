@@ -115,6 +115,12 @@ ChartTicks niceTicks(ChartRange range, int count) {
         return ticks;
     }
     ticks.step = niceStep(span / (count - 1));
+    // at least two in it: a smaller round step when the first is about as long as all of it (10, 5, 2, 1...)
+    for (int smaller = 0; smaller < 6 && std::floor(range.high / ticks.step + 1e-9) - std::ceil(range.low / ticks.step - 1e-9) < 1; ++smaller) {
+        const double magnitude = std::pow(10.0, std::floor(std::log10(ticks.step) + 1e-9));
+        const double f = ticks.step / magnitude;
+        ticks.step = (f > 5.5 ? 5 : f > 2.5 ? 2 : f > 1.5 ? 1 : 0.5) * magnitude;
+    }
     ticks.decimals = decimalsFor(ticks.step);
     const double first = std::ceil(range.low / ticks.step - 1e-9);
     for (int i = 0; i < mostTicks; ++i) {

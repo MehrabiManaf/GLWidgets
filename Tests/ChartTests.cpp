@@ -7,14 +7,17 @@
 #include "TestUi.hpp"
 
 #include <GLWidgets/Charts/BarChart.hpp>
+#include <GLWidgets/Charts/BarRace.hpp>
 #include <GLWidgets/Charts/ChartAxis.hpp>
 #include <GLWidgets/Charts/LineChart.hpp>
 #include <GLWidgets/Charts/PieChart.hpp>
 #include <GLWidgets/Charts/SeriesBuffer.hpp>
 #include <GLWidgets/Charts/TreeMap.hpp>
 #include <GLWidgets/Paint/DrawList.hpp>
+#include <GLWidgets/Paint/Painter.hpp>
 #include <GLWidgets/Widgets/UiRoot.hpp>
 
+#include <algorithm>
 #include <chrono>
 #include <cmath>
 #include <ctime>
@@ -78,6 +81,10 @@ TEST(ticksFallOnRoundValues) {
     CHECK(niceRange({-7, 42}, 5).low == -20 && niceRange({-7, 42}, 5).high == 60);
     // a range of no width: one tick, no crash
     CHECK(niceTicks({5, 5}, 6).values.size() == 1);
+    // asked for two at most where a round step is about as long as the range: two still (a narrow axis)
+    const ChartTicks two = niceTicks({0, 20495}, 2);
+    CHECK(two.values.size() == 2 && two.step == 20000);
+    CHECK(niceTicks({0, 4.1}, 2).values.size() >= 2 && niceTicks({0, 4.1}, 3).values.size() >= 2);
 }
 
 TEST(numbersShowAsTicksDo) {
@@ -425,4 +432,273 @@ TEST(aLiveBarChartFollowsItsNewestCategories) {
     const Rect plot = c.chart->plotArea();
     c.drag(plot.center(), {plot.center().x + plot.width / 2, plot.center().y});
     CHECK(!c.chart->following() && c.chart->categoryView().high < 50);
+}
+
+// ---- what charts are drawn with ----
+
+TEST(aJaggedLineIsAsWideAtItsSharpTurns) {
+    // up and straight down again a pixel on: a turn of more than 170 degrees
+    paint::DrawList list;
+    {
+        paint::Painter p(list, {0, 0, 100, 100}, 1);
+        const Point points[] = {{10, 50}, {11, 10}, {12, 50}};
+        p.drawPolyline(points, 3, {1, 1, 1, 1});
+    }
+    // the solid vertices at the turn: as far apart as the line is wide (less its fringe), not pinched together
+    float widest = 0;
+    for (const paint::Vertex& a : list.vertices)
+        for (const paint::Vertex& b : list.vertices) {
+            const bool solid = (a.color >> 24) == 255 && (b.color >> 24) == 255;
+            const bool atTurn = std::abs(a.position.y - 10) < 3 && std::abs(b.position.y - 10) < 3;
+            if (solid && atTurn)
+                widest = std::max(widest, std::hypot(a.position.x - b.position.x, a.position.y - b.position.y));
+        }
+    CHECK(widest >= 1.9f);
+    // a gentle turn: one miter, four vertices at each point
+    paint::DrawList gentle;
+    {
+        paint::Painter p(gentle, {0, 0, 100, 100}, 1);
+        const Point points[] = {{10, 50}, {50, 40}, {90, 50}};
+        p.drawPolyline(points, 3, {1, 1, 1, 1});
+    }
+    CHECK(gentle.vertices.size() == 12);
+}
+
+TEST(aSliceOfAPieIsARingRelief) {
+    paint::DrawList list;
+    {
+        paint::Painter p(list, {0, 0, 400, 400}, 1);
+        p.fillArcRelief({200, 200}, 60, 100, -1.5708f, 1.0f, 1, 1.5f, 2, {1, 0, 0, 1});
+    }
+    CHECK(list.vertices.size() == 4 && list.indices.size() == 6);
+    const paint::Vertex& v = list.vertices[0];
+    CHECK(v.kind == static_cast<float>(paint::VertexKind::RingRelief) && v.halfSize.x == 60 && v.halfSize.y == 100);
+    // its half angle and its sides' inset (a dip: 16 sixteenths) packed
+    CHECK(near(v.radius, 0.5 + 8 * 16, 1e-4) && v.blur == 1.5f && v.border == 2);
+    // its quad around it: every corner of it within a pixel or so of the sector's reach
+    for (const paint::Vertex& c : list.vertices)
+        CHECK(std::hypot(c.position.x - 200, c.position.y - 200) <= 100 * 1.2f + 2);
+}
+
+TEST(aPieChartsPartsAreRingsFurtherOut) {
+    Shown<PieChart> c(PieChart::Props{.hole = 0.3f});
+    // two halves, the first of two parts (a quarter each), one of them of two (an eighth each)
+    c.chart->setLegendVisible(false);
+    c.chart->setSlices({{"a", 0, {}, {{"a1", 0, {}, {{"x", 1}, {"y", 1}}}, {"a2", 2}}}, {"b", 4}});
+    c.paint();
+    const Point center{300, 200};
+    const float radius = 200 - 7 - 2, inner = radius * 0.3f, ring = (radius - inner) / 3;
+    const auto at = [&](float degrees, float r) {
+        const float a = degrees * 3.14159265f / 180;
+        return Point{center.x + std::cos(a) * r, center.y + std::sin(a) * r};
+    };
+    // from the top, clockwise: a's half, then b's; a1 and a2 in the next ring, x and y in the third
+    CHECK(c.chart->nodeAt(at(-90 + 45, inner + ring * 0.5f)) == std::optional(std::vector<std::size_t>{0}));
+    CHECK(c.chart->nodeAt(at(-90 + 45, inner + ring * 1.5f)) == std::optional(std::vector<std::size_t>{0, 0}));
+    CHECK(c.chart->nodeAt(at(-90 + 135, inner + ring * 1.5f)) == std::optional(std::vector<std::size_t>{0, 1}));
+    CHECK(c.chart->nodeAt(at(-90 + 70, inner + ring * 2.5f)) == std::optional(std::vector<std::size_t>{0, 0, 1}));
+    CHECK(c.chart->nodeAt(at(180, inner + ring * 0.5f)) == std::optional(std::vector<std::size_t>{1}));
+    // b has no parts: nothing further out there
+    CHECK(!c.chart->nodeAt(at(180, inner + ring * 1.5f)));
+    CHECK(c.chart->sliceAt(at(-90 + 70, inner + ring * 2.5f)) == std::optional<std::size_t>(0));
+    // a click on a: it is the whole, its parts the first ring (a1 half of it now)
+    const Point onA = at(-90 + 45, inner + ring * 0.5f);
+    c.button(platform::MouseButton::Left, true, onA);
+    c.button(platform::MouseButton::Left, false, onA);
+    c.paint();
+    CHECK(c.chart->focus() == std::vector<std::size_t>{0});
+    const float rings2 = (radius - inner) / 2;
+    CHECK(c.chart->nodeAt(at(-90 + 90, inner + rings2 * 0.5f)) == std::optional(std::vector<std::size_t>{0, 0}));
+    CHECK(c.chart->nodeAt(at(90 + 45, inner + rings2 * 0.5f)) == std::optional(std::vector<std::size_t>{0, 1}));
+    CHECK(c.chart->sliceAt(at(90 + 45, inner + rings2 * 0.5f)) == std::optional<std::size_t>(1));
+    CHECK(c.chart->shownValue(0) == 2 && c.chart->shownValue(1) == 2);
+    // a click in the hole: up again
+    c.button(platform::MouseButton::Left, true, center);
+    c.button(platform::MouseButton::Left, false, center);
+    c.paint();
+    CHECK(c.chart->focus().empty() && c.chart->nodeAt(at(180, inner + ring * 0.5f)));
+    // a leaf hidden from the legend of a slice zoomed into: out of its whole
+    c.chart->setFocus({0});
+    c.chart->setSliceVisible(1, false);
+    c.paint();
+    CHECK(c.chart->shownValue(1) == 0 && c.chart->nodeAt(at(90, inner + rings2 * 0.5f)) == std::optional(std::vector<std::size_t>{0, 0}));
+}
+
+TEST(aLineChartsAreasLieUnderAndBetweenItsLines) {
+    Shown<LineChart> c;
+    LineSeries& high = c.chart->addSeries({.name = "high"});
+    LineSeries& low = c.chart->addSeries({.line = false});
+    for (int i = 0; i <= 100; ++i) {
+        high.append(i, 50 + (i % 7));
+        low.append(i + 0.5, 20 + (i % 5));        // its own x: the band between them still
+    }
+    const std::size_t lines = c.paint();
+    AreaSeries& band = c.chart->addArea({.name = "range", .upper = &high, .lower = &low});
+    const std::size_t banded = c.paint();
+    CHECK(banded > lines + 300);
+    // its legend: the series with a name, then the area (the nameless series not in it); a click hides the area
+    CHECK(band.visible());
+    const std::size_t hidden = [&] {
+        band.setVisible(false);
+        return c.paint();
+    }();
+    CHECK(hidden < banded);
+    // a series taken off: its areas too
+    c.chart->removeSeries(low);
+    CHECK(c.chart->areas().empty());
+    c.chart->addArea({.upper = &high, .gradient = true});
+    CHECK(c.paint() > lines);
+}
+
+// ---- bar races ----
+
+TEST(aBarRaceRanksItsItemsAndMovesThemAsTheyChange) {
+    Shown<BarRace> c(BarRace::Props{.shown = 3});
+    for (const char* name : {"a", "b", "c", "d"})
+        c.chart->addItem(name);
+    const double values[] = {10, 40, 30, 20};
+    for (std::size_t i = 0; i < 4; ++i)
+        c.chart->setValue(i, values[i]);
+    c.paint();
+    CHECK(c.chart->ranking() == (std::vector<std::size_t>{1, 2, 3, 0}));
+    CHECK(c.chart->shownPlace(1) == 0 && c.chart->shownPlace(2) == 1 && c.chart->shownPlace(3) == 2 && c.chart->shownPlace(0) == 3);
+    // a passes them all: the top; d under the last row that shows
+    c.chart->setValue(0, 100);
+    c.paint();
+    CHECK(c.chart->shownPlace(0) == 0 && c.chart->shownPlace(1) == 1 && c.chart->shownPlace(3) >= 3);
+    // the bar under a point
+    const Rect plot = Rect{0, 0, 600, 400};
+    CHECK(c.chart->itemAt({plot.center().x, 60}) == std::optional<std::size_t>(0));
+    // scrolled a row down: b at the top
+    c.chart->scrollTo(1, false);
+    c.paint();
+    CHECK(c.chart->scrollPosition() == 1 && c.chart->itemAt({plot.center().x, 60}) == std::optional<std::size_t>(1));
+    // no further than its last rows
+    c.chart->scrollTo(10, false);
+    CHECK(c.chart->scrollPosition() == 1);
+    // more shown: all of them, from the top
+    c.chart->setShown(4);
+    c.paint();
+    CHECK(c.chart->scrollPosition() == 0 && c.chart->shownPlace(3) == 3);
+}
+
+TEST(aBarRaceOfPartsRanksByThePartsThatShow) {
+    Shown<BarRace> c(BarRace::Props{.shown = 2, .parts = {"x", "y"}});
+    const std::size_t a = c.chart->addItem("a"), b = c.chart->addItem("b");
+    c.chart->setValues(a, std::vector<double>{10, 50});
+    c.chart->setValues(b, std::vector<double>{40, 5});
+    c.paint();
+    CHECK(c.chart->ranking() == (std::vector<std::size_t>{a, b}) && c.chart->shownTotal(a) == 60);
+    // y hidden: b leads
+    c.chart->setPartVisible(1, false);
+    c.paint();
+    CHECK(c.chart->ranking() == (std::vector<std::size_t>{b, a}) && c.chart->shownTotal(a) == 10 && c.chart->shownPlace(b) == 0);
+}
+
+TEST(aBarRaceEasesItsBarsToTheirPlaces) {
+    tests::testScheduler().setAnimationsEnabled(true);
+    {
+        Shown<BarRace> c(BarRace::Props{.shown = 2});
+        const std::size_t a = c.chart->addItem("a"), b = c.chart->addItem("b");
+        c.chart->setValue(a, 10);
+        c.chart->setValue(b, 5);
+        c.paint();
+        tests::advance(std::chrono::seconds(3));
+        c.paint();
+        CHECK(c.chart->shownPlace(a) == 0);
+        c.chart->setValue(b, 20);
+        c.paint();
+        tests::advance(std::chrono::milliseconds(100));
+        CHECK(c.chart->shownPlace(b) > 0 && c.chart->shownPlace(b) < 1 && c.chart->shownTotal(b) > 5 && c.chart->shownTotal(b) < 20);
+        tests::advance(std::chrono::seconds(3));
+        CHECK(c.chart->shownPlace(b) == 0 && c.chart->shownTotal(b) == 20);
+    }
+    tests::testScheduler().setAnimationsEnabled(false);
+}
+
+TEST(aBarRaceOfThousandsRanksThemAllAndScrollsThroughThem) {
+    Shown<BarRace> c(BarRace::Props{.shown = 12, .parts = {"p", "q", "r"}});
+    std::mt19937 random(5);
+    std::uniform_real_distribution<double> value(0, 1000);
+    for (int i = 0; i < 20'000; ++i)
+        c.chart->addItem("item " + std::to_string(i));
+    for (int round = 0; round < 3; ++round) {
+        for (std::size_t i = 0; i < c.chart->itemCount(); ++i) {
+            const double parts[] = {value(random), value(random), value(random)};
+            c.chart->setValues(i, parts);
+        }
+        c.paint();
+    }
+    const std::vector<std::size_t> all = c.chart->ranking();
+    CHECK(all.size() == 20'000);
+    bool ordered = true, placed = true;
+    for (std::size_t k = 1; k < all.size(); ++k)
+        ordered = ordered && c.chart->total(all[k - 1]) >= c.chart->total(all[k]);
+    for (std::size_t k = 0; k < all.size(); ++k)
+        placed = placed && c.chart->shownPlace(all[k]) == static_cast<float>(k);
+    CHECK(ordered && placed);
+    // far down: the 15000th at the top row
+    c.chart->scrollTo(15'000, false);
+    c.paint();
+    const Rect plot{0, 0, 600, 400};
+    const auto top = c.chart->itemAt({plot.x + 200, 70});
+    CHECK(top == std::optional<std::size_t>(all[15'000]));
+}
+
+
+TEST(aPieChartShowsItsTopPartsAndTheOthersAsOne) {
+    Shown<PieChart> c(PieChart::Props{.top = 3});
+    c.chart->setLegendVisible(false);
+    std::vector<PieSlice> slices;
+    for (int i = 0; i < 10; ++i)
+        slices.push_back({"s" + std::to_string(i), static_cast<double>(i == 7 ? 100 : 10 - i)});
+    c.chart->setSlices(slices);
+    c.paint();
+    // the top three (s7, s0, s1) in their order, then the others (s2... the rest: 8 + 7 + 6 + 5 + 4 + 2 + 1 = 33)
+    const Point center{300, 200};
+    const float radius = 200 - 7 - 2;
+    const auto at = [&](double turn) {
+        const double a = (turn * 360 - 90) * 3.14159265 / 180;
+        return Point{static_cast<float>(center.x + std::cos(a) * radius * 0.7), static_cast<float>(center.y + std::sin(a) * radius * 0.7)};
+    };
+    const double total = 100 + 10 + 9 + 33;
+    CHECK(c.chart->sliceAt(at(5 / total)) == std::optional<std::size_t>(0));
+    CHECK(c.chart->sliceAt(at((10 + 4.5) / total)) == std::optional<std::size_t>(1));
+    CHECK(c.chart->sliceAt(at((19 + 50) / total)) == std::optional<std::size_t>(7));
+    CHECK(c.chart->nodeAt(at((119 + 16) / total)) == std::optional(std::vector<std::size_t>{PieChart::othersIndex}));
+    // s7 drops: s2 into the top three, s7 among the others
+    slices[7].value = 0.5;
+    c.chart->setSlices(slices);
+    c.paint();
+    CHECK(c.chart->sliceAt(at(0.01)) == std::optional<std::size_t>(0) && c.chart->shownValue(7) == 0 && c.chart->shownValue(2) == 8);
+    // all of them again
+    c.chart->setTop(0);
+    c.paint();
+    CHECK(c.chart->shownValue(7) == 0.5 && c.chart->shownValue(9) == 1);
+}
+
+TEST(aBarRaceShowsItsTopOnesAndTheOthersAsOneBar) {
+    Shown<BarRace> c(BarRace::Props{.shown = 3, .top = 5});
+    for (int i = 0; i < 100; ++i)
+        c.chart->setValue(c.chart->addItem("i" + std::to_string(i)), 1 + i);
+    c.paint();
+    CHECK(c.chart->othersCount() == 95);
+    const std::vector<std::size_t> top = c.chart->ranking();
+    CHECK(top[0] == 99 && top[4] == 95 && c.chart->shownPlace(99) == 0 && c.chart->shownPlace(10) == 5);
+    // six rows (five and the others'), three shown: its scroll bar's thumb dragged to the end of its track
+    const Rect area{0, 0, 600, 400};
+    const Point thumb{area.right() - 4, 30};
+    c.move(thumb);
+    c.button(platform::MouseButton::Left, true, thumb);
+    c.move({thumb.x, 200});
+    c.move({thumb.x, area.bottom() - 1});
+    c.button(platform::MouseButton::Left, false, {thumb.x, area.bottom() - 1});
+    c.paint();
+    CHECK(c.chart->scrollPosition() == 3);
+    // the others' bar in its row: the last that shows
+    CHECK(c.chart->itemAt({200, area.bottom() - 40}) == std::optional<std::size_t>(BarRace::othersItem));
+    // an item leaps into the top: out of the others
+    c.chart->setValue(3, 1000);
+    c.paint();
+    CHECK(c.chart->ranking()[0] == 3 && c.chart->shownPlace(3) == 0 && c.chart->othersCount() == 95);
 }

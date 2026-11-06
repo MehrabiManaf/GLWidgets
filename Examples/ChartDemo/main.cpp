@@ -1,16 +1,21 @@
 // SPDX-FileCopyrightText: 2026 Abdolmanaf Mehrabi Sisakht
 // SPDX-License-Identifier: MIT
-// Charts fed live: a time series of three measures (an area under the first) appended `--rate` points a second each,
-// its last minute shown and following; a donut of shares that drift; stacked bars of each second's counts, appended as
+// Charts fed live: a time series of three measures (an area under the first, a band of the range around the second)
+// appended `--rate` points a second each, its last minute shown and following; a donut of shares that drift, in rings
+// (regions, their countries, a few cities: a click goes into a slice, a click in the hole out); a race of `--race`
+// packages' downloads (stacked by system), a month every 0.6 seconds; stacked bars of each second's counts, appended as
 // they come; a treemap of a project's folders and files, their sizes changing now and then. Above them, the style and the
-// colors of everything, whether the charts ease, and how the bars are laid out.
+// colors of everything, whether the charts ease, how the bars are laid out, and whether the donut and the race show
+// only their top ones (the rest as one of others).
 //
-//   chart_demo [--rate N] [--style studio|fluid|plain|plastic|metal] [--colors dark|light|dusk|sand|turquoise] [--frames N]
+//   chart_demo [--rate N] [--race N] [--style studio|fluid|plain|plastic|metal] [--colors dark|light|dusk|sand|turquoise]
+//              [--frames N]
 //
 // On a chart: the wheel zooms (with Ctrl, the y axis of the line chart), a drag pans (back to the newest, it follows
 // again), the right button drags a rectangle to zoom into, a double click shows all again; a legend's item hides its
 // series; a click on a treemap's tile goes into it, a right click out.
 #include <GLWidgets/Charts/BarChart.hpp>
+#include <GLWidgets/Charts/BarRace.hpp>
 #include <GLWidgets/Charts/LineChart.hpp>
 #include <GLWidgets/Charts/PieChart.hpp>
 #include <GLWidgets/Charts/TreeMap.hpp>
@@ -19,6 +24,7 @@
 #include <GLWidgets/Widgets/UiRoot.hpp>
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
@@ -29,6 +35,7 @@
 #include <random>
 #include <string>
 #include <string_view>
+#include <vector>
 
 namespace ui = glw::ui;
 using glw::tr;
@@ -42,11 +49,20 @@ struct Demo {
     glw::LineSeries* cpu = nullptr;
     glw::LineSeries* memory = nullptr;
     glw::LineSeries* network = nullptr;
+    glw::LineSeries* memoryHigh = nullptr;  // the edges of the band around memory: no lines, not in the legend
+    glw::LineSeries* memoryLow = nullptr;
+    double spread = 3;
+    std::vector<glw::PieSlice> regions;
     glw::PieChart* pie = nullptr;
     glw::BarChart* bars = nullptr;
     glw::TreeMap* tree = nullptr;
     glw::Label* status = nullptr;
-    glw::Timer feed, drift, second, disk, count;
+    glw::BarRace* race = nullptr;
+    std::size_t racers = 500;
+    std::vector<std::array<double, 3>> downloads;   // each package's, by system
+    std::vector<double> momentum;                   // how fast each grows
+    int month = 0;
+    glw::Timer feed, drift, second, disk, count, months;
     std::mt19937 random{42};
     double fed = 0;                         // the time of the last point
     double cpuValue = 30, memoryValue = 55, networkValue = 10;
@@ -60,14 +76,39 @@ struct Demo {
             .title = tr("CPU, memory and network, the last minute"), .xAxis = glw::ChartAxisKind::Time, .window = 60, .includeZero = true});
         line = made.get();
         const auto capacity = static_cast<std::size_t>(rate * 600);     // ten minutes of each
-        cpu = &line->addSeries({.name = tr("CPU %"), .area = true, .capacity = capacity});
+        cpu = &line->addSeries({.name = tr("CPU %"), .capacity = capacity});
         memory = &line->addSeries({.name = tr("Memory %"), .capacity = capacity});
-        network = &line->addSeries({.name = tr("Network MB/s"), .steps = false, .capacity = capacity});
+        network = &line->addSeries({.name = tr("Network MB/s"), .capacity = capacity});
+        memoryHigh = &line->addSeries({.line = false, .capacity = capacity});
+        memoryLow = &line->addSeries({.line = false, .capacity = capacity});
+        // an area under CPU, fading down; a band of memory's range around it
+        line->addArea({.upper = cpu, .opacity = 0.32f, .gradient = true});
+        line->addArea({.name = tr("Memory range"), .upper = memoryHigh, .lower = memoryLow, .color = memory->color(), .opacity = 0.22f});
 
-        auto donut = std::make_unique<glw::PieChart>(glw::PieChart::Props{.title = tr("Requests by region"), .hole = 0.58f, .totalLabel = tr("requests")});
+        auto donut = std::make_unique<glw::PieChart>(
+            glw::PieChart::Props{.title = tr("Requests by region, country and city"), .hole = 0.38f, .totalLabel = tr("requests")});
         pie = donut.get();
-        pie->setSlices({{tr("Europe"), 420}, {tr("Asia"), 380}, {tr("North America"), 300}, {tr("South America"), 120},
-                        {tr("Africa"), 90}, {tr("Oceania"), 45}});
+        regions = {
+            {tr("Europe"), 0, {}, {{tr("Germany"), 120}, {tr("France"), 90}, {tr("United Kingdom"), 85}, {tr("Italy"), 60}, {tr("Spain"), 45}}},
+            {tr("Asia"),
+             0,
+             {},
+             {{tr("Iran"), 0, {}, {{tr("Tehran"), 70}, {tr("Isfahan"), 30}, {tr("Shiraz"), 22}, {tr("Tabriz"), 15}}},
+              {tr("China"), 110},
+              {tr("India"), 80},
+              {tr("Japan"), 60},
+              {tr("Turkey"), 25}}},
+            {tr("North America"),
+             0,
+             {},
+             {{tr("United States"), 0, {}, {{tr("California"), 90}, {tr("Texas"), 60}, {tr("New York"), 50}}},
+              {tr("Canada"), 50},
+              {tr("Mexico"), 40}}},
+            {tr("South America"), 0, {}, {{tr("Brazil"), 70}, {tr("Argentina"), 30}, {tr("Chile"), 20}}},
+            {tr("Africa"), 0, {}, {{tr("Nigeria"), 35}, {tr("Egypt"), 30}, {tr("South Africa"), 25}}},
+            {tr("Oceania"), 0, {}, {{tr("Australia"), 35}, {tr("New Zealand"), 10}}},
+        };
+        pie->setSlices(regions);
 
         auto stacked = std::make_unique<glw::BarChart>(glw::BarChart::Props{.title = tr("Events a second"), .capacity = 600, .window = 24});
         bars = stacked.get();
@@ -75,14 +116,20 @@ struct Demo {
         bars->addSeries(tr("Writes"));
         bars->addSeries(tr("Errors"));
 
+        auto racing = std::make_unique<glw::BarRace>(glw::BarRace::Props{
+            .title = tr("Downloads of {n} packages, by system").arg("n", std::to_string(racers)), .shown = 10,
+            .parts = {tr("Windows"), tr("Linux"), tr("macOS")}});
+        race = racing.get();
+        makeRace();
+
         auto map = std::make_unique<glw::TreeMap>(glw::TreeMap::Props{.title = tr("A project's files, kB")});
         tree = map.get();
         project = makeProject();
         tree->setRoot(project);
 
-        const auto card = [](std::unique_ptr<glw::Widget> chart) {
+        const auto card = [](std::unique_ptr<glw::Widget> chart, float stretch = 1) {
             chart->setPadding(glw::Insets::all(14));
-            return ui::Card(std::move(chart)).stretch(1).build();
+            return ui::Card(std::move(chart)).stretch(stretch).build();
         };
         return ui::VStack(
                    {.spacing = 10},
@@ -105,17 +152,72 @@ struct Demo {
                                                 bars->setOrientation(on ? glw::Orientation::Horizontal : glw::Orientation::Vertical);
                                             }})
                                   .alignment(glw::Alignment::Start, glw::Alignment::Center),
+                              // only the top ones, the rest as one of others
+                              ui::Label({.text = tr("Donut")}).alignment(glw::Alignment::Start, glw::Alignment::Center),
+                              ui::ComboBox({.items = {tr("All"), tr("Top 2"), tr("Top 3")},
+                                            .onChanged = [this](std::size_t i) { pie->setTop(i == 0 ? 0 : i + 1); }}),
+                              ui::Label({.text = tr("Race")}).alignment(glw::Alignment::Start, glw::Alignment::Center),
+                              ui::ComboBox({.items = {tr("All"), tr("Top 10"), tr("Top 50")},
+                                            .onChanged = [this](std::size_t i) {
+                                                // the top ten and the others' bar all in view; the top fifty scrolled
+                                                race->setTop(i == 0 ? 0 : i == 1 ? 10 : 50);
+                                                race->setShown(i == 1 ? 11 : 10);
+                                            }}),
                               ui::Spacer(),
                               ui::Label({.muted = true}).bind(status).alignment(glw::Alignment::End, glw::Alignment::Center)),
                    ui::Splitter({.orientation = glw::Orientation::Vertical},
-                                ui::Splitter({}, card(std::move(made)), card(std::move(donut))).stretch(1),
-                                ui::Splitter({}, card(std::move(stacked)), card(std::move(map))).stretch(1))
+                                ui::Splitter({}, card(std::move(made), 3), card(std::move(donut), 2)).stretch(1),
+                                ui::Splitter({}, card(std::move(racing)), card(std::move(stacked)), card(std::move(map))).stretch(1))
                        .stretch(1))
             .padding(glw::Insets::all(12));
     }
 
+    // Packages with names made up, each with a share of each system and a pace of its own.
+    void makeRace() {
+        static constexpr const char* first[] = {"aurora", "basalt", "cedar", "delta", "ember", "fjord", "garnet", "harbor", "indigo",
+                                                "juniper", "kestrel", "lumen", "meadow", "nimbus", "onyx", "pixel", "quartz", "raven",
+                                                "sierra", "tundra", "umber", "vortex", "willow", "xenon", "yarrow", "zephyr"};
+        static constexpr const char* endings[] = {"js", "kit", "db", "ui", "net", "io", "cli", "core", "lab", "flow", "sync", "view"};
+        for (std::size_t i = 0; i < racers; ++i) {
+            std::string name = std::string(first[i % std::size(first)]) + "-" + endings[(i / std::size(first)) % std::size(endings)];
+            if (i >= std::size(first) * std::size(endings))
+                name += "-" + std::to_string(i / (std::size(first) * std::size(endings)));
+            race->addItem(name);
+            const double size = std::pow(uniform(0, 1), 3) * 900 + 10;
+            downloads.push_back({size * uniform(0.2, 0.7), size * uniform(0.1, 0.6), size * uniform(0.05, 0.3)});
+            momentum.push_back(uniform(0.0, 0.08));
+        }
+        nextMonth();
+    }
+
+    // A month on: each package grows by its pace (which wanders), now and then one takes off.
+    void nextMonth() {
+        static constexpr const char* names[] = {"Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"};
+        for (std::size_t i = 0; i < racers; ++i) {
+            momentum[i] = std::clamp(momentum[i] + normal(0.004) + (uniform(0, 1) < 0.002 ? 0.12 : 0.0), -0.02, 0.25);
+            for (double& d : downloads[i])
+                d = std::max(0.0, d * (1 + momentum[i] * uniform(0.9, 1.1)));
+            race->setValues(i, downloads[i]);
+        }
+        race->setPeriod(std::string(names[month % 12]) + " " + std::to_string(2015 + month / 12));
+        ++month;
+    }
+
+    // The measures at `t`: random walks, memory's range wandering around it.
+    void sample(double t) {
+        cpuValue = std::clamp(cpuValue + normal(1.2) + (35 - cpuValue) * 0.002, 0.0, 100.0);
+        memoryValue = std::clamp(memoryValue + normal(0.15), 20.0, 95.0);
+        networkValue = std::max(0.0, networkValue * 0.995 + normal(0.4) + (uniform(0, 1) < 0.002 ? uniform(20, 60) : 0.0));
+        spread = std::clamp(spread + normal(0.08), 1.5, 9.0);
+        cpu->append(t, cpuValue);
+        memory->append(t, memoryValue);
+        network->append(t, networkValue);
+        memoryHigh->append(t, memoryValue + spread);
+        memoryLow->append(t, memoryValue - spread * 0.8);
+    }
+
     void animate(bool on) {
-        for (glw::Chart* chart : std::initializer_list<glw::Chart*>{line, pie, bars, tree})
+        for (glw::Chart* chart : std::initializer_list<glw::Chart*>{line, pie, race, bars, tree})
             chart->setAnimated(on);
     }
 
@@ -149,19 +251,21 @@ struct Demo {
         feed.start(scheduler, std::chrono::milliseconds(16), [this] {
             const double now = glw::chartNow();
             const double step = 1 / rate;
-            for (; fed + step <= now; fed += step) {
-                cpuValue = std::clamp(cpuValue + normal(1.2) + (35 - cpuValue) * 0.002, 0.0, 100.0);
-                memoryValue = std::clamp(memoryValue + normal(0.15), 20.0, 95.0);
-                networkValue = std::max(0.0, networkValue * 0.995 + normal(0.4) + (uniform(0, 1) < 0.002 ? uniform(20, 60) : 0.0));
-                cpu->append(fed + step, cpuValue);
-                memory->append(fed + step, memoryValue);
-                network->append(fed + step, networkValue);
-            }
+            for (; fed + step <= now; fed += step)
+                sample(fed + step);
         }, true);
-        // the shares drift
+        // the shares drift: every city's, every country's without cities
         drift.start(scheduler, std::chrono::milliseconds(800), [this] {
-            for (std::size_t i = 0; i < pie->sliceCount(); ++i)
-                pie->setValue(i, std::max(5.0, std::round(pie->slice(i).value * (1 + normal(0.06)))));
+            const auto walk = [&](auto& self, std::vector<glw::PieSlice>& slices) -> void {
+                for (glw::PieSlice& slice : slices) {
+                    if (slice.children.empty())
+                        slice.value = std::max(3.0, std::round(slice.value * (1 + normal(0.06))));
+                    else
+                        self(self, slice.children);
+                }
+            };
+            walk(walk, regions);
+            pie->setSlices(regions);
         }, true);
         // a second's counts
         second.start(scheduler, std::chrono::seconds(1), [this] {
@@ -185,20 +289,24 @@ struct Demo {
             node->value = std::max(1.0, std::round(node->value * uniform(0.6, 1.7)));
             tree->setRoot(project);
         }, true);
+        // the race: a month every 0.6 seconds, ten years, then again
+        months.start(scheduler, std::chrono::milliseconds(600), [this] {
+            if (month >= 120) {
+                month = 0;
+                for (std::size_t i = 0; i < racers; ++i)
+                    for (double& d : downloads[i])
+                        d = std::max(1.0, d / 400);
+            }
+            nextMonth();
+        }, true);
         count.start(scheduler, std::chrono::milliseconds(500), [this] {
             const std::size_t points = cpu->data().size() + memory->data().size() + network->data().size();
             status->setText(tr("{n} points, {rate} a second").arg("n", std::to_string(points)).arg("rate", std::to_string(static_cast<int>(rate * 3))));
         }, true);
         // what came before it opened: the last ten minutes, so that there is a history to pan into
         const double from = fed - 600;
-        for (double t = from; t < fed; t += 1 / rate) {
-            cpuValue = std::clamp(cpuValue + normal(1.2) + (35 - cpuValue) * 0.002, 0.0, 100.0);
-            memoryValue = std::clamp(memoryValue + normal(0.15), 20.0, 95.0);
-            networkValue = std::max(0.0, networkValue * 0.995 + normal(0.4) + (uniform(0, 1) < 0.002 ? uniform(20, 60) : 0.0));
-            cpu->append(t, cpuValue);
-            memory->append(t, memoryValue);
-            network->append(t, networkValue);
-        }
+        for (double t = from; t < fed; t += 1 / rate)
+            sample(t);
         for (int i = 30; i > 0; --i) {
             const double values[] = {std::round(uniform(40, 120)), std::round(uniform(10, 60)), std::round(uniform(0, 1) < 0.2 ? uniform(1, 25) : 0)};
             bars->appendCategory("-" + std::to_string(i) + "s", values);
@@ -211,6 +319,7 @@ struct Demo {
 int main(int argc, char** argv) {
     int frames = -1;
     double rate = 200;
+    std::size_t racers = 500;
     std::optional<glw::ThemeStyle> style;
     std::optional<glw::ColorScheme> colors;
     for (int i = 1; i < argc; ++i) {
@@ -219,6 +328,8 @@ int main(int argc, char** argv) {
             frames = std::max(1, std::atoi(argv[++i]));
         else if (arg == "--rate" && i + 1 < argc)
             rate = std::clamp(std::atof(argv[++i]), 1.0, 100000.0);
+        else if (arg == "--race" && i + 1 < argc)
+            racers = static_cast<std::size_t>(std::clamp(std::atoi(argv[++i]), 1, 1'000'000));
         else if (arg == "--style" && i + 1 < argc)
             style = glw::themeStyleNamed(argv[++i]);
         else if (arg == "--colors" && i + 1 < argc)
@@ -231,6 +342,7 @@ int main(int argc, char** argv) {
         if (colors)
             app.setColorScheme(*colors, false);
         Demo demo{app, rate};
+        demo.racers = racers;
         app.openWindow({.title = tr("Charts"), .size = {1280, 820}}, demo.build());
         demo.start();
         return app.run(frames);

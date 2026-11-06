@@ -111,6 +111,32 @@ void LineSeries::setVisible(bool visible) {
     chart_.dataChanged();
 }
 
+// ---- an area ----
+
+AreaSeries::AreaSeries(LineChart& chart, Props props) : chart_(chart), props_(std::move(props)), shown_([this] { chart_.invalidatePaint(); }) {
+    shown_.set(1);
+}
+
+AreaSeries::~AreaSeries() = default;
+
+void AreaSeries::setColor(std::optional<Color> color) {
+    props_.color = color;
+    chart_.invalidatePaint();
+}
+
+void AreaSeries::setOpacity(float opacity) {
+    props_.opacity = opacity;
+    chart_.invalidatePaint();
+}
+
+void AreaSeries::setVisible(bool visible) {
+    if (visible == visible_)
+        return;
+    visible_ = visible;
+    shown_.animateTo(chart_.scheduler(), visible ? 1.0f : 0.0f, chart_.transition());
+    chart_.invalidatePaint();
+}
+
 // ---- the chart ----
 
 LineChart::LineChart(Props props) : props_(std::move(props)), progress_([this] { invalidatePaint(); }) {
@@ -130,8 +156,29 @@ LineSeries& LineChart::addSeries(LineSeries::Props props) {
 }
 
 void LineChart::removeSeries(LineSeries& series) {
+    std::erase_if(areas_, [&](const std::unique_ptr<AreaSeries>& a) { return a->props_.upper == &series || a->props_.lower == &series; });
     std::erase_if(series_, [&](const std::unique_ptr<LineSeries>& s) { return s.get() == &series; });
     invalidatePaint();
+}
+
+AreaSeries& LineChart::addArea(AreaSeries::Props props) {
+    areas_.push_back(std::unique_ptr<AreaSeries>(new AreaSeries(*this, std::move(props))));
+    invalidatePaint();
+    return *areas_.back();
+}
+
+void LineChart::removeArea(AreaSeries& area) {
+    std::erase_if(areas_, [&](const std::unique_ptr<AreaSeries>& a) { return a.get() == &area; });
+    invalidatePaint();
+}
+
+Color LineChart::colorOf(const LineSeries& series) const {
+    if (series.props_.color)
+        return *series.props_.color;
+    for (std::size_t i = 0; i < series_.size(); ++i)
+        if (series_[i].get() == &series)
+            return seriesColor(i);
+    return seriesColor(0);
 }
 
 void LineChart::setXAxisKind(ChartAxisKind kind) {
@@ -429,6 +476,8 @@ void LineChart::paint(PaintContext& context) {
 
     // the series, cut to the plot (a little above and below it: a line along its edge)
     p.pushClip({plot.x, plot.y - 2, plot.width, plot.height + 4});
+    for (const auto& a : areas_)
+        paintArea(context, *a);
     for (std::size_t i = 0; i < series_.size(); ++i)
         paintSeries(context, *series_[i], i);
     p.popClip();
@@ -479,8 +528,9 @@ void LineChart::paintSeries(PaintContext& context, const LineSeries& series, std
         if (points_.size() >= 2) {
             if (area)
                 p.fillArea(points_, baseline, areaTop, areaBottom);
-            p.drawPolyline(points_, width, color);
-        } else if (points_.size() == 1) {
+            if (series.props_.line)
+                p.drawPolyline(points_, width, color);
+        } else if (points_.size() == 1 && series.props_.line) {
             p.fillCircle(points_[0], width, color);
         }
         points_.clear();
@@ -516,10 +566,12 @@ void LineChart::paintSeries(PaintContext& context, const LineSeries& series, std
                 points_.push_back({px(d.x(i)), py(d.y(i))});
         if (area && points_.size() >= 2)
             p.fillArea(points_, baseline, areaTop, areaBottom);
-        for (const Rect& span : spans_)
-            p.fillRect(span, color);
-        if (points_.size() >= 2)
-            p.drawPolyline(points_, width, color);
+        if (series.props_.line) {
+            for (const Rect& span : spans_)
+                p.fillRect(span, color);
+            if (points_.size() >= 2)
+                p.drawPolyline(points_, width, color);
+        }
         points_.clear();
         return;
     }
@@ -542,6 +594,84 @@ void LineChart::paintSeries(PaintContext& context, const LineSeries& series, std
             if (!std::isnan(d.y(i)))
                 p.fillCircle({px(d.x(i)), py(d.y(i))}, r, color);
     }
+}
+
+void LineChart::project(const LineSeries& series, float pixelsPerDip, std::vector<Point>& out) const {
+    out.clear();
+    const SeriesBuffer& d = series.data_;
+    const std::size_t n = d.size();
+    if (n == 0)
+        return;
+    const ChartRange xv = xView(), yv = yView();
+    const Rect plot = plot_;
+    const auto px = [&](double x) { return static_cast<float>(plot.x + (x - xv.low) / xv.span() * plot.width); };
+    const auto py = [&](double y) { return static_cast<float>(plot.bottom() - (y - yv.low) / yv.span() * plot.height); };
+    std::size_t first = 0, last = n;
+    if (d.sorted()) {
+        first = d.lowerBound(xv.low);
+        first = first > 0 ? first - 1 : 0;
+        last = std::min(n, d.lowerBound(xv.high) + 1);
+    }
+    const double columns = std::max(1.0, static_cast<double>(plot.width) * pixelsPerDip);
+    if (d.sorted() && static_cast<double>(last - first) > 2 * columns) {
+        // a column of pixels at a time: its first and last points (its lowest and highest are its line's to show)
+        const double dx = xv.span() / columns;
+        const float pixel = 1.0f / pixelsPerDip;
+        std::size_t i = first;
+        for (double c = 0; c < columns && i < last; ++c) {
+            const std::size_t j = std::min(last, d.lowerBound(xv.low + (c + 1) * dx, i));
+            if (j <= i)
+                continue;
+            if (const auto e = d.yExtent(i, j)) {
+                const float cx = px(xv.low + (c + 0.5) * dx);
+                const double middle = (e->low + e->high) / 2, a = d.y(i), b = d.y(j - 1);
+                out.push_back({cx - pixel / 4, py(std::isnan(a) ? middle : a)});
+                out.push_back({cx + pixel / 4, py(std::isnan(b) ? middle : b)});
+            }
+            i = j;
+        }
+        for (; i < last; ++i)
+            if (!std::isnan(d.y(i)))
+                out.push_back({px(d.x(i)), py(d.y(i))});
+        return;
+    }
+    for (std::size_t i = first; i < last; ++i) {
+        const double y = d.y(i);
+        if (std::isnan(y))
+            continue;
+        const Point at{px(d.x(i)), py(y)};
+        if (series.props_.steps && !out.empty())
+            out.push_back({at.x, out.back().y});
+        out.push_back(at);
+    }
+}
+
+void LineChart::paintArea(PaintContext& context, const AreaSeries& area) {
+    const AreaSeries::Props& a = area.props_;
+    if (!a.upper)
+        return;
+    // it fades with its series too
+    const float alpha = area.shown_.value() * a.upper->shown_.value() * (a.lower ? a.lower->shown_.value() : 1.0f);
+    if (alpha <= 0.002f)
+        return;
+    paint::Painter& p = context.painter;
+    const Color color = a.color ? *a.color : colorOf(*a.upper);
+    const Color fill = withAlpha(color, color.a * a.opacity * alpha);
+    const Color fading = a.gradient ? withAlpha(color, 0) : fill;
+    project(*a.upper, p.pixelsPerDip(), points_);
+    if (points_.size() < 2)
+        return;
+    if (a.lower) {
+        project(*a.lower, p.pixelsPerDip(), lower_);
+        p.fillBand(points_, lower_, fill, a.gradient ? withAlpha(color, color.a * a.opacity * alpha * 0.25f) : fill);
+    } else {
+        // down to 0, or to the side of the plot its data is all past
+        const ChartRange yv = yView();
+        const double base = yv.contains(0) ? 0 : yv.low > 0 ? yv.low : yv.high;
+        const float baseline = static_cast<float>(plot_.bottom() - (base - yv.low) / yv.span() * plot_.height);
+        p.fillArea(points_, baseline, fill, fading);
+    }
+    points_.clear();
 }
 
 void LineChart::paintHover(PaintContext& context) {
@@ -590,7 +720,7 @@ void LineChart::paintHover(PaintContext& context) {
     const double tolerance = xv.span() / plot_.width * 6;       // six dips
     for (std::size_t index = 0; index < series_.size(); ++index) {
         const LineSeries& series = *series_[index];
-        if (!series.visible_ || series.shown_.value() < 0.5f)
+        if (!series.visible_ || series.shown_.value() < 0.5f || series.props_.name.source.empty())
             continue;
         const auto i = nearest(series.data_, *snapped);
         if (!i || std::abs(series.data_.x(*i) - *snapped) > tolerance)
@@ -744,19 +874,39 @@ std::optional<platform::Cursor> LineChart::cursorAt(Point point) const {
 }
 
 std::vector<Chart::LegendItem> LineChart::legendItems() const {
+    // its series, then its areas: those with names
     std::vector<LegendItem> items;
-    if (series_.size() < 2)
-        return items;
+    legendTargets_.clear();
     for (std::size_t i = 0; i < series_.size(); ++i) {
         const LineSeries& s = *series_[i];
+        if (s.props_.name.source.empty())
+            continue;
         items.push_back({translate(s.props_.name), s.props_.color ? *s.props_.color : seriesColor(i), s.visible_});
+        legendTargets_.emplace_back(false, i);
+    }
+    for (std::size_t i = 0; i < areas_.size(); ++i) {
+        const AreaSeries& a = *areas_[i];
+        if (a.props_.name.source.empty() || !a.props_.upper)
+            continue;
+        const Color color = a.props_.color ? *a.props_.color : colorOf(*a.props_.upper);
+        items.push_back({translate(a.props_.name), withAlpha(color, color.a * std::max(0.45f, a.props_.opacity)), a.visible_});
+        legendTargets_.emplace_back(true, i);
+    }
+    if (items.size() < 2) {
+        items.clear();
+        legendTargets_.clear();
     }
     return items;
 }
 
 void LineChart::legendItemClicked(std::size_t index) {
-    if (index < series_.size())
-        series_[index]->setVisible(!series_[index]->visible_);
+    if (index >= legendTargets_.size())
+        return;
+    const auto [area, i] = legendTargets_[index];
+    if (area && i < areas_.size())
+        areas_[i]->setVisible(!areas_[i]->visible_);
+    else if (!area && i < series_.size())
+        series_[i]->setVisible(!series_[i]->visible_);
 }
 
 } // namespace glw

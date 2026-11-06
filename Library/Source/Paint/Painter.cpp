@@ -13,6 +13,8 @@ namespace {
 
 constexpr float boxKind = static_cast<float>(VertexKind::Box);
 constexpr float reliefKind = static_cast<float>(VertexKind::Relief);
+constexpr float ringReliefKind = static_cast<float>(VertexKind::RingRelief);
+constexpr float turn = 6.28318530718f;
 
 Vertex texturedVertex(Point position, Point uv, std::uint32_t color, VertexKind kind = VertexKind::Textured) {
     Vertex v;
@@ -197,28 +199,58 @@ void Painter::drawPolyline(std::span<const Point> points, float width, Color col
         const Point d = normalized(points_[i + 1] - points_[i]);
         normals_[i] = Point{-d.y, d.x};
     }
+    // a segment of no length (a point twice) goes the way of the one before it (after it, at the start)
+    for (std::size_t i = 1; i + 1 < n; ++i)
+        if (normals_[i].x == 0 && normals_[i].y == 0)
+            normals_[i] = normals_[i - 1];
+    for (std::size_t i = n - 1; i-- > 1;)
+        if (normals_[i - 1].x == 0 && normals_[i - 1].y == 0)
+            normals_[i - 1] = normals_[i];
 
     DrawCommand& cmd = command(whiteTexture, false);
-    const auto base = static_cast<std::uint32_t>(list_.vertices.size());
-    // four vertices across each point: fringe, side, side, fringe
-    for (std::size_t i = 0; i < n; ++i) {
-        const Point m = i == 0 ? normals_[0] : i == n - 1 ? normals_[n - 2] : miter(normals_[i - 1], normals_[i]);
+    std::uint32_t count = 0;
+    // four vertices across a point, offset by `m` (a normal, or a miter): fringe, side, side, fringe
+    const auto across = [&](Point p, Point m) {
+        const auto at = static_cast<std::uint32_t>(list_.vertices.size());
         const Point outer = m * (core + fringe);
         const Point inner = m * core;
-        const Point p = points_[i];
         list_.vertices.push_back(texturedVertex(p + outer, {}, clear));
         list_.vertices.push_back(texturedVertex(p + inner, {}, solid));
         list_.vertices.push_back(texturedVertex(p - inner, {}, solid));
         list_.vertices.push_back(texturedVertex(p - outer, {}, clear));
-    }
-    // three quads between consecutive points: the outer fringe, the core, the other fringe
-    for (std::size_t i = 0; i + 1 < n; ++i) {
-        const auto a = base + static_cast<std::uint32_t>(4 * i);
-        const auto b = a + 4;
+        return at;
+    };
+    // three quads between two of those: the outer fringe, the core, the other fringe
+    const auto between = [&](std::uint32_t a, std::uint32_t b) {
         for (std::uint32_t k = 0; k < 3; ++k)
             list_.indices.insert(list_.indices.end(), {a + k, a + k + 1, b + k + 1, a + k, b + k + 1, b + k});
+        count += 18;
+    };
+    std::uint32_t previous = across(points_[0], normals_[0]);
+    for (std::size_t i = 1; i < n; ++i) {
+        const Point p = points_[i];
+        if (i == n - 1) {
+            between(previous, across(p, normals_[n - 2]));
+            break;
+        }
+        const Point a = normals_[i - 1], b = normals_[i];
+        const Point mean = (a + b) * 0.5f;
+        const float d2 = mean.x * mean.x + mean.y * mean.y;
+        if (d2 >= 0.25f) {
+            // a turn of 120 degrees or less: mitered (the sides meet, at most twice as far out as a normal)
+            const std::uint32_t at = across(p, mean * (1.0f / d2));
+            between(previous, at);
+            previous = at;
+        } else {
+            // sharper (a jagged signal turning back): beveled. A miter would be far out, and one held in pinches the
+            // line to nothing there: the end of one segment and the start of the next apart, the wedge between filled
+            const std::uint32_t end = across(p, a), start = across(p, b);
+            between(previous, end);
+            between(end, start);
+            previous = start;
+        }
     }
-    cmd.indexCount += static_cast<std::uint32_t>(18 * (n - 1));
+    cmd.indexCount += count;
 }
 
 void flattenBezier(Point from, Point c1, Point c2, Point to, float tolerance, std::vector<Point>& out) {
@@ -318,9 +350,66 @@ void Painter::fillArea(std::span<const Point> points, float baseline, Color far,
     cmd.indexCount += static_cast<std::uint32_t>(12 * (n - 1));
 }
 
+void Painter::fillBand(std::span<const Point> upper, std::span<const Point> lower, Color top, Color bottom) {
+    if (upper.size() < 2 || lower.size() < 2 || (top.a <= 0 && bottom.a <= 0))
+        return;
+    const Transform& t = transform();
+    curve_.resize(upper.size());
+    std::transform(upper.begin(), upper.end(), curve_.begin(), [&](Point p) { return t.map(p); });
+    transformed(lower);
+    float highest = curve_[0].y, lowest = curve_[0].y;
+    for (const std::vector<Point>* chain : {&curve_, &points_})
+        for (const Point& p : *chain) {
+            highest = std::min(highest, p.y);
+            lowest = std::max(lowest, p.y);
+        }
+    const auto colorAt = [&](float y, bool solid) {
+        const Color c = mix(top, bottom, lowest > highest ? (y - highest) / (lowest - highest) : 0.0f);
+        return packColor(solid ? c : withAlpha(c, 0));
+    };
+    const float fringe = 1.0f / pixelsPerDip_;
+    DrawCommand& cmd = command(whiteTexture, false);
+    const auto base = static_cast<std::uint32_t>(list_.vertices.size());
+    const auto nu = static_cast<std::uint32_t>(curve_.size()), nl = static_cast<std::uint32_t>(points_.size());
+    // the upper line: its fringe above each point, the point; the lower: the point, its fringe below
+    for (const Point& p : curve_) {
+        list_.vertices.push_back(texturedVertex({p.x, p.y - fringe}, {}, colorAt(p.y, false)));
+        list_.vertices.push_back(texturedVertex(p, {}, colorAt(p.y, true)));
+    }
+    const std::uint32_t below = base + 2 * nu;
+    for (const Point& p : points_) {
+        list_.vertices.push_back(texturedVertex(p, {}, colorAt(p.y, true)));
+        list_.vertices.push_back(texturedVertex({p.x, p.y + fringe}, {}, colorAt(p.y, false)));
+    }
+    const auto u = [&](std::uint32_t i) { return base + 2 * i + 1; };
+    const auto l = [&](std::uint32_t j) { return below + 2 * j; };
+    std::uint32_t count = 0;
+    // between them: on along whichever line's next point comes first (both left to right)
+    for (std::uint32_t i = 0, j = 0; i + 1 < nu || j + 1 < nl;) {
+        if (j + 1 >= nl || (i + 1 < nu && curve_[i + 1].x <= points_[j + 1].x)) {
+            list_.indices.insert(list_.indices.end(), {u(i), u(i + 1), l(j)});
+            ++i;
+        } else {
+            list_.indices.insert(list_.indices.end(), {u(i), l(j + 1), l(j)});
+            ++j;
+        }
+        count += 3;
+    }
+    for (std::uint32_t i = 0; i + 1 < nu; ++i) {
+        const std::uint32_t a = base + 2 * i, b = a + 2;
+        list_.indices.insert(list_.indices.end(), {a, a + 1, b + 1, a, b + 1, b});
+        count += 6;
+    }
+    for (std::uint32_t j = 0; j + 1 < nl; ++j) {
+        const std::uint32_t a = below + 2 * j, b = a + 2;
+        list_.indices.insert(list_.indices.end(), {a, a + 1, b + 1, a, b + 1, b});
+        count += 6;
+    }
+    cmd.indexCount += count;
+}
+
 void Painter::fillArc(Point center, float inner, float outer, float start, float sweep, float inset, Color innerColor,
-                      Color outerColor) {
-    constexpr float turn = 6.28318530718f;
+                      Color outerColor, ArcShading shading) {
     if (sweep <= 0 || outer <= inner || outer <= 0 || (innerColor.a <= 0 && outerColor.a <= 0))
         return;
     const Transform& t = transform();
@@ -349,19 +438,25 @@ void Painter::fillArc(Point center, float inner, float outer, float start, float
     // its inner edge a point (a pie's slice): no fringe there
     const bool point = r0 <= fringe;
 
-    const std::uint32_t innerSolid = packColor(innerColor), innerClear = packColor(withAlpha(innerColor, 0));
-    const std::uint32_t outerSolid = packColor(outerColor), outerClear = packColor(withAlpha(outerColor, 0));
+    // a vertex's color: by its side (radial), or by its height in the ring (vertical); clear in a fringe
+    const bool vertical = shading == ArcShading::Vertical;
+    const auto colorAt = [&](Point at, bool innerSide, bool solid) {
+        Color color = vertical ? mix(innerColor, outerColor, std::clamp((at.y - (c.y - r1)) / (2 * r1), 0.0f, 1.0f))
+                               : innerSide ? innerColor : outerColor;
+        return packColor(solid ? color : withAlpha(color, 0));
+    };
     DrawCommand& cmd = command(whiteTexture, false);
     const auto first = static_cast<std::uint32_t>(list_.vertices.size());
     const auto along = [](float angle) { return Point{std::cos(angle), std::sin(angle)}; };
+    const auto put = [&](Point at, bool innerSide, bool solid) { list_.vertices.push_back(texturedVertex(at, {}, colorAt(at, innerSide, solid))); };
     // four across each step: the inner fringe, the inner edge, the outer edge, the outer fringe
     for (int k = 0; k <= segments; ++k) {
         const float f = static_cast<float>(k) / static_cast<float>(segments);
         const Point din = along(start + in0 + (sweep - 2 * in0) * f), dout = along(start + out0 + (sweep - 2 * out0) * f);
-        list_.vertices.push_back(texturedVertex(c + din * (point ? r0 : std::max(0.0f, r0 - fringe / 2)), {}, point ? innerSolid : innerClear));
-        list_.vertices.push_back(texturedVertex(c + din * (point ? r0 : r0 + fringe / 2), {}, innerSolid));
-        list_.vertices.push_back(texturedVertex(c + dout * (r1 - fringe / 2), {}, outerSolid));
-        list_.vertices.push_back(texturedVertex(c + dout * (r1 + fringe / 2), {}, outerClear));
+        put(c + din * (point ? r0 : std::max(0.0f, r0 - fringe / 2)), true, point);
+        put(c + din * (point ? r0 : r0 + fringe / 2), true, true);
+        put(c + dout * (r1 - fringe / 2), false, true);
+        put(c + dout * (r1 + fringe / 2), false, false);
     }
     std::uint32_t count = 0;
     const auto strip = [&](std::uint32_t a, std::uint32_t b) {
@@ -376,10 +471,8 @@ void Painter::fillArc(Point center, float inner, float outer, float start, float
         const auto cap = [&](std::uint32_t column, Point out) {
             const auto at = static_cast<std::uint32_t>(list_.vertices.size());
             for (std::uint32_t k = 0; k < 4; ++k) {
-                Vertex v = list_.vertices[column + k];
-                v.position = v.position + out * fringe;
-                v.color = k < 2 ? innerClear : outerClear;
-                list_.vertices.push_back(v);
+                const Point moved = list_.vertices[column + k].position + out * fringe;
+                put(moved, k < 2, false);
             }
             strip(column, at);
         };
@@ -388,6 +481,67 @@ void Painter::fillArc(Point center, float inner, float outer, float start, float
         cap(first + 4 * static_cast<std::uint32_t>(segments), {-std::sin(end), std::cos(end)});
     }
     cmd.indexCount += count;
+}
+
+void Painter::fillArcRelief(Point center, float inner, float outer, float start, float sweep, float inset, float height,
+                            float bevel, Color color) {
+    if (sweep <= 0 || outer <= inner || outer <= 0 || color.a <= 0)
+        return;
+    const Transform& t = transform();
+    const Point c = t.map(center);
+    const float r0 = std::max(0.0f, inner) * t.scale, r1 = outer * t.scale;
+    if (culled({c.x - r1, c.y - r1, 2 * r1, 2 * r1}))
+        return;
+    const bool whole = sweep >= turn - 1e-4f;
+    const float half = std::min(sweep, turn) / 2;
+    const float gap = whole ? 0.0f : std::clamp(inset * t.scale, 0.0f, 255.0f);
+    // in its own frame (its middle along +x): what its arcs and sides reach, and a pixel more
+    float lowX = 0, highX = 0, lowY = 0, highY = 0;
+    bool any = false;
+    const auto reach = [&](float r, float angle) {
+        const float x = r * std::cos(angle), y = r * std::sin(angle);
+        lowX = any ? std::min(lowX, x) : x;
+        highX = any ? std::max(highX, x) : x;
+        lowY = any ? std::min(lowY, y) : y;
+        highY = any ? std::max(highY, y) : y;
+        any = true;
+    };
+    for (float r : {r0, r1}) {
+        for (float angle : {-half, 0.0f, half})
+            reach(r, angle);
+        if (half > turn / 4) {
+            reach(r, turn / 4);
+            reach(r, -turn / 4);
+        }
+        if (half >= turn / 2 - 1e-4f)
+            reach(r, turn / 2);
+    }
+    const float margin = 1.0f / pixelsPerDip_ + 0.5f;
+    lowX -= margin;
+    lowY -= margin;
+    highX += margin;
+    highY += margin;
+    const float middle = start + half;
+    const Point axis{std::cos(middle), std::sin(middle)}, across{-axis.y, axis.x};
+    DrawCommand& cmd = command(whiteTexture, true);
+    const auto base = static_cast<std::uint32_t>(list_.vertices.size());
+    const std::uint32_t packed = packColor(color);
+    // its half angle and how far its sides are in, packed (see Painter.hlsl's kind 4); a whole ring, no sides
+    const float sides = whole ? -1.0f : half + 8.0f * std::round(gap * 16);
+    for (Point local : {Point{lowX, lowY}, Point{highX, lowY}, Point{highX, highY}, Point{lowX, highY}}) {
+        Vertex v;
+        v.position = c + axis * local.x + across * local.y;
+        v.uv = local;
+        v.halfSize = {r0, r1};
+        v.radius = sides;
+        v.border = std::max(bevel * t.scale, 0.5f);        // the bevel
+        v.kind = ringReliefKind;
+        v.blur = height * t.scale;                         // the height
+        v.color = packed;
+        list_.vertices.push_back(v);
+    }
+    list_.indices.insert(list_.indices.end(), {base, base + 1, base + 2, base, base + 2, base + 3});
+    cmd.indexCount += 6;
 }
 
 // ---- images ----

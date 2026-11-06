@@ -59,14 +59,24 @@ public:
     // line. `far` where the line is farthest from the baseline, `near` at the baseline, eased between. Its edge along the
     // line has a fringe; its sides and the baseline none (what is beside it, a line over it, covers them).
     void fillArea(std::span<const Point> points, float baseline, Color far, Color near);
+    // The area between two lines (each left to right, their points at any x: a band, a range): `top` at its highest,
+    // `bottom` at its lowest, eased between. Its edges along the lines have fringes; its ends none.
+    void fillBand(std::span<const Point> upper, std::span<const Point> lower, Color top, Color bottom);
     // A sector of a ring (a slice of a pie, of a donut): around `center` from the radius `inner` (0: to the center) to
     // `outer`, from the angle `start` over `sweep` (radians: 0 to the right, growing clockwise as y goes down). Its two
     // sides are moved in by `inset` dips each, parallel: sectors side by side `2 * inset` apart all along. `innerColor` at
     // the inner radius, `outerColor` at the outer, eased between. A whole turn is a ring, without sides.
-    void fillArc(Point center, float inner, float outer, float start, float sweep, float inset, Color innerColor, Color outerColor);
+    // Vertical: `innerColor` at the top of the ring, `outerColor` at its bottom instead (lit from above).
+    enum class ArcShading : std::uint8_t { Radial, Vertical };
+    void fillArc(Point center, float inner, float outer, float start, float sweep, float inset, Color innerColor, Color outerColor,
+                 ArcShading shading = ArcShading::Radial);
     void fillArc(Point center, float inner, float outer, float start, float sweep, float inset, Color color) {
         fillArc(center, inner, outer, start, sweep, inset, color, color);
     }
+    // ... a relief (as fillRelief is): `height` dips above what it is on, its edges rounding down over `bevel` dips, lit by
+    // the light of the target; its flat top in `color`. A slice of a pie as a control of a lit style is.
+    void fillArcRelief(Point center, float inner, float outer, float start, float sweep, float inset, float height, float bevel,
+                       Color color);
 
     // ---- images ----
 

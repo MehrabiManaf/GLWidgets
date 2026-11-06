@@ -161,17 +161,21 @@ for zooming and panning a canvas) and a stack of clip rectangles apply to what i
   where a ray toward the light leaves it); a metal's highlight is of its color, and its surface brushed (lines half a
   dip high, each a little lighter or darker). The light (`paint::Lighting`: a direction, ambient, diffuse, specular,
   shininess, the rim's shadow, the finish: metal, brushed) is the fragment shader's uniform buffer, the Renderer's (`setLighting`, the theme's); an
-  engine drawing the draw lists itself pushes it too.
-- **Lines and polygons:** polylines of any width with mitered joins, and convex polygons, tessellated on the CPU with a
-  one-pixel anti-aliasing fringe. This is what charts and node connections are made of. For charts also: the area
+  engine drawing the draw lists itself pushes it too. A sector of a ring is a relief as well (`fillArcRelief`: a slice of
+  a pie as a lit style's control), lit the same way from its own distance field (two radii and two sides moved in), a
+  metal one turned (its lines around it).
+- **Lines and polygons:** polylines of any width, and convex polygons, tessellated on the CPU with a one-pixel
+  anti-aliasing fringe. A polyline's joints are mitered where it turns by 120 degrees or less, beveled where it turns
+  more sharply (a jagged signal turning back on itself), so that it is as wide everywhere; a miter held in there would
+  pinch it to nothing at each such turn, and a line of many would look dashed. This is what charts and node connections are made of. For charts also: the area
   between a line and a level (`fillArea`: a chart's area under its line, in a gradient from the line down), and a sector
   of a ring (`fillArc`: a slice of a pie or a donut, its sides moved in so that slices side by side are a gap apart
-  all along, a color at its inner radius and another at its outer).
+  all along, a color at its inner radius and another at its outer, or one at its top and another at its bottom).
 - **Images:** a texture (by id) on a rectangle, tinted.
 - **Masks:** the red channel of a texture as coverage, in a color. Glyphs are masks of the glyph atlas (see [Text](#text)).
 
 **The vertex format and one shader are the whole contract of a draw list.** A vertex has a position, texture coordinates,
-the parameters of a box (half size, corner radius, border width, blur), its kind (textured, box, mask) and an RGBA8
+the parameters of a box (half size, corner radius, border width, blur), its kind (textured, box, mask, relief, ring relief) and an RGBA8
 color. A command is a range of indices, a clip rectangle and a texture id. One pipeline with one shader pair draws all of it
 (`Library/Shaders/Painter.hlsl`), with premultiplied alpha blending. An engine that draws GLWidgets' lists itself needs
 exactly that shader and one pipeline.
@@ -751,14 +755,16 @@ shape, the edges of a borderless window the resize shapes of its sides and corne
 ### Charts
 
 Charts (`Library/Include/GLWidgets/Charts`) are widgets made for data that changes as it comes: a feed of measures, of
-events, of shares. Four for now: **lines** over values or time (`LineChart`), **pies** and donuts (`PieChart`),
-**treemaps** (`TreeMap`), and **bars**, stacked, grouped or in percent, standing or lying (`BarChart`). What they share
+events, of shares. Five for now: **lines** over values or time (`LineChart`), **pies**, donuts and sunbursts
+(`PieChart`), **treemaps** (`TreeMap`), **bars**, stacked, grouped or in percent, standing or lying (`BarChart`), and
+**bar races** (`BarRace`). What they share
 is in `Chart`:
 
 - **The theme.** `ChartStyle` (`Theme::chart`): the grid, the axes, the labels, the crosshair; ten series colors from the
   color scheme, the accent first, the others told apart by hue and as bright (Dusk, Sand and Turquoise have their own);
   bars and tiles raised as the style's controls are (`barBevel`, `barRadius`: lit from above in Studio, rounded and flat
-  in Fluid, square and flat in Plain, reliefs in Plastic and Metal; a pie's slices darker toward the center there).
+  in Fluid, square and flat in Plain, reliefs in Plastic and Metal; a pie's slices the same: lit from above with a light line along their top in Studio, flat
+  in Fluid and Plain, reliefs in Plastic and Metal).
   A chart may have its own (`setStyle`).
 - **Motion, optional.** New data, a new view, a series hidden are eased to (the theme's motions; none in Plain; none when
   `setAnimated(false)`): the axes glide as data comes, bars grow to their new lengths, slices to their new angles, tiles
@@ -791,9 +797,24 @@ when dragged back to its newest data. The right button drags a rectangle to zoom
 showed first. The mouse over it shows a line at the nearest x, a dot on each series there, and their values. Its y axis
 is on the start side; x grows to the right in either direction, as time does on a clock's chart.
 
+Its areas (`AreaSeries`, as Qt's `QAreaSeries`) are of a color and an opacity of their own: under a series's line down to
+the axis (fading down, if asked), or between two series's lines (a band: a range, a spread around a mean; the two
+series' points at any x, the band zipped between them: `Painter::fillBand`). They are drawn under the lines, have their
+own legend items, and fade with their series; a series may be an area's edge only (no line of its own; without a name,
+in neither the legend nor the tooltip).
+
 **Pies** (`PieChart`): slices of a circle or of a ring (`hole`), a gap apart all along (`ChartStyle::gap`), each with its
 share in it where it fits; a donut's hole shows the total, or the value of the slice under the mouse, which comes out a
-little. The first time it shows, its slices sweep around into place.
+little. The first time it shows, its slices sweep around into place. A slice may have parts (`PieSlice::children`): rings
+further out, each part within its parent's angle (a sunburst, as a disk usage analyzer shows folders), the parts shades
+of their parent's color, rings a gap apart. Zooming is going into a slice: a click on one with parts makes it the
+whole, eased as a zoomable sunburst is: the part of the turn it had opens to all of it (its siblings squeezed out) and
+its rings move in. Rings are further apart than a slice comes out under the mouse (along its middle: a wide slice's far
+side comes in as much), so that it goes into neither the ring after it nor the one before; a click in the hole, a right click or Backspace goes back up. The hole then shows its name and total,
+the legend its parts. Slices are matched by the labels on their paths, so new data eases each from where it was.
+Of many parts (heavy data), only the `top` largest of each slice show (found again as the values change: a partial sort
+of each slice's parts), the rest together as one slice of others, a neutral gray, in the legend too (with their count; a
+click hides them all); the others' slice grows and shrinks as parts leave the top ones or come into them.
 
 **Treemaps** (`TreeMap`): nodes as rectangles as large as their share of their parent, squarified (Bruls, Huizing and
 van Wijk: as near to squares as they can be), a few levels at once (a node with children: its name along its top, its
@@ -809,8 +830,27 @@ smoothly as one comes (categories counted from the first ever appended, so that 
 The wheel zooms along the categories, a drag pans them, a double click shows what it showed first; the value axis is
 fitted to what shows. A series hidden shrinks out of the stacks.
 
-`chart_demo` shows the four, fed live: three series at 200 points a second each over a minute (and ten minutes of
-history to pan into), shares that drift, a second's counts appended every second, a project's files changing now and
+**Bar races** (`BarRace`): items ranked by their values as bars lying from the start side, the highest at the top; all of
+them, a few rows shown at once and the rest scrolled to (the wheel, eased; a drag; the style's scroll bar at the end side,
+as a scroll area's: its thumb dragged, its track pressed for a page; with Ctrl the wheel shows more rows or fewer). Or
+only the `top` ones, found by a partial sort (n log k), the rest one bar of others under them (gray, their parts' sums,
+their count; the scale fitted to the top ones, so that it is cut at the end of the plot when it is longer): one that
+comes into the top rises out of the others' bar, one that leaves sinks into it. As the values change (a period after another, shown large
+in a corner), the bars slide to their new places and grow or shrink; one going further than a screen of rows comes from
+a screen away, the way it comes, not across all of them. The value axis is fitted to the highest bar that shows, its
+ticks gliding with the scale, so that the ranks far down are as readable as the first. A bar may be stacked of parts
+(what each item's value is made of, colored by part: the legend names them, and a click takes one out of every bar, the
+ranks found again). Built for heavy data: a value changes in constant time and only marks the race to be painted; the
+items' values, places and ranks are kept side by side in arrays; once a frame all of them are ranked again from the
+ranking they had (most move a little if at all: by insertion, nearly linear, within a budget; a sort when they are all
+over the place, and at once the next time), and only the rows that show are painted: twenty thousand items of three
+parts, all changing, in 2.1 ms a frame (2.5 ms changed at random), two hundred thousand in 31 ms (`glw_benchmarks`). A
+change shows over as long as the time since the one before, linearly, so that a race flows on at the pace its data
+comes (or over `Props::pace`).
+
+`chart_demo` shows them all, fed live: a race of 500 packages' monthly downloads by system (`--race N` of them), three series at 200 points a second each over a minute (and ten minutes of
+history to pan into; an area under one, a band of the range around another), shares that drift in rings (regions, their
+countries, a few cities), a second's counts appended every second, a project's files changing now and
 then; the style, the colors, the motion and the bars' layout chosen above them.
 
 Still to come: more kinds (scatter, area stacked, candlesticks, histograms, heat maps, gauges), logarithmic axes, a
