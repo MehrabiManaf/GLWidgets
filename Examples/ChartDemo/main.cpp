@@ -88,25 +88,21 @@ struct Demo {
         auto donut = std::make_unique<glw::PieChart>(
             glw::PieChart::Props{.title = tr("Requests by region, country and city"), .hole = 0.38f, .totalLabel = tr("requests")});
         pie = donut.get();
+        // a slice of a value, a slice of parts
+        const auto leaf = [](glw::LocalizedText label, double value) { return glw::PieSlice{.label = std::move(label), .value = value}; };
+        const auto group = [](glw::LocalizedText label, std::vector<glw::PieSlice> parts) {
+            return glw::PieSlice{.label = std::move(label), .children = std::move(parts)};
+        };
         regions = {
-            {tr("Europe"), 0, {}, {{tr("Germany"), 120}, {tr("France"), 90}, {tr("United Kingdom"), 85}, {tr("Italy"), 60}, {tr("Spain"), 45}}},
-            {tr("Asia"),
-             0,
-             {},
-             {{tr("Iran"), 0, {}, {{tr("Tehran"), 70}, {tr("Isfahan"), 30}, {tr("Shiraz"), 22}, {tr("Tabriz"), 15}}},
-              {tr("China"), 110},
-              {tr("India"), 80},
-              {tr("Japan"), 60},
-              {tr("Turkey"), 25}}},
-            {tr("North America"),
-             0,
-             {},
-             {{tr("United States"), 0, {}, {{tr("California"), 90}, {tr("Texas"), 60}, {tr("New York"), 50}}},
-              {tr("Canada"), 50},
-              {tr("Mexico"), 40}}},
-            {tr("South America"), 0, {}, {{tr("Brazil"), 70}, {tr("Argentina"), 30}, {tr("Chile"), 20}}},
-            {tr("Africa"), 0, {}, {{tr("Nigeria"), 35}, {tr("Egypt"), 30}, {tr("South Africa"), 25}}},
-            {tr("Oceania"), 0, {}, {{tr("Australia"), 35}, {tr("New Zealand"), 10}}},
+            group(tr("Europe"), {leaf(tr("Germany"), 120), leaf(tr("France"), 90), leaf(tr("United Kingdom"), 85), leaf(tr("Italy"), 60),
+                                 leaf(tr("Spain"), 45)}),
+            group(tr("Asia"), {group(tr("Iran"), {leaf(tr("Tehran"), 70), leaf(tr("Isfahan"), 30), leaf(tr("Shiraz"), 22), leaf(tr("Tabriz"), 15)}),
+                               leaf(tr("China"), 110), leaf(tr("India"), 80), leaf(tr("Japan"), 60), leaf(tr("Turkey"), 25)}),
+            group(tr("North America"), {group(tr("United States"), {leaf(tr("California"), 90), leaf(tr("Texas"), 60), leaf(tr("New York"), 50)}),
+                                        leaf(tr("Canada"), 50), leaf(tr("Mexico"), 40)}),
+            group(tr("South America"), {leaf(tr("Brazil"), 70), leaf(tr("Argentina"), 30), leaf(tr("Chile"), 20)}),
+            group(tr("Africa"), {leaf(tr("Nigeria"), 35), leaf(tr("Egypt"), 30), leaf(tr("South Africa"), 25)}),
+            group(tr("Oceania"), {leaf(tr("Australia"), 35), leaf(tr("New Zealand"), 10)}),
         };
         pie->setSlices(regions);
 
@@ -341,7 +337,7 @@ int main(int argc, char** argv) {
             app.setStyle(*style, false);
         if (colors)
             app.setColorScheme(*colors, false);
-        Demo demo{app, rate};
+        Demo demo{.app = app, .rate = rate};
         demo.racers = racers;
         app.openWindow({.title = tr("Charts"), .size = {1280, 820}}, demo.build());
         demo.start();

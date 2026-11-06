@@ -32,6 +32,14 @@ bool near(double a, double b, double within = 1e-6) {
     return std::abs(a - b) <= within;
 }
 
+// A slice of a value, a slice of parts.
+PieSlice leaf(std::string label, double value) {
+    return {.label = std::move(label), .value = value};
+}
+PieSlice group(std::string label, std::vector<PieSlice> parts) {
+    return {.label = std::move(label), .children = std::move(parts)};
+}
+
 // A chart alone in a root 600 x 400, painted (laid out) once.
 template <class T>
 struct Shown {
@@ -277,7 +285,7 @@ TEST(aLineChartOfAMillionPointsDrawsWhatItsPixelsShow) {
 
 TEST(aPieChartsSlicesAreTheirShares) {
     Shown<PieChart> c(PieChart::Props{.hole = 0.5f});
-    c.chart->setSlices({{"a", 1}, {"b", 1}, {"c", 2}});
+    c.chart->setSlices({leaf("a", 1), leaf("b", 1), leaf("c", 2)});
     c.paint();
     // from the top, clockwise: a (a quarter), b (a quarter), c (a half)
     const Rect r = Rect{0, 0, 600, 400};
@@ -306,7 +314,7 @@ TEST(aPieChartEasesToNewValues) {
     tests::testScheduler().setAnimationsEnabled(true);
     {
         Shown<PieChart> c;
-        c.chart->setSlices({{"a", 1}, {"b", 1}});
+        c.chart->setSlices({leaf("a", 1), leaf("b", 1)});
         tests::advance(std::chrono::seconds(2));
         c.chart->setValue(0, 3);
         CHECK(c.chart->shownValue(0) == 1);
@@ -484,7 +492,7 @@ TEST(aPieChartsPartsAreRingsFurtherOut) {
     Shown<PieChart> c(PieChart::Props{.hole = 0.3f});
     // two halves, the first of two parts (a quarter each), one of them of two (an eighth each)
     c.chart->setLegendVisible(false);
-    c.chart->setSlices({{"a", 0, {}, {{"a1", 0, {}, {{"x", 1}, {"y", 1}}}, {"a2", 2}}}, {"b", 4}});
+    c.chart->setSlices({group("a", {group("a1", {leaf("x", 1), leaf("y", 1)}), leaf("a2", 2)}), leaf("b", 4)});
     c.paint();
     const Point center{300, 200};
     const float radius = 200 - 7 - 2, inner = radius * 0.3f, ring = (radius - inner) / 3;
@@ -651,7 +659,7 @@ TEST(aPieChartShowsItsTopPartsAndTheOthersAsOne) {
     c.chart->setLegendVisible(false);
     std::vector<PieSlice> slices;
     for (int i = 0; i < 10; ++i)
-        slices.push_back({"s" + std::to_string(i), static_cast<double>(i == 7 ? 100 : 10 - i)});
+        slices.push_back(leaf("s" + std::to_string(i), i == 7 ? 100 : 10 - i));
     c.chart->setSlices(slices);
     c.paint();
     // the top three (s7, s0, s1) in their order, then the others (s2... the rest: 8 + 7 + 6 + 5 + 4 + 2 + 1 = 33)

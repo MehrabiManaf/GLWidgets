@@ -105,7 +105,6 @@ const std::vector<CatalogEntry>& catalog() {
 }
 
 constexpr float connectorRoom = 22;     // a pin's connector, on the node's side of its row
-constexpr float nodeRadius = 8;
 
 class Graph;
 class NodeView;

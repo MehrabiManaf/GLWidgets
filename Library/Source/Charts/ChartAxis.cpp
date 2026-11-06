@@ -88,7 +88,7 @@ double approximateSeconds(const TimeStep& s) {
 constexpr const char* monthNames[] = {"Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"};
 
 std::string dayLabel(const std::tm& t) {
-    char out[16];
+    char out[32];
     std::snprintf(out, sizeof out, "%d %s", t.tm_mday, monthNames[std::clamp(t.tm_mon, 0, 11)]);
     return out;
 }
@@ -236,7 +236,7 @@ std::string formatTime(double seconds, const TimeTicks& ticks) {
     const double fraction = seconds - whole;
     const std::tm t = localTime(static_cast<std::time_t>(whole));
     const bool midnight = t.tm_hour == 0 && t.tm_min == 0 && t.tm_sec == 0 && fraction < 1e-6;
-    char out[32];
+    char out[64];
     switch (ticks.unit) {
     case TimeUnit::Millisecond: {
         const int decimals = ticks.step >= 0.1 - 1e-9 ? 1 : ticks.step >= 0.01 - 1e-9 ? 2 : 3;
@@ -276,7 +276,7 @@ std::string formatTimeFully(double seconds, TimeUnit unit, bool date) {
         return "\xE2\x80\x93";
     const double whole = std::floor(seconds);
     const std::tm t = localTime(static_cast<std::time_t>(whole));
-    char day[24], time[24];
+    char day[48], time[48];         // (room for any int: a compiler counts them so)
     std::snprintf(day, sizeof day, "%04d-%02d-%02d", t.tm_year + 1900, t.tm_mon + 1, t.tm_mday);
     switch (unit) {
     case TimeUnit::Year:
