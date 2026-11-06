@@ -45,6 +45,26 @@ jobs:
       - name: Test
         run: ctest --preset unix-release
 
+  # GCC, Debug: the contract checks on (GLW_EXPECTS, GLW_ASSERT), what a Release build leaves out. The tests only: the
+  # examples are the Release jobs'.
+  linux-debug:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - name: Install build tools and SDL3's dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ninja-build pkg-config \
+            libx11-dev libxext-dev libxrandr-dev libxcursor-dev libxfixes-dev libxi-dev libxss-dev libxtst-dev libxkbcommon-dev \
+            libwayland-dev wayland-protocols libdecor-0-dev libegl1-mesa-dev libdrm-dev libgbm-dev \
+            libdbus-1-dev libibus-1.0-dev libudev-dev
+      - name: Configure
+        run: cmake --preset unix-debug
+      - name: Build
+        run: cmake --build --preset unix-debug --target glw_tests
+      - name: Test
+        run: ctest --preset unix-debug
+
   # Apple Clang: Metal.
   macos:
     runs-on: macos-15
