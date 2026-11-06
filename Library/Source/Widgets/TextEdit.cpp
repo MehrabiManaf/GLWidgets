@@ -650,6 +650,10 @@ void TextEdit::arrangeContent(const Rect& content) {
     showBar_ = static_cast<double>(lines_.size()) * lineHeight_ > content.height + 0.5;
     if (showBar_)
         text_.width = std::max(0.0f, text_.width - barWidth);
+    // a bar across under the lines when one laid out so far is longer than shows
+    showAcross_ = maximumOffsetX() > 0;
+    if (showAcross_)
+        text_.height = std::max(0.0f, text_.height - barWidth);
     offsetY_ = std::clamp(offsetY_, 0.0, maximumOffsetY());
     offsetX_ = std::clamp(offsetX_, 0.0f, maximumOffsetX());
 }
@@ -723,29 +727,34 @@ void TextEdit::paint(PaintContext& context) {
     }
 }
 
-Rect TextEdit::verticalTrack() const {
-    const float width = context() ? context()->theme.scrollBar.width : 8.0f;
-    return {area_.right() - width, area_.y, width, area_.height};
-}
-
-Rect TextEdit::verticalThumb() const {
-    const Rect track = verticalTrack();
-    const double total = std::max(1.0, static_cast<double>(lines_.size()) * lineHeight_);
-    const float minimum = context() ? context()->theme.scrollBar.minimumThumb : 24.0f;
-    const float length = std::min(track.height, std::max(minimum, static_cast<float>(track.height * text_.height / total)));
-    const double room = maximumOffsetY();
-    const float at = room > 0 ? static_cast<float>((track.height - length) * offsetY_ / room) : 0.0f;
-    return {track.x, track.y + at, track.width, length};
+void TextEdit::placeBars() {
+    // (a code editor's lines run left to right in either direction: its bar at the right, as its gutter is at the left)
+    const UiContext* ui = context();
+    if (!ui) {
+        bar_.hide();
+        barAcross_.hide();
+        return;
+    }
+    const ScrollBarStyle& s = ui->theme.scrollBar;
+    if (showBar_)
+        bar_.place({area_.right() - s.width, area_.y, s.width, showAcross_ ? area_.height - s.width : area_.height},
+                   static_cast<double>(lines_.size()) * lineHeight_, text_.height, offsetY_, smoothY_.target(offsetY_), false, s.minimumThumb);
+    else
+        bar_.hide();
+    if (showAcross_)
+        barAcross_.place({text_.x, text_.bottom(), text_.width, s.width}, widest_ + textPad + 4 * digitWidth_, text_.width, offsetX_,
+                         smoothX_.target(offsetX_), false, s.minimumThumb);
+    else
+        barAcross_.hide();
 }
 
 void TextEdit::paintOver(PaintContext& context) {
-    if (!showBar_)
-        return;
-    const ScrollBarStyle& s = context.ui.theme.scrollBar;
-    context.painter.fillRect(verticalTrack(), s.track);
-    const VisualState state{.hovered = barHovered_ || thumbGrab_, .pressed = thumbGrab_.has_value()};
-    barWide_.animateTo(scheduler(), state.hovered ? 1.0f : 0.0f, context.ui.theme.motion.fast);
-    paintScrollThumb(context.painter, verticalThumb(), true, true, barWide_.value(), s.thumb.resolve(state), s.cornerRadius);
+    // a line laid out now that is longer than shows: a bar across from the next layout on
+    if ((maximumOffsetX() > 0) != showAcross_)
+        invalidateLayout();
+    placeBars();
+    bar_.paint(context, context.ui.theme.scrollBar);
+    barAcross_.paint(context, context.ui.theme.scrollBar);
 }
 
 // ---- the caret's blink, the input method ----
@@ -777,51 +786,43 @@ void TextEdit::updateInputArea() {
 // ---- events ----
 
 std::optional<platform::Cursor> TextEdit::cursorAt(Point point) const {
-    // over its lines, and while they are selected by a drag; the arrow over its bar
-    const bool overBar = showBar_ && verticalTrack().contains(point);
-    if (selecting_ || (!thumbGrab_ && !overBar && text_.contains(point)))
+    // over its lines, and while they are selected by a drag; the arrow over its bars
+    const bool overBar = bar_.track().contains(point) || barAcross_.track().contains(point);
+    if (selecting_ || (!bar_.dragging() && !barAcross_.dragging() && !overBar && text_.contains(point)))
         return platform::Cursor::Text;
     return Widget::cursorAt(point);
 }
 
 void TextEdit::onHoverChanged(bool hovered) {
-    if (!hovered && barHovered_) {
-        barHovered_ = false;
-        invalidatePaint();
+    if (!hovered) {
+        bar_.leave();
+        barAcross_.leave();
     }
 }
 
 void TextEdit::onMouse(MouseEvent& event) {
     switch (event.type) {
     case MouseEventType::Wheel: {
+        // a step from where it is going (further as the wheel turns faster; down: snapped to lines); a touchpad's fractions
+        // as they come
         const bool across = platform::hasAny(event.modifiers, platform::KeyModifiers::Shift) || event.wheelDelta.x != 0;
         const float by = event.wheelDelta.x != 0 ? event.wheelDelta.x : -event.wheelDelta.y;
-        if (event.wheelPrecise) {
-            // by fractions of a step (a touchpad, a fine wheel): eased on from where it is going, not boosted nor
-            // snapped to lines
-            const UiContext* ui = context();
-            const Duration duration = ui ? Duration(ui->theme.motion.scroll) : Duration::zero();
-            if (across) {
-                const double to = std::clamp(smoothX_.target(offsetX_) + by * wheelLines * 2 * digitWidth_, 0.0,
-                                             static_cast<double>(maximumOffsetX()));
-                if (to != smoothX_.target(offsetX_))
-                    smoothX_.scrollTo(scheduler(), offsetX_, to, duration);
-            } else {
-                const double to = std::clamp(smoothY_.target(offsetY_) - event.wheelDelta.y * wheelLines * lineHeight_, 0.0, maximumOffsetY());
-                if (to != smoothY_.target(offsetY_))
-                    smoothY_.scrollTo(scheduler(), offsetY_, to, duration);
-            }
-            event.handled = true;
-            break;
+        const UiContext* ui = context();
+        const Duration duration = ui ? Duration(ui->theme.motion.scroll) : Duration::zero();
+        WheelScroll w;
+        if (across) {
+            w = wheelScroll(smoothX_, scheduler(), offsetX_, by * wheelLines * 2 * digitWidth_, event.wheelPrecise, maximumOffsetX());
+            if (w.moved)
+                smoothX_.scrollTo(scheduler(), offsetX_, w.target, duration, w.aimed);
+        } else {
+            w = wheelScroll(smoothY_, scheduler(), offsetY_, -event.wheelDelta.y * wheelLines * lineHeight_, event.wheelPrecise, maximumOffsetY());
+            if (w.moved && w.aimed)
+                scrollSmoothly(w.target, static_cast<float>(smoothX_.target(offsetX_)), true);
+            else if (w.moved)
+                smoothY_.scrollTo(scheduler(), offsetY_, w.target, duration);
         }
-        // from where it is going (where it aimed, down: snapped to lines): turned again, it goes further
-        const double y = smoothY_.target(offsetY_);
-        const float x = static_cast<float>(smoothX_.target(offsetX_));
-        if (across)
-            scrollSmoothly(y, x + static_cast<float>(smoothX_.boosted(scheduler(), by * wheelLines * 2 * digitWidth_)));
-        else
-            scrollSmoothly(smoothY_.aim(scheduler(), offsetY_, -event.wheelDelta.y * wheelLines * lineHeight_, 0, maximumOffsetY()), x, true);
-        event.handled = true;
+        // what does not move this one may move what is around it
+        event.handled = w.moved;
         break;
     }
     case MouseEventType::Press: {
@@ -829,16 +830,9 @@ void TextEdit::onMouse(MouseEvent& event) {
             return;
         event.handled = true;
         focus();
-        if (showBar_ && verticalTrack().contains(event.position)) {
-            const Rect thumb = verticalThumb();
-            if (thumb.contains(event.position))
-                thumbGrab_ = event.position.y - thumb.y;
-            else
-                scrollSmoothly(smoothY_.target(offsetY_) + (event.position.y < thumb.y ? -1.0 : 1.0) * text_.height,
-                               static_cast<float>(smoothX_.target(offsetX_)));
-            invalidatePaint();
+        placeBars();
+        if (bar_.mouse(event) || barAcross_.mouse(event))       // a thumb pressed, or a track: a page
             return;
-        }
         const TextPosition at = positionAt(event.position);
         clicks_ = std::min(event.clicks, 3);
         if (clicks_ == 2) {
@@ -855,14 +849,8 @@ void TextEdit::onMouse(MouseEvent& event) {
         break;
     }
     case MouseEventType::Move:
-        if (const bool over = showBar_ && verticalTrack().contains(event.position); over != barHovered_) {
-            barHovered_ = over;
-            invalidatePaint();
-        }
-        if (thumbGrab_) {
-            const Rect track = verticalTrack();
-            const double room = std::max(1.0f, track.height - verticalThumb().height);
-            setVerticalOffset((event.position.y - *thumbGrab_ - track.y) / room * maximumOffsetY());
+        placeBars();
+        if (const bool down = bar_.mouse(event), across = barAcross_.mouse(event); down || across) {     // a thumb dragged
             event.handled = true;
         } else if (selecting_) {
             moveTo(positionAt(event.position), true);
@@ -873,7 +861,8 @@ void TextEdit::onMouse(MouseEvent& event) {
         if (event.button != platform::MouseButton::Left)
             return;
         selecting_ = false;
-        thumbGrab_.reset();
+        bar_.mouse(event);
+        barAcross_.mouse(event);
         invalidatePaint();
         event.handled = true;
         break;

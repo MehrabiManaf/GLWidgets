@@ -26,6 +26,7 @@
 // mouse is lit, its parts, total and rank by the mouse.
 #include <GLWidgets/Charts/Chart.hpp>
 #include <GLWidgets/Export.hpp>
+#include <GLWidgets/Widgets/ScrollBar.hpp>
 
 #include <chrono>
 #include <cstdint>
@@ -153,13 +154,10 @@ private:
     bool dragging_ = false;
     Point dragFrom_;
     double dragScroll_ = 0;
-    // its scroll bar: as a scroll area's
-    enum class Part : std::uint8_t { None, Track, Thumb };
-    Rect track_, thumb_;
-    Part hoveredPart_ = Part::None;
-    bool thumbDragging_ = false;
-    float grab_ = 0;                                // where on the thumb it was pressed
-    Animation wide_;
+    // its scroll bar, every scrolling widget's (in rows): where it is, as last painted
+    void placeBar();
+    Rect barTrack_;
+    ScrollBar bar_{Orientation::Vertical, [this](double rank, bool eased) { scrollTo(rank, eased); }, [this] { invalidatePaint(); }};
 };
 
 } // namespace glw

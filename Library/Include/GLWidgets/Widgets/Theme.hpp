@@ -228,7 +228,6 @@ struct DockStyle {
     Color text;
     Color mutedText;                // the titles of the tabs not shown
     Color dropZone;
-    Color scrollThumb;              // the thin bar that scrolls the tabs, when they do not fit
     SplitterStyle splitter;         // between stacks: a gap, a line only under the mouse
     float cornerRadius = 0;
     float tabHeight = 28;

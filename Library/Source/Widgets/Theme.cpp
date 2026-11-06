@@ -417,7 +417,6 @@ Theme Theme::fromPalette(const Palette& p, ThemeStyle style) {
     t.dock.text = p.text;
     t.dock.mutedText = p.mutedText;
     t.dock.dropZone = withAlpha(p.accent, 0.22f);
-    t.dock.scrollThumb = withAlpha(p.mutedText, 0.55f);
     t.dock.cornerRadius = t.cornerRadius;
     t.dock.tabRadius = 4;
     t.dock.tabBevel = raised;               // what stands as a tab: the tongue of a hidden bar

@@ -9,6 +9,7 @@
 // from the start side either way.
 #include <GLWidgets/Export.hpp>
 #include <GLWidgets/Widgets/Animation.hpp>
+#include <GLWidgets/Widgets/ScrollBar.hpp>
 #include <GLWidgets/Widgets/Theme.hpp>
 #include <GLWidgets/Widgets/Widget.hpp>
 
@@ -64,14 +65,8 @@ protected:
     void revealArea(const Rect& area) override;
 
 private:
-    enum class Part : std::uint8_t { None, VerticalThumb, VerticalTrack, HorizontalThumb, HorizontalTrack };
-    struct Bar {
-        Rect track;
-        Rect thumb;
-    };
-    std::optional<Bar> verticalBar() const;
-    std::optional<Bar> horizontalBar() const;
-    Part partAt(Point point) const;
+    // Its bars where they are, as it is laid out and scrolled.
+    void placeBars();
     void placeContent();
     void show(Point offset);                            // the offset shown: clamped, the content moved
     Point going() const;                                // where it is going
@@ -86,13 +81,24 @@ private:
     Size contentSize_;
     bool showVertical_ = false;
     bool showHorizontal_ = false;
-    Part dragging_ = Part::None;
-    float grab_ = 0;                                    // from the thumb's start to the pointer, along the bar
-    Part hoveredPart_ = Part::None;
-    Animation wideVertical_{[this] { invalidatePaint(); }};      // its bars' thumbs: thin (0) or wide (1)
-    Animation wideHorizontal_{[this] { invalidatePaint(); }};
     SmoothScroll smoothX_{[this](double x) { show({static_cast<float>(x), offset_.y}); }};
     SmoothScroll smoothY_{[this](double y) { show({offset_.x, static_cast<float>(y)}); }};
+    ScrollBar verticalBar_{Orientation::Vertical,
+                            [this](double y, bool eased) {
+                                if (eased)
+                                    scrollTo({going().x, static_cast<float>(y)});
+                                else
+                                    setOffset({offset_.x, static_cast<float>(y)});
+                            },
+                            [this] { invalidatePaint(); }};
+    ScrollBar horizontalBar_{Orientation::Horizontal,
+                              [this](double x, bool eased) {
+                                  if (eased)
+                                      scrollTo({static_cast<float>(x), going().y});
+                                  else
+                                      setOffset({static_cast<float>(x), offset_.y});
+                              },
+                              [this] { invalidatePaint(); }};
 };
 
 } // namespace glw

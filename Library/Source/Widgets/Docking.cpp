@@ -7,6 +7,7 @@
 #include <GLWidgets/Core/Assert.hpp>
 #include <GLWidgets/Paint/Painter.hpp>
 #include <GLWidgets/Widgets/Bevel.hpp>
+#include <GLWidgets/Widgets/ScrollBar.hpp>
 #include <GLWidgets/Widgets/DockingHost.hpp>
 #include <GLWidgets/Widgets/Label.hpp>
 #include <GLWidgets/Widgets/Layout.hpp>
@@ -241,8 +242,8 @@ private:
 };
 
 // The tabs of a stack side by side, each as wide as it wants. When they do not fit they are scrolled: by the wheel, by
-// the thin bar along its bottom (shown while the mouse is over the tabs; dragged, or pressed beside its thumb), and so
-// that the tab shown is in view.
+// the bar along its bottom (every scrolling widget's ScrollBar, without a track: shown while the mouse is over the tabs;
+// its thumb dragged, or pressed beside it for a page), and so that the tab shown is in view.
 class TabRow final : public Widget {
 public:
     TabRow() {
@@ -253,6 +254,7 @@ public:
     // The tab at `index` comes into view when it is next arranged.
     void reveal(std::size_t index) {
         reveal_ = index;
+        smooth_.stop();
         invalidateLayout();
     }
 
@@ -328,77 +330,67 @@ protected:
     }
 
     void paintOver(PaintContext& context) override {
-        if (maxOffset() <= 0 || !(hovered() || grab_))
+        if (maxOffset() <= 0 || !(hovered() || bar_.dragging()))
             return;
-        const Rect t = thumb();
-        context.painter.fillRoundedRect(t, std::min(t.height / 2, context.ui.theme.dock.cornerRadius), context.ui.theme.dock.scrollThumb);
+        placeBar();
+        bar_.paint(context, context.ui.theme.scrollBar, false);
     }
 
-    // the bar along the bottom before the tab there: dragged, or pressed beside its thumb to go there
+    // its bar along the bottom first: pressed (its thumb, or beside it: a page), its thumb dragged, let go; the mouse over
+    // it or not
     void onPreviewMouse(MouseEvent& event) override {
-        if (event.type != MouseEventType::Press || event.button != platform::MouseButton::Left || maxOffset() <= 0 ||
-            event.position.y < size().height - thumbZone)
+        if (event.type == MouseEventType::Wheel || maxOffset() <= 0)
             return;
-        event.handled = true;
-        Rect t = thumb();
-        if (event.position.x < t.x || event.position.x > t.right()) {
-            const float travel = std::max(1.0f, area_.width - 4 - t.width);
-            const float fromStart = rightToLeft() ? area_.right() - 2 - event.position.x - t.width / 2 : event.position.x - area_.x - 2 - t.width / 2;
-            scrollTo(fromStart / travel * maxOffset());
-        }
-        grab_ = event.position.x;
-        grabOffset_ = offset_;
+        placeBar();
+        if (bar_.mouse(event))
+            event.handled = true;
     }
 
     void onMouse(MouseEvent& event) override {
-        switch (event.type) {
-        case MouseEventType::Wheel:
-            if (maxOffset() <= 0)
-                return;
-            // up (or left in left to right) towards the start
-            scrollTo(offset_ + (-event.wheelDelta.y + (rightToLeft() ? -event.wheelDelta.x : event.wheelDelta.x)) * wheelStep);
-            event.handled = true;
-            break;
-        case MouseEventType::Move:
-            if (!grab_)
-                return;
-            {
-                const float travel = std::max(1.0f, area_.width - 4 - thumb().width);
-                const float moved = (event.position.x - *grab_) * (rightToLeft() ? -1.0f : 1.0f);
-                scrollTo(grabOffset_ + moved / travel * maxOffset());
-            }
-            event.handled = true;
-            break;
-        case MouseEventType::Release:
-            if (grab_) {
-                grab_.reset();
-                invalidatePaint();
+        if (maxOffset() <= 0)
+            return;
+        if (event.type != MouseEventType::Wheel) {
+            // its thumb dragged, let go (what it has, after a press on it, comes here)
+            placeBar();
+            if (bar_.mouse(event))
                 event.handled = true;
-            }
-            break;
-        case MouseEventType::Press:
-            break;
+            return;
         }
+        // up (or left in left to right) towards the start; as every scrolling widget: further as the wheel turns faster
+        const float step = (-event.wheelDelta.y + (rightToLeft() ? -event.wheelDelta.x : event.wheelDelta.x)) * wheelStep;
+        const WheelScroll w = wheelScroll(smooth_, scheduler(), offset_, step, event.wheelPrecise, maxOffset());
+        const UiContext* ui = context();
+        if (w.moved) {
+            reveal_.reset();        // scrolled by the user: where the user says
+            smooth_.scrollTo(scheduler(), offset_, w.target, ui ? Duration(ui->theme.motion.scroll) : Duration::zero(), w.aimed);
+        }
+        event.handled = w.moved;
     }
 
-    void onHoverChanged(bool) override { invalidatePaint(); }
+    void onHoverChanged(bool hovered) override {
+        if (!hovered)
+            bar_.leave();
+        invalidatePaint();
+    }
 
 private:
     float maxOffset() const { return std::max(0.0f, total_ - area_.width); }
 
-    Rect thumb() const {
-        const float track = std::max(0.0f, area_.width - 4);
-        const float width = std::min(track, std::max(24.0f, track * area_.width / std::max(total_, 1.0f)));
-        const float along = maxOffset() > 0 ? offset_ / maxOffset() * (track - width) : 0;
-        const float x = rightToLeft() ? area_.right() - 2 - along - width : area_.x + 2 + along;
-        const float height = grab_ ? 4.0f : 3.0f;
-        return {x, size().height - height - 1, width, height};
+    // its bar along the bottom: a strip as high as where a press is on it
+    void placeBar() {
+        const UiContext* ui = context();
+        if (!ui) {
+            bar_.hide();
+            return;
+        }
+        bar_.place({area_.x, size().height - thumbZone, area_.width, thumbZone}, total_, area_.width, offset_, smooth_.target(offset_),
+                   rightToLeft(), ui->theme.scrollBar.minimumThumb);
     }
 
-    void scrollTo(float offset) {
-        reveal_.reset();        // scrolled by the user: where the user says
-        offset_ = std::clamp(offset, 0.0f, maxOffset());
-        rearrange();            // the tabs move: nothing measured again
+    // `offset` shown: the tabs moved there (nothing measured again)
+    void show(double offset) {
+        offset_ = std::clamp(static_cast<float>(offset), 0.0f, maxOffset());
+        rearrange();
         invalidatePaint();
     }
 
@@ -406,8 +398,19 @@ private:
     float total_ = 0;
     float offset_ = 0;          // dips scrolled from the start
     std::optional<std::size_t> reveal_;
-    std::optional<float> grab_; // the thumb dragged: where it was pressed
-    float grabOffset_ = 0;
+    SmoothScroll smooth_{[this](double offset) { show(offset); }};
+    ScrollBar bar_{Orientation::Horizontal,
+                   [this](double offset, bool eased) {
+                       reveal_.reset();        // scrolled by the user: where the user says
+                       const UiContext* ui = context();
+                       if (eased) {
+                           smooth_.scrollTo(scheduler(), offset_, offset, ui ? Duration(ui->theme.motion.scroll) : Duration::zero());
+                       } else {
+                           smooth_.stop();
+                           show(offset);
+                       }
+                   },
+                   [this] { invalidatePaint(); }};
     // the tabs sliding to their places: where each starts, and showed, by its panel's id; how far each still is
     std::unordered_map<std::string, float> targets_;
     std::unordered_map<std::string, float> shown_;

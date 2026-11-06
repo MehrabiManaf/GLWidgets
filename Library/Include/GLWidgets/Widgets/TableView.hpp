@@ -25,6 +25,7 @@
 #include <GLWidgets/Export.hpp>
 #include <GLWidgets/Widgets/ItemModel.hpp>
 #include <GLWidgets/Widgets/ListView.hpp>
+#include <GLWidgets/Widgets/ScrollBar.hpp>
 #include <GLWidgets/Widgets/Widget.hpp>
 
 #include <cstddef>
@@ -211,8 +212,8 @@ private:
     // The edge of the column at `point` (in the header), that resizes it.
     std::optional<std::size_t> edgeAt(Point point) const;
     std::optional<std::size_t> headerAt(Point point) const;
-    Rect barTrack() const;
-    Rect barThumb() const;
+    // Its bar across where it is, as it is laid out and scrolled.
+    void placeBar();
     // where a cell shows (its coordinates), while it does
     std::optional<Rect> cellRect(std::size_t row, std::size_t column) const;
     // the cell at a point of it, in the rows
@@ -238,8 +239,15 @@ private:
     bool headerVisible_ = true;
     double horizontalOffset_ = 0;
     void showAcross(double offset);
-    Animation barWide_{[this] { invalidatePaint(); }};          // its bar's thumb: thin (0) or wide (1)
     SmoothScroll smoothAcross_{[this](double offset) { showAcross(offset); }};
+    ScrollBar bar_{Orientation::Horizontal,
+                   [this](double offset, bool eased) {
+                       if (eased)
+                           scrollAcrossSmoothly(offset);
+                       else
+                           setHorizontalOffset(offset);
+                   },
+                   [this] { invalidatePaint(); }};
 
     Rect area_;                             // its content rectangle
     bool showBar_ = false;                  // across
@@ -262,8 +270,6 @@ private:
     };
     std::optional<Fit> fitting_;            // a column eased to the width it needs
     Animation fitted_{[this] { fitStepped(); }};
-    bool barHovered_ = false;
-    std::optional<double> thumbGrab_;       // the thumb dragged: where it was pressed, along it
     std::function<void(std::size_t)> onHeaderClicked_;
 
     std::optional<std::size_t> sortColumn_;

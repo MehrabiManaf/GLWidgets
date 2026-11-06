@@ -446,6 +446,19 @@ Containers:
     (`Widget::childrenClip`).
   - A wheel turn it cannot use goes on to the scroll area around it.
   - In right to left, the vertical bar is on the left, and the content starts on the right.
+- **Every scroll bar is one** (`ScrollBar`, `Widgets/ScrollBar.hpp`): a scroll area's, a list's and a tree's, a table's
+  across, a text edit's (down and across: a line longer than shows), a dock's tabs' (in their strip, without a track),
+  a bar race's. Not a widget: a part of its widget, which places it as it is laid out and scrolled, paints it, and gives
+  it its mouse events first. So it looks the same everywhere, as the style says (`ScrollBarStyle`: its track, its
+  thumb's colors under the mouse and pressed, its width, its least length, its corners; thin until the mouse is over it,
+  then wide, eased), and does the same: its thumb dragged follows the mouse; its track pressed beside the thumb pages
+  toward it, nine tenths of what shows, eased from where the scroll was going (pressed again on the way, a page
+  further). A vertical bar is at the end side (on the left in right to left; a text edit's at the right, its lines left
+  to right either way), a horizontal one's thumb from the start side. The wheel goes through `wheelScroll` in all of
+  them: a step from where the scroll was going, further as the wheel turns faster (`SmoothScroll::aim`), a touchpad's
+  fractions as they come, and not taken when it moves nothing, so that what is around it scrolls instead. A bar takes
+  the length of what shows as it shows: a list's (a tree's) as its rows come in or go out, eased (a node opened or
+  closed), so that its thumb shrinks and grows with them rather than at once.
 - **`Splitter`** has panes with handles between them. Each pane takes a share of the room by its stretch, and never goes
   below its minimum size. Dragging a handle sets the stretches to the panes' lengths, so a resized splitter keeps its
   proportions. A double click on a handle shares the room of the two panes beside it equally, eased (`shareEqually`);

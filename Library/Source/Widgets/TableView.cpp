@@ -684,20 +684,16 @@ void TableView::paint(PaintContext& context) {
     placeEditor();          // over its cell, where the rows scrolled
 }
 
-Rect TableView::barTrack() const {
-    const float width = context() ? context()->theme.scrollBar.width : 8.0f;
+void TableView::placeBar() {
+    const UiContext* ui = context();
+    if (!showBar_ || !ui) {
+        bar_.hide();
+        return;
+    }
+    const ScrollBarStyle& s = ui->theme.scrollBar;
     const Rect rows = list_->bounds(), view = list_->viewport();
-    return {rows.x + view.x, area_.bottom() - width, view.width, width};
-}
-
-Rect TableView::barThumb() const {
-    const Rect track = barTrack();
-    const double total = std::max(1.0, totalWidth());
-    const float minimum = context() ? context()->theme.scrollBar.minimumThumb : 24.0f;
-    const float length = std::min(track.width, std::max(minimum, static_cast<float>(track.width * viewWidth() / total)));
-    const double room = maximumHorizontalOffset();
-    const float at = room > 0 ? static_cast<float>((track.width - length) * horizontalOffset_ / room) : 0.0f;
-    return {rightToLeft() ? track.right() - at - length : track.x + at, track.y, length, track.height};
+    bar_.place({rows.x + view.x, area_.bottom() - s.width, view.width, s.width}, totalWidth(), viewWidth(), horizontalOffset_,
+               smoothAcross_.target(horizontalOffset_), rightToLeft(), s.minimumThumb);
 }
 
 void TableView::paintOver(PaintContext& context) {
@@ -727,13 +723,8 @@ void TableView::paintOver(PaintContext& context) {
         }
         p.popClip();
     }
-    if (!showBar_)
-        return;
-    const ScrollBarStyle& s = context.ui.theme.scrollBar;
-    context.painter.fillRect(barTrack(), s.track);
-    const VisualState state{.hovered = barHovered_ || thumbGrab_, .pressed = thumbGrab_.has_value()};
-    barWide_.animateTo(scheduler(), state.hovered ? 1.0f : 0.0f, context.ui.theme.motion.fast);
-    paintScrollThumb(context.painter, barThumb(), false, true, barWide_.value(), s.thumb.resolve(state), s.cornerRadius);
+    placeBar();
+    bar_.paint(context, context.ui.theme.scrollBar);
 }
 
 // ---- events ----
@@ -783,32 +774,29 @@ void TableView::onPreviewMouse(MouseEvent& event) {
         const float across = shift ? -event.wheelDelta.y : (rightToLeft() ? -event.wheelDelta.x : event.wheelDelta.x);
         if (across == 0 || (!shift && std::abs(event.wheelDelta.x) < std::abs(event.wheelDelta.y)))
             return;
-        if (event.wheelPrecise) {
-            // by fractions of a step: eased on, not boosted nor snapped to columns
-            const double before = smoothAcross_.target(horizontalOffset_);
-            const double to = std::clamp(before + across * wheelStep, 0.0, maximumHorizontalOffset());
-            if (to != before) {
-                const UiContext* ui = context();
-                smoothAcross_.scrollTo(scheduler(), horizontalOffset_, to, ui ? Duration(ui->theme.motion.scroll) : Duration::zero());
-            }
-            event.handled = to != before;
-            break;
+        // a step from where it is going (further as the wheel turns faster), snapped to columns; a touchpad's fractions as
+        // they come, not snapped
+        const WheelScroll w = wheelScroll(smoothAcross_, scheduler(), horizontalOffset_, across * wheelStep, event.wheelPrecise,
+                                          maximumHorizontalOffset());
+        if (w.moved && w.aimed) {
+            scrollAcrossSmoothly(w.target, true);
+        } else if (w.moved) {
+            const UiContext* ui = context();
+            smoothAcross_.scrollTo(scheduler(), horizontalOffset_, w.target, ui ? Duration(ui->theme.motion.scroll) : Duration::zero());
         }
-        const double before = smoothAcross_.target(horizontalOffset_);
-        scrollAcrossSmoothly(smoothAcross_.aim(scheduler(), horizontalOffset_, across * wheelStep, 0, maximumHorizontalOffset()), true);
-        event.handled = smoothAcross_.target(horizontalOffset_) != before;
+        event.handled = w.moved;
         break;
     }
     case MouseEventType::Move: {
-        if (resizing_ || thumbGrab_)
+        if (resizing_ || bar_.dragging())
             return;
+        placeBar();
+        bar_.mouse(event);          // over its bar or not
         const std::optional<std::size_t> edge = edgeAt(event.position);
         const std::optional<std::size_t> over = edge ? std::nullopt : headerAt(event.position);
-        const bool overBar = showBar_ && barTrack().contains(event.position);
-        if (edge != hoveredEdge_ || over != hoveredHeader_ || overBar != barHovered_) {
+        if (edge != hoveredEdge_ || over != hoveredHeader_) {
             hoveredEdge_ = edge;
             hoveredHeader_ = over;
-            barHovered_ = overBar;
             invalidatePaint();
         }
         break;
@@ -816,16 +804,9 @@ void TableView::onPreviewMouse(MouseEvent& event) {
     case MouseEventType::Press: {
         if (event.button != platform::MouseButton::Left)
             return;
-        if (showBar_ && barTrack().contains(event.position)) {
+        placeBar();
+        if (bar_.mouse(event)) {        // its thumb pressed, or its track: a page
             event.handled = true;
-            const Rect thumb = barThumb();
-            if (thumb.contains(event.position)) {
-                thumbGrab_ = event.position.x - thumb.x;
-            } else {        // a page toward where it was pressed
-                const bool toward = (event.position.x < thumb.x) == rightToLeft();
-                setHorizontalOffset(horizontalOffset_ + (toward ? 1.0 : -1.0) * viewWidth());
-            }
-            invalidatePaint();
             return;
         }
         if (const std::optional<std::size_t> edge = edgeAt(event.position)) {
@@ -865,13 +846,7 @@ void TableView::onMouse(MouseEvent& event) {
             const float moved = event.position.x - resizing_->startX;
             setColumnWidth(resizing_->column, resizing_->startWidth + (rightToLeft() ? -moved : moved));
             event.handled = true;
-        } else if (thumbGrab_) {
-            // the thumb follows the mouse; the offset, the thumb
-            const Rect track = barTrack();
-            const float length = barThumb().width;
-            const double room = std::max(1.0f, track.width - length);
-            const double at = rightToLeft() ? track.right() - (event.position.x - *thumbGrab_ + length) : event.position.x - *thumbGrab_ - track.x;
-            setHorizontalOffset(at / room * maximumHorizontalOffset());
+        } else if (bar_.mouse(event)) {        // its thumb dragged
             event.handled = true;
         }
         break;
@@ -879,10 +854,10 @@ void TableView::onMouse(MouseEvent& event) {
         if (event.button != platform::MouseButton::Left)
             return;
         const std::optional<std::size_t> pressed = std::exchange(pressedHeader_, std::nullopt);
-        if (resizing_ || thumbGrab_ || pressed)
+        const bool bar = bar_.mouse(event);
+        if (resizing_ || bar || pressed)
             event.handled = true;
         resizing_.reset();
-        thumbGrab_.reset();
         invalidatePaint();
         if (pressed && headerAt(event.position) == pressed) {
             // sorted by it: ascending, then descending, then not
@@ -960,10 +935,12 @@ void TableView::onText(TextEvent& event) {
 }
 
 void TableView::onHoverChanged(bool hovered) {
-    if (!hovered && (hoveredHeader_ || hoveredEdge_ || barHovered_)) {
+    if (hovered)
+        return;
+    bar_.leave();
+    if (hoveredHeader_ || hoveredEdge_) {
         hoveredHeader_.reset();
         hoveredEdge_.reset();
-        barHovered_ = false;
         invalidatePaint();
     }
 }

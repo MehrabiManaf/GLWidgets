@@ -902,29 +902,28 @@ void ListView::paint(PaintContext& context) {
     p.popClip();
 }
 
-Rect ListView::scrollTrack() const {
-    const float width = context() ? context()->theme.scrollBar.width : 8.0f;
-    return {rightToLeft() ? area_.x : area_.right() - width, area_.y, width, area_.height};
-}
-
-Rect ListView::scrollThumb() const {
-    const Rect track = scrollTrack();
-    const double total = std::max(1.0, heights_->total());
-    const float minimum = context() ? context()->theme.scrollBar.minimumThumb : 24.0f;
-    const float length = std::min(track.height, std::max(minimum, static_cast<float>(track.height * viewport_.height / total)));
-    const double room = maximumOffset();
-    const float at = room > 0 ? static_cast<float>((track.height - length) * offset_ / room) : 0.0f;
-    return {track.x, track.y + at, track.width, length};
+void ListView::placeBar() {
+    const UiContext* ui = context();
+    if (!showBar_ || !ui) {
+        bar_.hide();
+        return;
+    }
+    const ScrollBarStyle& s = ui->theme.scrollBar;
+    const bool rtl = rightToLeft();
+    // as long as its rows show: rows coming in (a node opened) or going out (closed) eased with them, so that the thumb
+    // shrinks and grows as they do rather than at once
+    double total = heights_->total();
+    if (change_) {
+        const double still = change_->height * (1.0 - changeMotion_.value());
+        total += change_->inserted ? -still : still;
+    }
+    bar_.place({rtl ? area_.x : area_.right() - s.width, area_.y, s.width, area_.height}, std::max(total, 0.0), viewport_.height, offset_,
+               smooth_.target(offset_), rtl, s.minimumThumb);
 }
 
 void ListView::paintOver(PaintContext& context) {
-    if (!showBar_)
-        return;
-    const ScrollBarStyle& s = context.ui.theme.scrollBar;
-    context.painter.fillRect(scrollTrack(), s.track);
-    const VisualState state{.hovered = barHovered_ || thumbGrab_, .pressed = thumbGrab_.has_value()};
-    barWide_.animateTo(scheduler(), state.hovered ? 1.0f : 0.0f, context.ui.theme.motion.fast);
-    paintScrollThumb(context.painter, scrollThumb(), true, !rightToLeft(), barWide_.value(), s.thumb.resolve(state), s.cornerRadius);
+    placeBar();
+    bar_.paint(context, context.ui.theme.scrollBar);
 }
 
 // ---- events ----
@@ -933,23 +932,17 @@ void ListView::onMouse(MouseEvent& event) {
     const bool left = event.button == platform::MouseButton::Left;
     switch (event.type) {
     case MouseEventType::Wheel: {
-        const double step = -event.wheelDelta.y * wheelRows * style().rowHeight;
-        if (event.wheelPrecise) {
-            // by fractions of a step (a touchpad, a fine wheel): eased on from where it is going, not boosted nor
-            // snapped to rows
-            const double before = smooth_.target(offset_);
-            const double to = std::clamp(before + step, 0.0, maximumOffset());
-            if (to != before) {
-                const UiContext* ui = context();
-                smooth_.scrollTo(scheduler(), offset_, to, ui ? Duration(ui->theme.motion.scroll) : Duration::zero());
-            }
-            event.handled = to != before;
-            break;
+        // a step from where it is going (further as the wheel turns faster), snapped to rows; a touchpad's fractions as
+        // they come, not snapped
+        const WheelScroll w = wheelScroll(smooth_, scheduler(), offset_, -event.wheelDelta.y * wheelRows * style().rowHeight,
+                                          event.wheelPrecise, maximumOffset());
+        if (w.moved && w.aimed) {
+            scrollSmoothly(w.target, true);
+        } else if (w.moved) {
+            const UiContext* ui = context();
+            smooth_.scrollTo(scheduler(), offset_, w.target, ui ? Duration(ui->theme.motion.scroll) : Duration::zero());
         }
-        // from where it aimed: turned again, it goes further
-        const double before = smooth_.target(offset_);
-        scrollSmoothly(smooth_.aim(scheduler(), offset_, step, 0, maximumOffset()), true);
-        event.handled = smooth_.target(offset_) != before;
+        event.handled = w.moved;
         break;
     }
     case MouseEventType::Move: {
@@ -957,21 +950,15 @@ void ListView::onMouse(MouseEvent& event) {
             headerHovered_ = over;
             invalidatePaint();
         }
-        if (thumbGrab_) {
-            // the thumb follows the mouse; the offset, the thumb
-            const Rect track = scrollTrack();
-            const float length = scrollThumb().height;
-            const double room = std::max(1.0f, track.height - length);
-            setOffset((event.position.y - *thumbGrab_ - track.y) / room * maximumOffset());
+        placeBar();
+        if (bar_.mouse(event)) {        // its thumb dragged
             event.handled = true;
             return;
         }
-        const bool overBar = showBar_ && scrollTrack().contains(event.position);
-        const std::optional<std::size_t> item = overBar ? std::nullopt : itemAt(event.position);
+        const std::optional<std::size_t> item = bar_.hovered() ? std::nullopt : itemAt(event.position);
         const std::optional<std::size_t> over = item ? position(*item) : std::nullopt;
-        if (over != hovered_ || overBar != barHovered_) {
+        if (over != hovered_) {
             hovered_ = over;
-            barHovered_ = overBar;
             invalidatePaint();
         }
         break;
@@ -986,15 +973,9 @@ void ListView::onMouse(MouseEvent& event) {
             invalidatePaint();
             return;
         }
-        if (showBar_ && scrollTrack().contains(event.position)) {
-            const Rect thumb = scrollThumb();
-            if (thumb.contains(event.position))
-                thumbGrab_ = event.position.y - thumb.y;
-            else        // a page toward where it was pressed
-                scrollSmoothly(smooth_.target(offset_) + (event.position.y < thumb.y ? -1.0 : 1.0) * viewport_.height);
-            invalidatePaint();
+        placeBar();
+        if (bar_.mouse(event))          // its thumb pressed, or its track: a page
             return;
-        }
         const std::optional<std::size_t> item = itemAt(event.position);
         const std::optional<std::size_t> at = item ? position(*item) : std::nullopt;
         pressed_ = at;
@@ -1032,11 +1013,13 @@ void ListView::onMouse(MouseEvent& event) {
             }
             return;
         }
-        if (thumbGrab_ || pressed_)
+        if (bar_.mouse(event)) {
+            // its thumb let go: the row at the top whole
             event.handled = true;
-        if (thumbGrab_)
-            scrollSmoothly(offset_);    // the rows at the top whole
-        thumbGrab_.reset();
+            scrollSmoothly(offset_);
+        }
+        if (pressed_)
+            event.handled = true;
         pressed_.reset();
         invalidatePaint();
         break;
@@ -1111,9 +1094,11 @@ void ListView::onKey(KeyEvent& event) {
 }
 
 void ListView::onHoverChanged(bool hovered) {
-    if (!hovered && (hovered_ || barHovered_ || headerHovered_)) {
+    if (hovered)
+        return;
+    bar_.leave();
+    if (hovered_ || headerHovered_) {
         hovered_.reset();
-        barHovered_ = false;
         headerHovered_ = false;
         invalidatePaint();
     }

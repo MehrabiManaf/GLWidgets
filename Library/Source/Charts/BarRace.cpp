@@ -29,8 +29,7 @@ BarRace::BarRace(Props props)
     : props_(std::move(props)), progress_([this] { invalidatePaint(); }), scrolling_([this](double rank) {
           scroll_ = std::clamp(rank, 0.0, lastTop());
           invalidatePaint();
-      }),
-      wide_([this] { invalidatePaint(); }) {
+      }) {
     setTitle(props_.title);
     props_.shown = std::clamp<std::size_t>(props_.shown, 1, mostShown);
     firstShown_ = props_.shown;
@@ -469,18 +468,12 @@ void BarRace::paint(PaintContext& context) {
     }
     // the scroll bar, as a scroll area's: thin until the mouse is over it or its thumb is dragged
     if (more) {
-        track_ = {rtl ? area.x : area.right() - bar.width, plot.y, bar.width, plot.height};
-        const float length = std::min(track_.height, std::max(bar.minimumThumb, track_.height * rows / rowsInAll));
-        const float along = (track_.height - length) * static_cast<float>(scroll_ / std::max(1e-9, lastTop()));
-        thumb_ = {track_.x, track_.y + along, track_.width, length};
-        p.fillRect(track_, bar.track);
-        const bool over = hoveredPart_ != Part::None || thumbDragging_;
-        wide_.animateTo(scheduler(), over ? 1.0f : 0.0f, context.ui.theme.motion.fast);
-        const VisualState state{.hovered = hoveredPart_ == Part::Thumb || thumbDragging_, .pressed = thumbDragging_};
-        paintScrollThumb(p, thumb_, true, !rtl, wide_.value(), bar.thumb.resolve(state), bar.cornerRadius);
+        barTrack_ = {rtl ? area.x : area.right() - bar.width, plot.y, bar.width, plot.height};
     } else {
-        track_ = thumb_ = {};
+        barTrack_ = {};
     }
+    placeBar();
+    bar_.paint(context, bar);
 
     // the bar under the mouse: its parts, its total and its rank by it (the others': their parts, total and count)
     if (hovered_ == othersItem && mouse_ && othersCount_ > 0 && !dragging_) {
@@ -516,26 +509,35 @@ std::optional<std::size_t> BarRace::itemAt(Point at) const {
     return std::nullopt;
 }
 
+void BarRace::placeBar() {
+    const UiContext* ui = context();
+    if (barTrack_.empty() || !ui) {
+        bar_.hide();
+        return;
+    }
+    bar_.place(barTrack_, static_cast<double>(rowCount()), static_cast<double>(props_.shown), scroll_, scrolling_.target(scroll_),
+               rightToLeft(), ui->theme.scrollBar.minimumThumb);
+}
+
 void BarRace::onMouse(MouseEvent& event) {
     if (legendMouse(event))
         return;
+    placeBar();
+    // its scroll bar first: pressed, its thumb dragged, let go
+    if (event.type != MouseEventType::Wheel && bar_.mouse(event)) {
+        event.handled = true;
+        invalidatePaint();
+        return;
+    }
     switch (event.type) {
     case MouseEventType::Move:
         mouse_ = event.position;
-        if (thumbDragging_) {
-            // the thumb where the mouse is, as far as the track goes
-            const float room = track_.height - thumb_.height;
-            const float at = std::clamp(event.position.y - grab_ - track_.y, 0.0f, std::max(room, 0.0f));
-            scrollTo(room > 0 ? at / room * lastTop() : 0.0, false);
-        } else if (dragging_) {
+        if (dragging_) {
             // the rows follow the mouse
             const double by = (dragFrom_.y - event.position.y) / std::max(slot_, 1.0f);
             scrollTo(dragScroll_ + by, false);
         } else {
-            hoveredPart_ = !track_.contains(event.position) ? Part::None
-                           : thumb_.contains(event.position) ? Part::Thumb
-                                                              : Part::Track;
-            hovered_ = hoveredPart_ == Part::None ? itemAt(event.position) : std::nullopt;
+            hovered_ = bar_.hovered() ? std::nullopt : itemAt(event.position);
         }
         invalidatePaint();
         return;
@@ -545,28 +547,19 @@ void BarRace::onMouse(MouseEvent& event) {
             const int steps = static_cast<int>(std::lround(event.wheelDelta.y));
             if (steps != 0)
                 setShown(static_cast<std::size_t>(std::max<long long>(1, static_cast<long long>(props_.shown) - steps)));
+            event.handled = true;
         } else {
-            scrollTo(scrolling_.target(scroll_) - event.wheelDelta.y * wheelRows);
+            // as every scrolling widget: further as the wheel turns faster; not taken when it moves nothing
+            const WheelScroll w = wheelScroll(scrolling_, scheduler(), scroll_, -event.wheelDelta.y * wheelRows, event.wheelPrecise, lastTop());
+            const UiContext* ui = context();
+            if (w.moved)
+                scrolling_.scrollTo(scheduler(), scroll_, w.target, ui ? Duration(ui->theme.motion.scroll) : Duration::zero(), w.aimed);
+            event.handled = w.moved;
         }
-        event.handled = true;
         return;
     case MouseEventType::Press:
         if (event.button != platform::MouseButton::Left)
             return;
-        if (track_.contains(event.position)) {
-            if (thumb_.contains(event.position)) {
-                thumbDragging_ = true;
-                grab_ = event.position.y - thumb_.y;
-                scrolling_.stop();
-            } else {
-                // a page toward where the track was pressed
-                const double page = std::max(1.0, static_cast<double>(props_.shown) - 1);
-                scrollTo(scrolling_.target(scroll_) + (event.position.y < thumb_.y ? -page : page));
-            }
-            event.handled = true;
-            invalidatePaint();
-            return;
-        }
         if (event.clicks == 2) {
             setShown(firstShown_);
             scrollTo(0);
@@ -579,8 +572,8 @@ void BarRace::onMouse(MouseEvent& event) {
         event.handled = true;
         return;
     case MouseEventType::Release:
-        if (dragging_ || thumbDragging_) {
-            dragging_ = thumbDragging_ = false;
+        if (dragging_) {
+            dragging_ = false;
             event.handled = true;
             invalidatePaint();
         }
@@ -592,7 +585,7 @@ void BarRace::onHoverChanged(bool hovered) {
     if (!hovered) {
         hovered_.reset();
         mouse_.reset();
-        hoveredPart_ = Part::None;
+        bar_.leave();
     }
     invalidatePaint();
 }

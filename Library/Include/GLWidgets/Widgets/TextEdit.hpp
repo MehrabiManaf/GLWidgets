@@ -18,6 +18,7 @@
 #include <GLWidgets/Text/DrawText.hpp>
 #include <GLWidgets/Widgets/Animation.hpp>
 #include <GLWidgets/Widgets/Highlighter.hpp>
+#include <GLWidgets/Widgets/ScrollBar.hpp>
 #include <GLWidgets/Widgets/Theme.hpp>
 #include <GLWidgets/Widgets/Widget.hpp>
 
@@ -188,8 +189,8 @@ private:
     double maximumOffsetY() const;
     float maximumOffsetX() const;
     std::size_t pageLines() const;
-    Rect verticalTrack() const;
-    Rect verticalThumb() const;
+    // Its bars where they are, as it is laid out and scrolled.
+    void placeBars();
     void restartBlink();
     void updateInputArea();
 
@@ -218,17 +219,31 @@ private:
     float offsetX_ = 0;
     void showY(double offset);
     void showX(float offset);
-    bool barHovered_ = false;
     // the caret as it shows, in the text's coordinates: gliding from where it was to where it is
     Point caretFrom_;
     Point caretTo_;
     bool caretPlaced_ = false;
     Animation caretGlide_{[this] { invalidatePaint(); }};
-    Animation barWide_{[this] { invalidatePaint(); }};          // its bar's thumb: thin (0) or wide (1)
     SmoothScroll smoothY_{[this](double offset) { showY(offset); }};
     SmoothScroll smoothX_{[this](double offset) { showX(static_cast<float>(offset)); }};
-    bool showBar_ = false;
-    std::optional<double> thumbGrab_;
+    bool showBar_ = false;                  // down
+    bool showAcross_ = false;               // across: a line longer than shows
+    ScrollBar bar_{Orientation::Vertical,
+                   [this](double offset, bool eased) {
+                       if (eased)
+                           scrollSmoothly(offset, static_cast<float>(smoothX_.target(offsetX_)));
+                       else
+                           setVerticalOffset(offset);
+                   },
+                   [this] { invalidatePaint(); }};
+    ScrollBar barAcross_{Orientation::Horizontal,
+                         [this](double offset, bool eased) {
+                             if (eased)
+                                 scrollSmoothly(smoothY_.target(offsetY_), static_cast<float>(offset));
+                             else
+                                 setHorizontalOffset(static_cast<float>(offset));
+                         },
+                         [this] { invalidatePaint(); }};
     bool selecting_ = false;
     int clicks_ = 1;                        // how the drag selects: characters, words, lines
 

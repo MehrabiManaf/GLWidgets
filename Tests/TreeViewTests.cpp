@@ -5,9 +5,11 @@
 #include "Check.hpp"
 #include "TestUi.hpp"
 
+#include <GLWidgets/Paint/DrawList.hpp>
 #include <GLWidgets/Widgets/TreeView.hpp>
 #include <GLWidgets/Widgets/UiRoot.hpp>
 
+#include <cmath>
 #include <memory>
 #include <optional>
 #include <string>
@@ -257,4 +259,41 @@ TEST(aTreeAsksForChildrenWhenItExpands) {
     CHECK(afterA == before + 1);
     t.tree->setExpanded({t.a2}, true);
     CHECK(t.folders->counted == afterA + 1);
+}
+
+TEST(aTreesScrollBarEasesWithItsRows) {
+    tests::testScheduler().setAnimationsEnabled(true);
+    Treed t;
+    const float h = tests::testContext().theme.itemView.rowHeight;
+    for (int i = 0; i < 6; ++i)
+        t.folders->add(t.a, "more " + std::to_string(i));
+    t.root.setSize({300, 4 * h});
+    t.root.layout();
+    paint::DrawList list;
+    t.root.paint(list);
+    CHECK(!t.tree->list().scrollBar().shown());
+    // opened: eight rows come out of a; its bar's thumb shrinks as they do, not at once
+    t.tree->setExpanded({t.a}, true);
+    t.root.layout();
+    tests::advance(std::chrono::milliseconds(300));
+    t.root.layout();
+    t.root.paint(list);
+    const float settled = t.tree->list().scrollBar().thumb().height;
+    t.tree->setExpanded({t.a}, false);
+    t.root.layout();
+    tests::advance(std::chrono::milliseconds(300));
+    t.root.layout();
+    t.root.paint(list);
+    t.tree->setExpanded({t.a}, true);
+    t.root.layout();
+    tests::advance(std::chrono::milliseconds(70));
+    t.root.layout();
+    t.root.paint(list);
+    const ScrollBar& bar = t.tree->list().scrollBar();
+    CHECK(bar.shown() && bar.thumb().height > settled + 2 && bar.thumb().height < bar.track().height);
+    tests::advance(std::chrono::milliseconds(300));
+    t.root.layout();
+    t.root.paint(list);
+    CHECK(std::abs(t.tree->list().scrollBar().thumb().height - settled) < 0.5f);
+    tests::testScheduler().setAnimationsEnabled(false);
 }

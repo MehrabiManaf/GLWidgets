@@ -24,6 +24,7 @@
 //   list->setOnActivated([](std::size_t i) { ... });
 #include <GLWidgets/Export.hpp>
 #include <GLWidgets/Widgets/Animation.hpp>
+#include <GLWidgets/Widgets/ScrollBar.hpp>
 #include <GLWidgets/Widgets/Bevel.hpp>
 #include <GLWidgets/Widgets/ItemModel.hpp>
 #include <GLWidgets/Widgets/Theme.hpp>
@@ -111,6 +112,8 @@ public:
     // Rows inserted where they show come out from under the row before them, those after them moving down with them, and
     // rows removed go back under it (the theme's normal motion): a tree's nodes opened and closed. Off by default.
     void setAnimatesChanges(bool animates) { animatesChanges_ = animates; }
+    // Its scroll bar, as it was last painted (every scrolling widget's: ScrollBar).
+    const ScrollBar& scrollBar() const { return bar_; }
 
     // The model's item that is current (none: none is, or it is filtered out).
     std::optional<std::size_t> current() const;
@@ -277,8 +280,8 @@ private:
     bool editAt(std::size_t position);
     void placeEditor();
     std::optional<Rect> editorRect() const;
-    Rect scrollTrack() const;
-    Rect scrollThumb() const;
+    // Its bar where it is, as it is laid out and scrolled.
+    void placeBar();
 
     std::shared_ptr<ListModel> model_;
     std::unique_ptr<ListDelegate> delegate_;
@@ -319,8 +322,15 @@ private:
     std::optional<Change> change_;
     std::vector<Widget*> revealed_;     // the rows cut to the gap now
     Animation changeMotion_{[this] { changeStepped(); }};
-    Animation barWide_{[this] { invalidatePaint(); }};          // its bar's thumb: thin (0) or wide (1)
     SmoothScroll smooth_{[this](double offset) { show(offset); }};
+    ScrollBar bar_{Orientation::Vertical,
+                   [this](double offset, bool eased) {
+                       if (eased)
+                           scrollSmoothly(offset);
+                       else
+                           setOffset(offset);
+                   },
+                   [this] { invalidatePaint(); }};
 
     Rect area_;                         // its content rectangle, the bar's place in it
     Rect viewport_;                     // where rows show
@@ -339,8 +349,6 @@ private:
     Rect headerRect_;
     bool headerHovered_ = false;
     bool headerPressed_ = false;
-    bool barHovered_ = false;
-    std::optional<double> thumbGrab_;   // the thumb dragged: where it was pressed, along it
 
     std::function<void(std::optional<std::size_t>)> onCurrentChanged_;
     std::function<void()> onSelectionChanged_;

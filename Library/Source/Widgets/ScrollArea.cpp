@@ -166,157 +166,82 @@ void ScrollArea::revealArea(const Rect& area) {
 
 // ---- the bars ----
 
-std::optional<ScrollArea::Bar> ScrollArea::verticalBar() const {
-    if (!showVertical_)
-        return std::nullopt;
+void ScrollArea::placeBars() {
     const ScrollBarStyle& s = style();
     const Rect area = contentRect();
-    Bar bar;
-    bar.track = {rightToLeft() ? area.x : area.right() - s.width, viewport_.y, s.width, viewport_.height};
-    const float length = std::min(bar.track.height, std::max(s.minimumThumb, bar.track.height * viewport_.height / contentSize_.height));
-    const float limit = maximumOffset().y;
-    const float at = limit > 0 ? (bar.track.height - length) * offset_.y / limit : 0;
-    bar.thumb = {bar.track.x, bar.track.y + at, bar.track.width, length};
-    return bar;
-}
-
-std::optional<ScrollArea::Bar> ScrollArea::horizontalBar() const {
-    if (!showHorizontal_)
-        return std::nullopt;
-    const ScrollBarStyle& s = style();
-    Bar bar;
-    bar.track = {viewport_.x, viewport_.bottom(), viewport_.width, s.width};
-    const float length = std::min(bar.track.width, std::max(s.minimumThumb, bar.track.width * viewport_.width / contentSize_.width));
-    const float limit = maximumOffset().x;
-    const float at = limit > 0 ? (bar.track.width - length) * offset_.x / limit : 0;
-    // from the start side
-    const float x = rightToLeft() ? bar.track.right() - length - at : bar.track.x + at;
-    bar.thumb = {x, bar.track.y, length, bar.track.height};
-    return bar;
-}
-
-ScrollArea::Part ScrollArea::partAt(Point p) const {
-    if (const auto bar = verticalBar(); bar && bar->track.contains(p))
-        return bar->thumb.contains(p) ? Part::VerticalThumb : Part::VerticalTrack;
-    if (const auto bar = horizontalBar(); bar && bar->track.contains(p))
-        return bar->thumb.contains(p) ? Part::HorizontalThumb : Part::HorizontalTrack;
-    return Part::None;
+    const bool rtl = rightToLeft();
+    const Point going = this->going();
+    if (showVertical_)
+        verticalBar_.place({rtl ? area.x : area.right() - s.width, viewport_.y, s.width, viewport_.height}, contentSize_.height,
+                            viewport_.height, offset_.y, going.y, rtl, s.minimumThumb);
+    else
+        verticalBar_.hide();
+    if (showHorizontal_)
+        horizontalBar_.place({viewport_.x, viewport_.bottom(), viewport_.width, s.width}, contentSize_.width, viewport_.width, offset_.x,
+                              going.x, rtl, s.minimumThumb);
+    else
+        horizontalBar_.hide();
 }
 
 void ScrollArea::paintOver(PaintContext& context) {
+    placeBars();
     const ScrollBarStyle& s = style();
-    paint::Painter& p = context.painter;
-    const Duration fast = context.ui.theme.motion.fast;
-    // thin until the mouse is over the bar or the thumb is dragged
-    const auto draw = [&](const Bar& bar, Part thumb, Part track, Animation& wide) {
-        p.fillRect(bar.track, s.track);
-        const bool over = hoveredPart_ == thumb || hoveredPart_ == track || dragging_ == thumb;
-        wide.animateTo(scheduler(), over ? 1.0f : 0.0f, fast);
-        const VisualState state{.hovered = hoveredPart_ == thumb || dragging_ == thumb, .pressed = dragging_ == thumb};
-        const bool vertical = thumb == Part::VerticalThumb;
-        paintScrollThumb(p, bar.thumb, vertical, !vertical || !rightToLeft(), wide.value(), s.thumb.resolve(state), s.cornerRadius);
-    };
-    if (const auto bar = verticalBar())
-        draw(*bar, Part::VerticalThumb, Part::VerticalTrack, wideVertical_);
-    if (const auto bar = horizontalBar())
-        draw(*bar, Part::HorizontalThumb, Part::HorizontalTrack, wideHorizontal_);
+    verticalBar_.paint(context, s);
+    horizontalBar_.paint(context, s);
 }
 
 // ---- events ----
 
 void ScrollArea::onMouse(MouseEvent& event) {
-    switch (event.type) {
-    case MouseEventType::Wheel: {
+    placeBars();
+    if (event.type == MouseEventType::Wheel) {
         // with Shift, or a wheel that turns across: across, toward the end side when it turns to the right in left to right
-        const bool across = platform::hasAny(event.modifiers, platform::KeyModifiers::Shift);
-        Point delta{event.wheelDelta.x * wheelStep * (rightToLeft() ? -1.0f : 1.0f), -event.wheelDelta.y * wheelStep};
-        if (across)
-            delta = {-event.wheelDelta.y * wheelStep, 0};
-        const Point before = going();
-        // turned again on the way: further (by fractions of a step, a touchpad's or a fine wheel's: as it turns)
-        if (delta.x != 0 && !event.wheelPrecise)
-            delta.x = static_cast<float>(smoothX_.boosted(scheduler(), delta.x));
-        if (delta.y != 0 && !event.wheelPrecise)
-            delta.y = static_cast<float>(smoothY_.boosted(scheduler(), delta.y));
-        scrollBy(delta);
+        const bool shift = platform::hasAny(event.modifiers, platform::KeyModifiers::Shift);
+        const float across = shift ? -event.wheelDelta.y : event.wheelDelta.x * (rightToLeft() ? -1.0f : 1.0f);
+        const float down = shift ? 0.0f : -event.wheelDelta.y;
+        const UiContext* ui = context();
+        const Duration duration = ui ? Duration(ui->theme.motion.scroll) : Duration::zero();
+        const Point limit = maximumOffset();
+        bool moved = false;
+        if (across != 0) {
+            const WheelScroll w = wheelScroll(smoothX_, scheduler(), offset_.x, across * wheelStep, event.wheelPrecise, limit.x);
+            if (w.moved)
+                smoothX_.scrollTo(scheduler(), offset_.x, w.target, duration, w.aimed);
+            moved = moved || w.moved;
+        }
+        if (down != 0) {
+            const WheelScroll w = wheelScroll(smoothY_, scheduler(), offset_.y, down * wheelStep, event.wheelPrecise, limit.y);
+            if (w.moved)
+                smoothY_.scrollTo(scheduler(), offset_.y, w.target, duration, w.aimed);
+            moved = moved || w.moved;
+        }
         // what does not move this one may move a scroll area around it
-        event.handled = going() != before;
-        break;
+        event.handled = moved;
+        return;
     }
-    case MouseEventType::Press: {
-        if (event.button != platform::MouseButton::Left)
-            return;
-        const Part part = partAt(event.position);
-        if (part == Part::None)
-            return;
+    // its bars first: pressed, dragged, let go
+    if (verticalBar_.mouse(event) || horizontalBar_.mouse(event))
         event.handled = true;
-        if (part == Part::VerticalThumb) {
-            dragging_ = part;
-            grab_ = event.position.y - verticalBar()->thumb.y;
-        } else if (part == Part::HorizontalThumb) {
-            dragging_ = part;
-            grab_ = event.position.x - horizontalBar()->thumb.x;
-        } else if (part == Part::VerticalTrack) {
-            // a page toward where the track was pressed
-            const float page = viewport_.height * 0.9f;
-            scrollBy({0, event.position.y < verticalBar()->thumb.y ? -page : page});
-        } else {
-            const auto bar = horizontalBar();
-            const float page = viewport_.width * 0.9f;
-            const bool leftOfThumb = event.position.x < bar->thumb.x;
-            scrollBy({(leftOfThumb != rightToLeft()) ? -page : page, 0});
-        }
-        invalidatePaint();
-        break;
-    }
-    case MouseEventType::Move: {
-        if (dragging_ == Part::VerticalThumb) {
-            const Bar bar = *verticalBar();
-            const float room = bar.track.height - bar.thumb.height;
-            const float at = std::clamp(event.position.y - grab_ - bar.track.y, 0.0f, room);
-            setOffset({offset_.x, room > 0 ? at / room * maximumOffset().y : 0});
-            event.handled = true;
-        } else if (dragging_ == Part::HorizontalThumb) {
-            const Bar bar = *horizontalBar();
-            const float room = bar.track.width - bar.thumb.width;
-            const float at = std::clamp(event.position.x - grab_ - bar.track.x, 0.0f, room);
-            const float fromStart = rightToLeft() ? room - at : at;
-            setOffset({room > 0 ? fromStart / room * maximumOffset().x : 0, offset_.y});
-            event.handled = true;
-        }
-        if (const Part part = partAt(event.position); part != hoveredPart_) {
-            hoveredPart_ = part;
-            invalidatePaint();
-        }
-        break;
-    }
-    case MouseEventType::Release:
-        if (dragging_ != Part::None) {
-            dragging_ = Part::None;
-            event.handled = true;
-            invalidatePaint();
-        }
-        break;
-    }
 }
 
 void ScrollArea::onKey(KeyEvent& event) {
     // what the focused widget in it did not take
     if (!event.pressed)
         return;
+    const auto page = static_cast<float>(ScrollBar::page);
     if (event.key == platform::Key::PageDown)
-        scrollBy({0, viewport_.height * 0.9f});
+        scrollBy({0, viewport_.height * page});
     else if (event.key == platform::Key::PageUp)
-        scrollBy({0, -viewport_.height * 0.9f});
+        scrollBy({0, -viewport_.height * page});
     else
         return;
     event.handled = true;
 }
 
 void ScrollArea::onHoverChanged(bool hovered) {
-    if (!hovered && hoveredPart_ != Part::None) {
-        hoveredPart_ = Part::None;
-        invalidatePaint();
+    if (!hovered) {
+        verticalBar_.leave();
+        horizontalBar_.leave();
     }
 }
 

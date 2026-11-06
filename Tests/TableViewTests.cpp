@@ -195,11 +195,12 @@ TEST(aTableScrollsAcrossByTheWheelTheKeysAndItsBar) {
     t.move({900, bar});
     t.release({900, bar});
     CHECK(near(t.table->horizontalOffset(), t.table->maximumHorizontalOffset()));
-    // pressed before the thumb: a page back
+    // pressed before the thumb: a page back (nine tenths of what shows, as every scroll bar's), to a column's edge
     const double end = t.table->horizontalOffset();
+    const double view = t.table->list().viewport().width;
     t.press({5, bar});
     t.release({5, bar});
-    CHECK(near(t.table->horizontalOffset(), end - t.table->list().viewport().width));
+    CHECK(t.table->horizontalOffset() < end - view * 0.5 && t.table->horizontalOffset() >= end - view - 140);
 }
 
 TEST(aTableRightToLeftHasItsFirstColumnAtTheRight) {
