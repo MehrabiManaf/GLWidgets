@@ -710,3 +710,35 @@ TEST(aBarRaceShowsItsTopOnesAndTheOthersAsOneBar) {
     c.paint();
     CHECK(c.chart->ranking()[0] == 3 && c.chart->shownPlace(3) == 0 && c.chart->othersCount() == 95);
 }
+
+TEST(aTreeMapsLabelsStayAsItEases) {
+    tests::testScheduler().setAnimationsEnabled(true);
+    {
+        Shown<TreeMap> c(TreeMap::Props{.depth = 1});
+        TreeMapNode root{.label = "all"};
+        for (int i = 0; i < 6; ++i)
+            root.children.push_back({.label = "node " + std::to_string(i), .value = 10.0 + i});
+        c.chart->setRoot(root);
+        c.paint();          // laid out, its tiles growing in
+        tests::advance(std::chrono::seconds(2));
+        // the glyphs drawn: its labels'
+        const auto glyphs = [&] {
+            paint::DrawList list;
+            c.root.paint(list);
+            int count = 0;
+            for (const paint::Vertex& v : list.vertices)
+                count += v.kind == static_cast<float>(paint::VertexKind::Mask) ? 1 : 0;
+            return count;
+        };
+        const int settled = glyphs();
+        CHECK(settled > 0);
+        // one value changed: the tiles eased to their new sizes, their labels with them, not gone meanwhile
+        root.children[2].value = 30;
+        c.chart->setRoot(root);
+        glyphs();
+        tests::advance(std::chrono::milliseconds(100));
+        CHECK(glyphs() >= settled * 3 / 4);
+        tests::advance(std::chrono::seconds(2));
+    }
+    tests::testScheduler().setAnimationsEnabled(false);
+}

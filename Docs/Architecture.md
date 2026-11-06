@@ -834,7 +834,9 @@ van Wijk: as near to squares as they can be), a few levels at once (a node with 
 children in it). The top level takes the series colors, their children shades of them. Zooming is going into a node: a
 click on a tile with children, or the wheel turned in over it, makes it fill the chart, its tiles growing out of where
 they were; the path to it shows along the top, each name a way back there; a right click, Backspace or the wheel turned
-out goes up a level. New data is eased to, each tile from where it was (tiles matched by the names on their paths).
+out goes up a level. New data is eased to, each tile from where it was (tiles matched by the names on their paths). Its
+labels move with their tiles meanwhile: one shows wholly where it fits in its tile and not at all where it does not, and
+one that fitted where its tile was and does not where it goes (or the other way) fades between, cut by its tile.
 
 **Bars** (`BarChart`): series' values in categories, stacked (the negative ones below 0), grouped, or in percent of each
 category's whole; standing, or lying (categories down the side). Categories may come as they happen

@@ -291,6 +291,18 @@ void TreeMap::paint(PaintContext& context) {
 
     const float radius = s.barRadius;
     const float pad = 6;
+    // How much a label shows: wholly where it fits in its tile, not at all where it does not. Labels move with their tiles
+    // as they are eased; one that fitted where its tile was and does not where it goes (or the other way) fades between,
+    // cut by its tile meanwhile; the others stay as they are.
+    const float progress = progress_.value();
+    const auto eased = [&](const Tile& t, auto&& fit) {
+        const float to = fit(t.rect) ? 1.0f : 0.0f;
+        if (progress >= 1)
+            return to;
+        const auto was = from_.find(t.key);
+        const float from = was != from_.end() && fit(was->second) ? 1.0f : 0.0f;
+        return from + (to - from) * progress;
+    };
     for (std::size_t i = 0; i < tiles_.size(); ++i) {
         const Tile& t = tiles_[i];
         const Rect r = shownRect(t);
@@ -304,11 +316,18 @@ void TreeMap::paint(PaintContext& context) {
             p.fillRoundedRect(r, rr, lit ? mix(body, t.color, 0.25f) : body);
             const std::string name = translate(t.node->label);
             const Size size = textSize(name);
-            if (progress_.value() >= 1 && size.width + 2 * pad < r.width) {
-                drawText(context, name, {rtl ? r.right() - pad : r.x + pad, r.y + header / 2}, s.title, 0, {rtl ? 1.0f : 0.0f, 0.5f});
+            const float shown = eased(t, [&](const Rect& at) { return size.width + 2 * pad <= at.width && header <= at.height; });
+            if (shown > 0) {
+                p.pushClip(r);
+                drawText(context, name, {rtl ? r.right() - pad : r.x + pad, r.y + header / 2}, withAlpha(s.title, s.title.a * shown), 0,
+                         {rtl ? 1.0f : 0.0f, 0.5f});
                 const std::string value = format(t.node->total());
-                if (size.width + textSize(value).width + 4 * pad < r.width)
-                    drawText(context, value, {rtl ? r.x + pad : r.right() - pad, r.y + header / 2}, s.text, 0, {rtl ? 0.0f : 1.0f, 0.5f});
+                const float valueWidth = textSize(value).width;
+                if (const float also = std::min(shown, eased(t, [&](const Rect& at) { return size.width + valueWidth + 4 * pad <= at.width; }));
+                    also > 0)
+                    drawText(context, value, {rtl ? r.x + pad : r.right() - pad, r.y + header / 2}, withAlpha(s.text, s.text.a * also), 0,
+                             {rtl ? 0.0f : 1.0f, 0.5f});
+                p.popClip();
             }
             continue;
         }
@@ -319,18 +338,23 @@ void TreeMap::paint(PaintContext& context) {
             p.fillRect(r, color);
         // its name and its value in it, where they fit
         // (too small for any name: not measured, a treemap of thousands has many)
-        if (progress_.value() < 1 || r.width < 2 * pad + s.fontSize || r.height < s.fontSize + pad)
+        if (r.width < 2 * pad + s.fontSize || r.height < s.fontSize + pad)
             continue;
         const std::string name = translate(t.node->label);
         const Size size = textSize(name);
         const Color ink = textOn(color);
-        if (size.width + 2 * pad <= r.width && size.height + pad <= r.height) {
+        const float shown = eased(t, [&](const Rect& at) { return size.width + 2 * pad <= at.width && size.height + pad <= at.height; });
+        if (shown > 0) {
+            p.pushClip(r);
             const float x = rtl ? r.right() - pad : r.x + pad;
-            drawText(context, name, {x, r.y + pad - 2}, ink, 0, {rtl ? 1.0f : 0.0f, 0});
+            drawText(context, name, {x, r.y + pad - 2}, withAlpha(ink, ink.a * shown), 0, {rtl ? 1.0f : 0.0f, 0});
             const std::string value = format(t.node->total());
             const Size vs = textSize(value);
-            if (vs.width + 2 * pad <= r.width && size.height + vs.height + pad <= r.height)
-                drawText(context, value, {x, r.y + pad - 2 + size.height}, withAlpha(ink, ink.a * 0.72f), 0, {rtl ? 1.0f : 0.0f, 0});
+            const float also = std::min(
+                shown, eased(t, [&](const Rect& at) { return vs.width + 2 * pad <= at.width && size.height + vs.height + pad <= at.height; }));
+            if (also > 0)
+                drawText(context, value, {x, r.y + pad - 2 + size.height}, withAlpha(ink, ink.a * 0.72f * also), 0, {rtl ? 1.0f : 0.0f, 0});
+            p.popClip();
         }
     }
     if (hovered_ && *hovered_ < tiles_.size() && mouse_) {
