@@ -297,6 +297,8 @@ Theme Theme::of(ColorScheme scheme, ThemeStyle style) {
     case ColorScheme::Dusk:
         t.chart.series = {hex(0xAE8FFF), hex(0xF2A5C2), hex(0x7FD3C4), hex(0xE8B98C), hex(0x8FB3FF), hex(0xE18FDB),
                           hex(0xEADFA6), hex(0xF28B82), hex(0x9FD08A), hex(0xB5A9C9)};
+        t.chart.rise = hex(0x8FD3A0);
+        t.chart.fall = hex(0xF28B82);
         e.keyword = hex(0xB99DFF);
         e.type = hex(0x7FD3C4);
         e.string = hex(0xE8B98C);
@@ -308,6 +310,8 @@ Theme Theme::of(ColorScheme scheme, ThemeStyle style) {
     case ColorScheme::Sand:
         t.chart.series = {hex(0xB5532F), hex(0x24766E), hex(0xC99A2E), hex(0x5F7418), hex(0x7A4C9A), hex(0x3E6FA8),
                           hex(0x8C3B5A), hex(0x6E8B3D), hex(0x9A7B5B), hex(0x4F5D73)};
+        t.chart.rise = hex(0x3F7F3A);
+        t.chart.fall = hex(0xB5432F);
         e.keyword = hex(0x9C3B1E);
         e.type = hex(0x24766E);
         e.string = hex(0x5F7418);
@@ -319,6 +323,8 @@ Theme Theme::of(ColorScheme scheme, ThemeStyle style) {
     case ColorScheme::Turquoise:
         t.chart.series = {hex(0xE3B04B), hex(0x4FD1D9), hex(0xF2A08F), hex(0x86ABFF), hex(0x7FE6B0), hex(0xC99CE8),
                           hex(0xF4DBA6), hex(0xE86A7A), hex(0x5FA8D3), hex(0xA9B4C8)};
+        t.chart.rise = hex(0x7FE6B0);
+        t.chart.fall = hex(0xE86A7A);
         e.keyword = hex(0x86ABFF);
         e.type = hex(0x7FD9EE);
         e.string = hex(0xE9C27A);
@@ -509,6 +515,8 @@ Theme Theme::fromPalette(const Palette& p, ThemeStyle style) {
                           : std::array{p.accent, hex(0xE07B26), hex(0x2E9E5B), hex(0xD64545), hex(0x7B5CD6), hex(0x1A9BA3),
                                        hex(0xC2478F), hex(0x7F9A1E), hex(0x9A6B45), hex(0x6B7480)};
     t.chart.barBevel = {.gradient = dark ? 0.05f : 0.06f, .highlight = withAlpha(white, dark ? 0.07f : 0.35f)};
+    t.chart.rise = dark ? hex(0x3FB984) : hex(0x1E9A5A);
+    t.chart.fall = dark ? hex(0xE5574F) : hex(0xD03C3C);
     t.chart.barRadius = 0;
     // nodes: a body a layer above the canvas, a header raised (its kind's color), a shadow under them
     t.node.body = p.layer;
@@ -636,6 +644,8 @@ Theme Theme::blend(const Theme& a, const Theme& b, float t) {
     r.node.cornerRadius = radius(a.node.cornerRadius, b.node.cornerRadius);
     for (std::size_t i = 0; i < r.chart.series.size(); ++i)
         r.chart.series[i] = color(a.chart.series[i], b.chart.series[i]);
+    r.chart.rise = color(a.chart.rise, b.chart.rise);
+    r.chart.fall = color(a.chart.fall, b.chart.fall);
     r.chart.barRadius = radius(a.chart.barRadius, b.chart.barRadius);
     r.chart.barBevel = bevel(a.chart.barBevel, b.chart.barBevel);
     r.dock.tabBevel = bevel(a.dock.tabBevel, b.dock.tabBevel);

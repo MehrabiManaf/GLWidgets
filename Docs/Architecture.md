@@ -774,7 +774,8 @@ shape, the edges of a borderless window the resize shapes of its sides and corne
 ### Charts
 
 Charts (`Library/Include/GLWidgets/Charts`) are widgets made for data that changes as it comes: a feed of measures, of
-events, of shares. Eight for now: **lines** over values or time and stacked areas (`LineChart`), **pies**, donuts and sunbursts
+events, of shares. Nine for now: **lines** over values or time and stacked areas (`LineChart`), **candles** of a price
+(`CandleChart`), **pies**, donuts and sunbursts
 (`PieChart`), **treemaps** (`TreeMap`), **bars**, stacked, grouped or in percent, standing or lying (`BarChart`), **bar
 races** (`BarRace`), **heat maps** (`HeatMap`), and for dashboards **sparklines** (`Sparkline`) and **gauges**
 (`Gauge`). What they share is in `Chart`:
@@ -917,14 +918,41 @@ the rows; a drag pans, a live one following again when dragged back to its newes
 zoom into; a double click shows all); the cell under it is outlined (its row and column lit across when they are thin),
 its column's label, its row's name and its value in a tooltip; a click on a cell is told (`setOnCellClicked`).
 
+**Candles** (`CandleChart`): a price over time, a candle for each period (`Candle`: its open, high, low and close, its
+volume): a wick from the low to the high, a body from the open to the close, of the style's rise color when it closed
+higher (`ChartStyle::rise`, `fall`: of each color scheme, as green and red read in it; a chart's own if given), its
+body raised as the bars are when it is wide enough; or bars (OHLC: a tick to the left at the open, one to the right at
+the close). Its volume as faint bars along the bottom, on a scale of their own. Prices come a candle at a time
+(`append`, `setLast` for the one still going on) or trade by trade (`trade`: into the candle of its period, a new one when
+its period begins). A period (`CandlePeriod`) is so many seconds, minutes or hours, counted from local midnight (an
+hour's candles begin on the hour wherever one is, Tehran's half hour from UTC too), or days, weeks (from a day of one's
+own: `Props::weekStart`, 6 for Saturday), months or years of the local calendar; its name is what traders write (5s,
+15m, 4h, 1D, 1W, 1M, 1Y). The chart's: the one its candles come in (`Props::period`: those it is given kept as they are,
+their times too), or a longer one made of them (`setPeriod`; `Props::periods`: buttons at the end of its title's row,
+the one that shows raised as the style's buttons are; one not made of whole candles of the given one, a month of weeks,
+is left out): those of the longer period made of the given ones (merged: the first's open, the highest high, the lowest
+low, the last's close, their volumes summed), all at once when the period changes, and the last one again as trades
+come, so that seconds and months are of the same data. Its x is the candles' places, not their times, so that a night or a weekend without trades takes no
+room; the time's labels are at round times where they fall among the candles. It shows its last `window` candles,
+following the newest, the price axis at the end side (as traders read it) fitted to the highs and lows that show and
+eased there; the last close a line across it, its value in a tag on the axis in its candle's color. Lines go over it, in the
+series colors other than green and red: averages of its last closes (`addAverage`: of the period that shows, made again
+when it changes) and lines of points of one's own (`addLine`, of times). Its volume and each line are items of its
+legend: a click hides one and shows it again, eased (the volume's bars sink into the bottom, the prices taking the room). More candles than columns of pixels: each
+column one candle of those in it (the first's open, the highest high, the lowest low, the last's close, their volumes
+summed), as a candle of a longer period would be: two hundred thousand candles draw as six hundred. The mouse: the wheel
+zooms (a live one: its window), a drag pans (following again when dragged back to the newest), a crosshair with the price
+at it in a tag on the axis, and the candle under it (its open, high, low, close, change and volume) in a tooltip.
+
 `chart_demo` shows them all, fed live: a race of 500 packages' monthly downloads by system (`--race N` of them), three series at 200 points a second each over a minute (and ten minutes of
 history to pan into; an area under one, a band of the range around another), shares that drift in rings (regions, their
 countries, a few cities), a second's counts appended every second, a project's files changing now and
 then, a dashboard of the measures now (gauges, sparklines), heat maps of 200 endpoints' latency (a column a second,
 incidents and spikes in it, by powers of ten) and of requests by hour and weekday, a network's traffic by protocol stacked
-(in shares, if asked); the style, the colors, the motion and the bars' layout chosen above them.
+(in shares, if asked), a price as candles made of its trades (of a second to five minutes, by its buttons; its volume, two moving averages);
+the style, the colors, the motion and the bars' layout chosen above them.
 
-Still to come: more kinds (scatter, candlesticks, histograms; calendars and densities of points as heat maps), logarithmic axes, a
+Still to come: more kinds (scatter, histograms; calendars and densities of points as heat maps), logarithmic axes, a
 second y axis, Persian digits and the Solar Hijri calendar on axes (with the `Locale` of
 [Localization](#localization-and-right-to-left)).
 
@@ -1178,7 +1206,7 @@ The `GLW_USE_SYSTEM_SDL3` option uses an installed SDL3 instead of the pinned re
 | M3 | Widget core: tree, events, focus, layout, a UI root independent of the platform, window chrome as widgets (with the native extras), live resize | Done, apart from the native extras of the chrome and what is listed in [Widgets](#widgets) |
 | M4 | Basic widgets (label, button, line edit, scroll area, splitter), styles, `LocalizedText` and catalogs, right-to-left layouts | Done, apart from plural rules and the formatting of numbers and dates (see [Localization](#localization-and-right-to-left)) |
 | M5 | Docking: major and panel tabs, windows merging and splitting by their tabs, both modes, layout persistence | Done: docking in a window, major tabs and saved layouts (M5a), across windows in the full mode (M5b), global panels, saved workspaces and Wayland's restricted mode (M5c). Wayland's drag-and-drop between windows, and keeping restored windows on the screens there are, later; the restricted mode not yet run on Wayland |
-| M6 | Validation: a node canvas and a code editor (FlowGraph), charts, an engine embedding example | In progress: the node canvas (`Canvas`, `node_editor`), menus, popups and dialogs, the code editor (`TextEdit`, `code_editor`), charts (lines, pies, treemaps, bars, races, heat maps, sparklines, gauges: `chart_demo`) |
+| M6 | Validation: a node canvas and a code editor (FlowGraph), charts, an engine embedding example | In progress: the node canvas (`Canvas`, `node_editor`), menus, popups and dialogs, the code editor (`TextEdit`, `code_editor`), charts (lines, stacked areas, candles, pies, treemaps, bars, races, heat maps, sparklines, gauges: `chart_demo`) |
 
 ## Open questions
 

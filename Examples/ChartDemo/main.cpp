@@ -8,7 +8,9 @@
 // now (gauges, CPU's and memory's colored by bands, the network's a half circle with a needle) and of their last half
 // minute (sparklines, the errors' in columns); heat maps of 200 endpoints' latency over the last minutes (a column a
 // second, incidents and spikes in them) and of requests by hour and weekday; a network's traffic by protocol, stacked
-// (in shares, if asked), ten points a second over the last two minutes. Above them, the style and the
+// (in shares, if asked), ten points a second over the last two minutes; a price as candles made of trades twenty times
+// a second (of a second, five, fifteen, a minute or five: its buttons), its volume under it and two moving averages over
+// it (its legend hides each). Above them, the style and the
 // colors of everything, whether the charts ease, how the bars are laid out, and whether the donut and the race show
 // only their top ones (the rest as one of others). Each chart is a docked panel: moved, split, floated, closed by its
 // tab; the View menu hides and shows each (one closed by its tab too), back beside a neighbour of where it was.
@@ -21,6 +23,7 @@
 // series; a click on a treemap's tile goes into it, a right click out.
 #include <GLWidgets/Charts/BarChart.hpp>
 #include <GLWidgets/Charts/BarRace.hpp>
+#include <GLWidgets/Charts/CandleChart.hpp>
 #include <GLWidgets/Charts/Gauge.hpp>
 #include <GLWidgets/Charts/HeatMap.hpp>
 #include <GLWidgets/Charts/LineChart.hpp>
@@ -89,7 +92,10 @@ struct Demo {
     std::vector<std::array<double, 3>> downloads;   // each package's, by system
     std::vector<double> momentum;                   // how fast each grows
     int month = 0;
-    glw::Timer feed, drift, second, disk, count, months, now, flows;
+    glw::Timer feed, drift, second, disk, count, months, now, flows, trades;
+    // the price: a walk, its trades made into candles
+    glw::CandleChart* candles = nullptr;
+    double price = 250, trend = 0;
     // the traffic by protocol, stacked: each one's rate drifting, now and then a burst
     glw::LineChart* traffic = nullptr;
     std::array<glw::LineSeries*, 4> protocols{};
@@ -164,6 +170,7 @@ struct Demo {
             return glw::DockPanel{.id = std::move(id), .title = std::move(title), .content = std::move(chart)};
         };
         glw::DockTabs& lineStack = area->addPanel(panel("line", tr("Measures"), std::move(made)));
+        area->addPanel(panel("price", tr("Price"), makePrice()), &lineStack, glw::DockSide::Center, 0.5f);
         glw::DockTabs& donutStack = area->addPanel(panel("donut", tr("Requests"), std::move(donut)), &lineStack, glw::DockSide::End, 0.4f);
         glw::DockTabs& raceStack = area->addPanel(panel("race", tr("Race"), std::move(racing)), &lineStack, glw::DockSide::Bottom, 0.5f);
         glw::DockTabs& barsStack = area->addPanel(panel("bars", tr("Events"), std::move(stacked)), &raceStack, glw::DockSide::End, 0.5f);
@@ -255,6 +262,25 @@ struct Demo {
         return made;
     }
 
+    // A price, its trades in candles of a second (an hour of them kept), shown in candles of five seconds (or of the
+    // period chosen), the last 80; the averages of its last 20 and 50 closes.
+    std::unique_ptr<glw::Widget> makePrice() {
+        auto made = std::make_unique<glw::CandleChart>(glw::CandleChart::Props{
+            .title = tr("A price"), .period = 1, .periods = {1, 5, 15, 60, 300}, .capacity = 3600, .window = 80});
+        candles = made.get();
+        candles->setPeriod(5);
+        candles->addAverage(20);
+        candles->addAverage(50);
+        return made;
+    }
+
+    // A trade: the price a step on (drifting now up, now down), a volume.
+    void nextTrade(double t) {
+        trend = std::clamp(trend + normal(0.002), -0.01, 0.01);
+        price = std::max(1.0, price * (1 + trend * 0.01 + normal(0.0009)));
+        candles->trade(t, price, std::round(std::exp(uniform(0, 5))));
+    }
+
     // A network's traffic by protocol, stacked, its last two minutes (ten minutes kept).
     std::unique_ptr<glw::Widget> makeTraffic() {
         auto made = std::make_unique<glw::LineChart>(
@@ -341,7 +367,7 @@ struct Demo {
     std::unique_ptr<glw::MenuBar> menus() {
         std::vector<glw::MenuItem> items;
         for (const auto& [id, title] : std::initializer_list<std::pair<const char*, const char*>>{
-                 {"dash", "&Dashboard"}, {"line", "&Measures"}, {"donut", "Re&quests"}, {"race", "R&ace"}, {"bars", "&Events"}, {"heat", "&Latency"}, {"traffic", "&Traffic"},
+                 {"dash", "&Dashboard"}, {"line", "&Measures"}, {"price", "&Price"}, {"donut", "Re&quests"}, {"race", "R&ace"}, {"bars", "&Events"}, {"heat", "&Latency"}, {"traffic", "&Traffic"},
                  {"tree", "&Files"}}) {
             auto toggle = std::make_shared<glw::Action>(tr(title));
             toggle->setCheckable(true);
@@ -374,6 +400,7 @@ struct Demo {
             {"bars", {{"race", glw::DockSide::End}, {"tree", glw::DockSide::Start}, {"line", glw::DockSide::Bottom}}},
             {"tree", {{"donut", glw::DockSide::Bottom}, {"bars", glw::DockSide::End}}},
             {"dash", {}},
+            {"price", {{"line", glw::DockSide::Center}, {"race", glw::DockSide::Top}}},
             {"traffic", {{"tree", glw::DockSide::Center}, {"donut", glw::DockSide::Bottom}}},
             {"heat", {{"bars", glw::DockSide::Center}, {"race", glw::DockSide::Center}, {"line", glw::DockSide::Bottom}}},
         };
@@ -436,7 +463,7 @@ struct Demo {
 
     void animate(bool on) {
         for (glw::Chart* chart : std::initializer_list<glw::Chart*>{line, pie, race, bars, tree, gauges[0], gauges[1], gauges[2], latency, weekly,
-                                                                    traffic})
+                                                                    traffic, candles})
             chart->setAnimated(on);
         for (glw::Sparkline* spark : sparks)
             spark->setAnimated(on);
@@ -505,6 +532,8 @@ struct Demo {
             lasts[3]->setText(std::to_string(static_cast<int>(values[2])));
             nextLatency();
         }, true);
+        // the trades: twenty a second
+        trades.start(scheduler, std::chrono::milliseconds(50), [this] { nextTrade(glw::chartNow()); }, true);
         // the traffic: ten points a second
         flows.start(scheduler, std::chrono::milliseconds(100), [this] { nextTraffic(glw::chartNow()); }, true);
         // the dashboard: the measures now, twice a second
@@ -546,6 +575,8 @@ struct Demo {
             nextLatency();
         for (double t = fed - 600; t < fed; t += 0.1)
             nextTraffic(t);
+        for (double t = fed - 3600; t < fed; t += 0.25)
+            nextTrade(t);
         for (int i = 30; i > 0; --i) {
             const double values[] = {std::round(uniform(40, 120)), std::round(uniform(10, 60)), std::round(uniform(0, 1) < 0.2 ? uniform(1, 25) : 0)};
             bars->appendCategory("-" + std::to_string(i) + "s", values);

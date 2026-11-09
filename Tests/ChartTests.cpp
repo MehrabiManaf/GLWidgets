@@ -8,6 +8,7 @@
 
 #include <GLWidgets/Charts/BarChart.hpp>
 #include <GLWidgets/Charts/BarRace.hpp>
+#include <GLWidgets/Charts/CandleChart.hpp>
 #include <GLWidgets/Charts/ChartAxis.hpp>
 #include <GLWidgets/Charts/Gauge.hpp>
 #include <GLWidgets/Charts/HeatMap.hpp>
@@ -921,4 +922,147 @@ TEST(stackedSeriesLieOnTheOnesUnderThem) {
     const std::size_t drawn = c.paint();
     c.move({300, 200});
     CHECK(c.paint() > drawn);
+}
+
+// ---- candles ----
+
+TEST(aCandleChartMakesCandlesOfTrades) {
+    Shown<CandleChart> c(CandleChart::Props{.period = 60});
+    // a minute's trades: its first price its open, its highest and lowest, its last its close, their volumes summed
+    c.chart->trade(0, 10, 1);
+    c.chart->trade(30, 12, 2);
+    c.chart->trade(59, 9, 1);
+    c.chart->trade(61, 11, 5);
+    c.chart->trade(20, 50, 9);          // of a minute gone: left out
+    CHECK(c.chart->count() == 2);
+    const Candle& first = c.chart->candle(0);
+    CHECK(first.time == 0 && first.open == 10 && first.high == 12 && first.low == 9 && first.close == 9 && first.volume == 4);
+    CHECK(c.chart->last()->time == 60 && c.chart->last()->open == 11 && c.chart->last()->volume == 5);
+    // the last one again, as its period goes on
+    c.chart->setLast({60, 11, 14, 10, 13, 8});
+    CHECK(c.chart->count() == 2 && c.chart->last()->high == 14);
+    // the mouse over a candle: a crosshair, its values by it
+    const std::size_t drawn = c.paint();
+    CHECK(drawn > 0);
+    c.chart->setWindow(2);
+    c.paint();
+    const std::size_t still = c.paint();
+    c.move({200, 200});
+    CHECK(c.paint() > still);
+}
+
+TEST(aLiveCandleChartFollowsItsNewestCandles) {
+    Shown<CandleChart> c(CandleChart::Props{.capacity = 500, .window = 100});
+    for (int i = 0; i < 1000; ++i)
+        c.chart->append({i * 60.0, 100.0 + i, 101.0 + i, 99.0 + i, 100.5 + i, 10});
+    c.paint();
+    CHECK(c.chart->count() == 500 && c.chart->following());
+    CHECK(c.chart->indexView() == (ChartRange{900, 1001}));
+    // its prices fitted to the candles that show
+    const ChartRange y = c.chart->priceView();
+    CHECK(y.low < 999 && y.low > 950 && y.high > 1100 && y.high < 1110);
+    // dragged back, then to the newest again: following again
+    c.drag({300, 150}, {500, 150});
+    CHECK(!c.chart->following());
+    c.drag({500, 150}, {100, 150});
+    CHECK(c.chart->following());
+}
+
+TEST(aCandleChartOfManyCandlesDrawsWhatItsPixelsShow) {
+    Shown<CandleChart> c;
+    double price = 100;
+    std::mt19937 random(5);
+    std::normal_distribution<double> step(0, 0.5);
+    for (int i = 0; i < 200'000; ++i) {
+        const double open = price;
+        price += step(random);
+        c.chart->append({i * 60.0, open, std::max(open, price) + 0.2, std::min(open, price) - 0.2, price, 1});
+    }
+    // two hundred thousand candles in 600 dips: a candle a column of pixels, of those in it
+    CHECK(c.paint() < 600 * 40);
+}
+
+TEST(aCandleChartShowsItsCandlesInLongerPeriods) {
+    Shown<CandleChart> c(CandleChart::Props{.period = 1, .periods = {1, 5, 60}});
+    // a minute of candles of a second, rising by one each
+    for (int i = 0; i < 60; ++i)
+        c.chart->append({double(i), 100.0 + i, 101.0 + i, 99.0 + i, 100.5 + i, 1});
+    CHECK(c.chart->count() == 60);
+    // of five seconds: twelve, each its first second's open, its last's close, their highest and lowest, their volumes
+    c.chart->setPeriod(5);
+    CHECK(c.chart->period() == 5 && c.chart->count() == 12);
+    const Candle& first = c.chart->candle(0);
+    CHECK(first.time == 0 && first.open == 100 && first.close == 104.5 && first.high == 105 && first.low == 99 && first.volume == 5);
+    // a second more: a new candle of five seconds begun, its trades into it as they come
+    c.chart->append({60, 160, 161, 159, 160.5, 1});
+    c.chart->trade(61.5, 170, 2);
+    CHECK(c.chart->count() == 13 && c.chart->last()->time == 60 && c.chart->last()->high == 170 && c.chart->last()->volume == 3);
+    // a period not a whole number of its own: the nearest that is; a minute: all of them in one and the new one
+    c.chart->setPeriod(4.6);
+    CHECK(c.chart->period() == 5);
+    c.chart->setPeriod(60);
+    CHECK(c.chart->count() == 2 && c.chart->candle(0).volume == 60);
+    // its buttons at the end of its top row (of a second, five, a minute): a click on the first shows candles of a second
+    c.paint();
+    c.button(platform::MouseButton::Left, true, {c.chart->bounds().right() - 70, 10});
+    CHECK(c.chart->period() == 1 && c.chart->count() == 62);
+}
+
+TEST(aCandleChartsLegendHidesItsAveragesAndItsVolume) {
+    Shown<CandleChart> c(CandleChart::Props{.period = 1});
+    for (int i = 0; i < 40; ++i)
+        c.chart->append({double(i), 100.0 + i, 101.0 + i, 99.0 + i, 100.0 + i, 10});
+    CandleChart::Line& average = c.chart->addAverage(10);
+    CHECK(average.averageOf() == 10 && average.name().source == "MA 10" && average.visible());
+    c.paint();
+    // the legend: its volume, then the average; a click on each hides it
+    c.button(platform::MouseButton::Left, true, {c.chart->bounds().x + 20, 8});
+    CHECK(!c.chart->volumeVisible());
+    c.chart->setVolumeVisible(true);
+    average.setVisible(false);
+    CHECK(!average.visible());
+    CHECK(c.paint() > 0);
+}
+
+TEST(aCandleChartsPeriodsAreOfTheLocalCalendar) {
+    // a local date's midnight
+    const auto midnight = [](int year, int month, int day) {
+        std::tm t{};
+        t.tm_year = year - 1900;
+        t.tm_mon = month - 1;
+        t.tm_mday = day;
+        t.tm_isdst = -1;
+        return static_cast<double>(std::mktime(&t));
+    };
+    // their names; seconds in the largest unit they are a whole number of
+    CHECK(CandlePeriod(86400).unit == CandlePeriod::Unit::Day && CandlePeriod(604800) == CandlePeriod::weeks(1));
+    CHECK(CandlePeriod(300).name() == "5m" && CandlePeriod::days(1).name() == "1D" && CandlePeriod::months(3).name() == "3M");
+    // what is made of what: minutes of seconds, a month of days; not a month of weeks, nor 7 seconds of 5
+    CHECK(CandlePeriod::months(1).madeOf(CandlePeriod::days(1)) && CandlePeriod::hours(1).madeOf(CandlePeriod::seconds(5)));
+    CHECK(!CandlePeriod::months(1).madeOf(CandlePeriod::weeks(1)) && !CandlePeriod::seconds(7).madeOf(CandlePeriod::seconds(5)));
+    // an hour's start: on the local hour; a week's: on its first day (a Saturday), a month's: on its first
+    CHECK(CandlePeriod::hours(1).start(midnight(2025, 3, 10) + 5000) == midnight(2025, 3, 10) + 3600);
+    CHECK(CandlePeriod::weeks(1).start(midnight(2025, 1, 1) + 600, 6) == midnight(2024, 12, 28));
+    CHECK(CandlePeriod::months(1).start(midnight(2025, 2, 17)) == midnight(2025, 2, 1));
+    CHECK(CandlePeriod::months(1).next(midnight(2025, 1, 1)) == midnight(2025, 2, 1));
+    CHECK(CandlePeriod::years(1).start(midnight(2025, 7, 4)) == midnight(2025, 1, 1));
+
+    // days of three months (as they were given: their times kept), in weeks from Saturday, in months
+    Shown<CandleChart> c(CandleChart::Props{.period = CandlePeriod::days(1),
+                                            .periods = {CandlePeriod::days(1), CandlePeriod::weeks(1), CandlePeriod::months(1)},
+                                            .weekStart = 6});
+    for (int day = 1; day <= 90; ++day) {
+        const double at = midnight(2025, 1, day);       // (the 32nd of January: the 1st of February)
+        c.chart->append({at, 100.0 + day, 101.0 + day, 99.0 + day, 100.5 + day, 1});
+    }
+    CHECK(c.chart->count() == 90 && c.chart->candle(0).time == midnight(2025, 1, 1));
+    c.chart->setPeriod(CandlePeriod::weeks(1));
+    CHECK(c.chart->count() == 14 && c.chart->candle(0).time == midnight(2024, 12, 28) && c.chart->candle(0).volume == 3);
+    CHECK(c.chart->candle(0).open == 101 && c.chart->candle(1).time == midnight(2025, 1, 4) && c.chart->candle(1).volume == 7);
+    c.chart->setPeriod(CandlePeriod::months(1));
+    CHECK(c.chart->count() == 3 && c.chart->candle(1).time == midnight(2025, 2, 1) && c.chart->candle(1).volume == 28);
+    // not of days: left as it was
+    c.chart->setPeriod(CandlePeriod::hours(5));
+    CHECK(c.chart->period() == CandlePeriod::months(1));
+    CHECK(c.paint() > 0);
 }

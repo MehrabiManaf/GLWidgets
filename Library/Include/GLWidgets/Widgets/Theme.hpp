@@ -408,6 +408,8 @@ struct ChartStyle {
     Color crosshair;                // the line at the mouse
     Color selection;                // a rectangle dragged to zoom into
     std::array<Color, 10> series;
+    Color rise;                     // a price that went up (a candle, a change), and one that went down
+    Color fall;
     float fontSize = 11;
     float titleSize = 13;
     float lineWidth = 1.5f;

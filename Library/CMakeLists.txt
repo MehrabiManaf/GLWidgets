@@ -15,6 +15,7 @@ add_custom_command(
 add_library(GLWidgets ${GLW_LIB_TYPE}
     Source/Charts/BarChart.cpp
     Source/Charts/BarRace.cpp
+    Source/Charts/CandleChart.cpp
     Source/Charts/Chart.cpp
     Source/Charts/ChartAxis.cpp
     Source/Charts/Gauge.cpp
