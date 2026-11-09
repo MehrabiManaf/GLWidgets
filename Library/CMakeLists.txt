@@ -17,9 +17,11 @@ add_library(GLWidgets ${GLW_LIB_TYPE}
     Source/Charts/BarRace.cpp
     Source/Charts/Chart.cpp
     Source/Charts/ChartAxis.cpp
+    Source/Charts/Gauge.cpp
     Source/Charts/LineChart.cpp
     Source/Charts/PieChart.cpp
     Source/Charts/SeriesBuffer.cpp
+    Source/Charts/Sparkline.cpp
     Source/Charts/TreeMap.cpp
     Source/Core/Assert.cpp
     Source/Core/Error.cpp

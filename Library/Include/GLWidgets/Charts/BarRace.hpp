@@ -149,6 +149,7 @@ private:
         std::size_t item;
     };
     std::vector<Bar> bars_;
+    Axis valueAxis_;                                // as last painted
     std::vector<std::size_t> visible_;              // scratch: the rows that show
     std::optional<std::size_t> hovered_;
     std::optional<Point> mouse_;

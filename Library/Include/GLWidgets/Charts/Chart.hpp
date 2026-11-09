@@ -10,12 +10,16 @@
 // A chart takes the room it gets and uses all of it: its axes as wide as their labels, its ticks as many as fit, its
 // legend in as many rows as it needs. Data may change as often as it comes (a live feed): a change only marks it to be
 // painted again, and what shows is made of the data once a frame, from what of it shows.
+#include <GLWidgets/Charts/ChartAxis.hpp>
 #include <GLWidgets/Export.hpp>
 #include <GLWidgets/Widgets/Animation.hpp>
+#include <GLWidgets/Widgets/Layout.hpp>
 #include <GLWidgets/Widgets/Theme.hpp>
 #include <GLWidgets/Widgets/Widget.hpp>
 
 #include <cstddef>
+#include <cstdint>
+#include <functional>
 #include <memory>
 #include <optional>
 #include <span>
@@ -78,6 +82,57 @@ protected:
         std::string value;
     };
     void paintToolTip(PaintContext& context, Point at, const std::string& title, std::span<const ToolTipRow> rows) const;
+
+    // An axis of values or of times (a line chart's x and y, a bar chart's values, a race's): its ticks at round values for
+    // a range and a length, as many as their labels fit (along a horizontal one, apart by their widths); their labels;
+    // its grid across the plot and its labels beside it; a value as a tooltip shows it. What the charts' axes are made
+    // with, so that they all look and fit alike.
+    class GLW_EXPORT Axis {
+    public:
+        enum class Side : std::uint8_t { Left, Right, Top, Bottom };       // where its labels are, beside the plot
+
+        Orientation orientation = Orientation::Horizontal;  // along x (Horizontal), or along y
+        bool time = false;                                  // seconds since 1970: round local times (TimeTicks)
+        bool reversed = false;      // a horizontal one growing to the left (right to left); a vertical one downward
+        std::string suffix;                                 // after each label ("%")
+        std::function<std::string(double value, double step)> format;     // none: formatNumber, formatTime
+
+        // Its ticks for `range` along `length` dips.
+        void fit(const Chart& chart, ChartRange range, float length);
+        const std::vector<double>& values() const { return values_; }
+        const std::vector<std::string>& labels() const { return labels_; }
+        double step() const { return step_; }
+        int decimals() const { return decimals_; }
+        // How far its labels reach across it: the widest (a vertical one's), or a line's height.
+        float labelWidth() const { return widest_; }
+        float labelHeight() const { return height_; }
+        // Where a value is from `start` over `length` dips.
+        float at(double value, float start, float length) const;
+        // Lines across `plot` at its ticks, sharp on the pixels; its labels beside `plot` at `side`, those that would go out
+        // of `bounds` left out.
+        void paintGrid(paint::Painter& painter, const Rect& plot, Color color) const;
+        void paintLabels(PaintContext& context, const Chart& chart, const Rect& plot, Side side, Color color, const Rect& bounds) const;
+        // A value as a tooltip shows it: a decimal more than its ticks; a time to the second (to the millisecond when its
+        // ticks are), its day too when more than a day shows.
+        std::string precise(double value) const;
+
+    private:
+        std::string label(double value) const;
+        ChartRange range_;
+        std::vector<double> values_;
+        std::vector<std::string> labels_;
+        double step_ = 1;
+        int decimals_ = 0;
+        TimeTicks timeTicks_;
+        float widest_ = 0;
+        float height_ = 0;
+    };
+
+    // A sector of a ring raised as the style's bars are (a pie's slice, a gauge's arc): a relief (Plastic, Metal, Fluid;
+    // `lift` times as high: the slice under the mouse; its corners as round as the bars'), lit from above with a light
+    // line along its top (Studio), flat (Plain). Painter::fillArc's angles and gap.
+    void paintArc(paint::Painter& painter, Point center, float inner, float outer, float start, float sweep, float inset, Color color,
+                  float lift = 1) const;
 
     // How long a change is eased over: the theme's normal motion (fast: its fast one), none when it is not animated or
     // not shown.

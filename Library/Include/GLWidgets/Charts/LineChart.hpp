@@ -197,8 +197,6 @@ private:
     ChartRange fitY(ChartRange x) const;
     void updateView();
     double newestX() const;
-    std::string formatX(double v, double step) const;
-    std::string formatY(double v, double step) const;
     void paintSeries(PaintContext& context, const LineSeries& series, std::size_t index);
     void paintArea(PaintContext& context, const AreaSeries& area);
     // A series's line as it shows, in the plot's coordinates, left to right, its gaps left out: what each column of pixels
@@ -212,7 +210,6 @@ private:
     Props props_;
     std::vector<std::unique_ptr<LineSeries>> series_;
     std::vector<std::unique_ptr<AreaSeries>> areas_;
-    std::function<std::string(double, double)> formatX_, formatY_;
 
     XMode xMode_ = XMode::Fit;
     double window_ = 0;                 // following: what of x shows (the wheel zooms it)
@@ -229,8 +226,7 @@ private:
     int yTickCount_ = 6;                // what fitY rounds to: as many as the plot is high for
 
     Rect plot_;
-    ChartTicks xTicks_, yTicks_;        // as they were last painted
-    TimeTicks timeTicks_;
+    Axis xAxis_, yAxis_;                // as they were last painted
     std::optional<Point> mouse_;
     enum class Drag : std::uint8_t { None, Pan, Box };
     Drag drag_ = Drag::None;

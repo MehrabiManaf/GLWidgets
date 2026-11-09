@@ -65,9 +65,11 @@ Then, in `build/<preset>/bin`:
   minute (`--rate` points a second each, ten minutes of history to zoom out and pan into; an area under CPU, a band of
   memory's range), a donut of shares that drift in rings (regions, countries, cities: a click goes into a slice, a click
   in the hole out),
-  stacked bars of each second's counts, a treemap of a project's files (a click goes into a folder, a right click out).
+  stacked bars of each second's counts, a treemap of a project's files (a click goes into a folder, a right click out),
+  a dashboard of gauges (colored by bands; a needle) and sparklines of the measures now.
   The wheel zooms, a drag pans (back to the newest, it follows again), the right button drags a rectangle to zoom into,
-  a double click shows all; a legend's item hides its series.
+  a double click shows all; a legend's item hides its series. Each chart is a docked panel (moved, split, floated, closed
+  by its tab); the View menu hides and shows each.
 - `hello_window` opens two windows drawn by one GPU device.
 - `GLW_LOG_FRAMES=1` makes any of them say how many frames it draws, each second that has some (idle, none), how far
   apart, and how many came late (a refresh missed).

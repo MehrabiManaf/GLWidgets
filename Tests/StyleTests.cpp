@@ -56,16 +56,16 @@ TEST(theThemesStylesDifferAsTheySay) {
     CHECK(studio.style == ThemeStyle::Studio && fluid.style == ThemeStyle::Fluid && plain.style == ThemeStyle::Plain);
     // Studio: square, raised, quick, no ripple
     CHECK(studio.button.cornerRadius == 0 && studio.button.bevel.gradient > 0 && studio.button.ripple.a == 0 && !studio.motion.still());
-    // Fluid: rounded, flat, rippling, the selection sliding, slower
+    // Fluid: Plastic's reliefs, rounder, rippling, the selection sliding, slower
     // ... its buttons and fields lower, and pills (a radius past half their height: half of it)
     CHECK(fluid.button.cornerRadius >= 100 && fluid.lineEdit.cornerRadius >= 100 && fluid.dock.cornerRadius > 0);
     // ... as low as Studio's (3 dips above and below the text, panels' headers 30, rows 26), wider for their ends
     CHECK(fluid.button.padding.top == studio.button.padding.top && studio.button.padding.top == 3 && fluid.button.padding.start > studio.button.padding.start);
     CHECK(fluid.collapsiblePanel.headerHeight == 30 && studio.collapsiblePanel.headerHeight == 30 && studio.itemView.rowHeight == 26);
-    // panels: Studio's a card with an edge and a shadow; Fluid's without a frame, its header raised, a shadow under it;
-    // Plain's crisp, without a shadow; in every one the focus a lighter header (no ring)
+    // panels: Studio's a card with an edge and a shadow; Fluid's a relief; Plain's crisp, without a shadow; in every one
+    // the focus a lighter header (no ring)
     CHECK(studio.collapsiblePanel.shadow.a > 0 && studio.collapsiblePanel.border.a > 0 && plain.collapsiblePanel.shadow.a == 0);
-    CHECK(fluid.collapsiblePanel.border.a == 0 && fluid.collapsiblePanel.shadow.a > 0 && fluid.collapsiblePanel.bevel.gradient > 0);
+    CHECK(fluid.collapsiblePanel.bevel.relief > 0 && fluid.collapsiblePanel.cornerRadius > Theme::dark(ThemeStyle::Plastic).collapsiblePanel.cornerRadius);
     for (const Theme* theme : {&studio, &fluid, &plain})
         CHECK(theme->collapsiblePanel.header.focused && *theme->collapsiblePanel.header.focused != theme->collapsiblePanel.header.normal);
     // flat: no light, no shadow (a bevel of no colors draws none)
@@ -139,9 +139,10 @@ TEST(aStyleChangedEasesItsShapes) {
 
 TEST(studioIsTheDefault) {
     CHECK(Theme::dark().style == ThemeStyle::Studio && Theme::light().style == ThemeStyle::Studio && Theme{}.style == ThemeStyle::Studio);
-    // Fluid: its splitters seen; its buttons raised as its panels' headers
-    const Theme fluid = Theme::dark(ThemeStyle::Fluid);
-    CHECK(fluid.splitter.handle.a > 0 && fluid.button.bevel.gradient > 0 && fluid.button.bevel.gradient == fluid.collapsiblePanel.bevel.gradient);
+    // Fluid: its splitters seen; its buttons and its panels' headers reliefs, lit softer than Plastic's
+    const Theme fluid = Theme::dark(ThemeStyle::Fluid), plastic = Theme::dark(ThemeStyle::Plastic);
+    CHECK(fluid.splitter.handle.a > 0 && fluid.button.bevel.relief > 0 && fluid.collapsiblePanel.bevel.relief > 0);
+    CHECK(fluid.lighting.specular < plastic.lighting.specular && fluid.lighting.metal == 0);
 }
 
 TEST(plasticAndMetalDrawTheirControlsAsLitReliefs) {
@@ -184,25 +185,24 @@ TEST(viewsHeadersAndNodesLookAsTheStylesControls) {
     const Theme plastic = Theme::dark(ThemeStyle::Plastic), metal = Theme::dark(ThemeStyle::Metal);
     for (const Theme* theme : {&studio, &fluid, &plain, &plastic, &metal})
         CHECK(theme->itemView.headerBackground.a > 0 && theme->table.headerBackground.a > 0);
-    CHECK(studio.table.headerBevel.gradient > 0 && fluid.table.headerBevel.gradient > 0 && plain.table.headerBevel.gradient == 0);
-    CHECK(plastic.table.headerBevel.relief > 0);
-    // nodes: square-ish and raised in Studio, round in Fluid, square and flat in Plain, reliefs in Plastic and Metal
+    CHECK(studio.table.headerBevel.gradient > 0 && plain.table.headerBevel.gradient == 0);
+    CHECK(plastic.table.headerBevel.relief > 0 && fluid.table.headerBevel.relief > 0);
+    // nodes: square-ish and raised in Studio, round reliefs in Fluid, square and flat in Plain, reliefs in Plastic and Metal
     CHECK(studio.node.cornerRadius < fluid.node.cornerRadius && plain.node.cornerRadius == 0 && plain.node.shadow.a == 0);
     CHECK(studio.node.bevel.gradient > 0 && plastic.node.bevel.relief > 0 && metal.node.bodyBevel.relief > 0);
 }
 
 TEST(tabsLookAsTheStylesControls) {
-    // Studio, Plain, Plastic and Metal: the tab shown joined to its content (Plastic's and Metal's a relief of its color);
-    // Fluid: standing on the bar, raised
+    // the tab shown joined to its content (Plastic's, Metal's and Fluid's a relief of its color, Fluid's rounder)
     const Theme studio = Theme::dark(ThemeStyle::Studio), fluid = Theme::dark(ThemeStyle::Fluid), plain = Theme::dark(ThemeStyle::Plain);
     const Theme plastic = Theme::dark(ThemeStyle::Plastic), metal = Theme::dark(ThemeStyle::Metal);
     CHECK(studio.dock.tabsJoined && plain.dock.tabsJoined && plastic.dock.tabsJoined && metal.dock.tabsJoined);
     CHECK(studio.majorTab.joined && plain.majorTab.joined && plastic.majorTab.joined && metal.majorTab.joined);
-    CHECK(!fluid.dock.tabsJoined && !fluid.majorTab.joined && plastic.dock.selectedTab == plastic.dock.background);
-    CHECK(fluid.dock.tabRadius >= 100 && fluid.dock.tabBevel.gradient > 0 && plastic.dock.tabBevel.relief > 0 && plastic.majorTab.bevel.relief > 0);
+    CHECK(fluid.dock.tabsJoined && fluid.majorTab.joined && plastic.dock.selectedTab == plastic.dock.background);
+    CHECK(fluid.dock.tabRadius > plastic.dock.tabRadius && fluid.dock.tabBevel.relief > 0 && plastic.dock.tabBevel.relief > 0 && plastic.majorTab.bevel.relief > 0);
     CHECK(plain.dock.tabRadius == 0 && plain.dock.selectedTab == plain.dock.background);
-    // Plastic and Metal: stacks and cards raised, slabs, the tab shown a folder's tab of its stack
-    CHECK(plastic.dock.islandBevel.relief > 0 && metal.card.bevel.relief > 0 && studio.dock.islandBevel.relief == 0 && fluid.card.bevel.relief == 0);
+    // Plastic, Metal and Fluid: stacks and cards raised, slabs, the tab shown a folder's tab of its stack
+    CHECK(plastic.dock.islandBevel.relief > 0 && metal.card.bevel.relief > 0 && fluid.card.bevel.relief > 0 && studio.dock.islandBevel.relief == 0);
 }
 
 TEST(colorSchemesGiveEveryStyleTheirColors) {

@@ -5,6 +5,7 @@
 #include <GLWidgets/Paint/Painter.hpp>
 #include <GLWidgets/Text/Font.hpp>
 #include <GLWidgets/Text/TextLayout.hpp>
+#include <GLWidgets/Widgets/Bevel.hpp>
 #include <GLWidgets/Widgets/UiRoot.hpp>
 
 #include <algorithm>
@@ -219,6 +220,23 @@ void Chart::paintToolTip(PaintContext& context, Point at, const std::string& tit
 
 // ---- helpers ----
 
+void Chart::paintArc(paint::Painter& p, Point at, float r0, float r1, float a0, float sweep, float gap, Color color, float lift) const {
+    const Bevel& bevel = style().barBevel;
+    if (bevel.relief > 0) {
+        // its shadow a little down (what shows of it: along its lower edges), then the relief
+        if (bevel.shadow.a > 0)
+            p.fillArc({at.x, at.y + bevel.relief * 0.7f}, r0, r1, a0, sweep, gap, withAlpha(bevel.shadow, bevel.shadow.a * 0.6f));
+        p.fillArcRelief(at, r0, r1, a0, sweep, gap, bevel.relief * lift, bevel.roundness * 1.5f, color, style().barRadius);
+    } else if (bevel.gradient > 0 || bevel.highlight.a > 0) {
+        p.fillArc(at, r0, r1, a0, sweep, gap, lit(color, bevel.gradient * 1.5f), lit(color, -bevel.gradient * 0.75f),
+                  paint::Painter::ArcShading::Vertical);
+        if (bevel.highlight.a > 0)
+            p.fillArc(at, r1 - 1.5f, r1, a0, sweep, gap, bevel.highlight, withAlpha(bevel.highlight, 0), paint::Painter::ArcShading::Vertical);
+    } else {
+        p.fillArc(at, r0, r1, a0, sweep, gap, color);
+    }
+}
+
 Duration Chart::transition(bool fast) const {
     const UiContext* ui = context();
     if (!animated_ || !ui || !scheduler())
@@ -233,6 +251,110 @@ float Chart::snap(float v, float pixelsPerDip) {
 Color Chart::textOn(Color background) {
     const float luminance = 0.2126f * background.r + 0.7152f * background.g + 0.0722f * background.b;
     return luminance > 0.58f ? Color{0.06f, 0.07f, 0.09f, 0.88f} : Color{1, 1, 1, 0.96f};
+}
+
+} // namespace glw
+
+// ---- an axis ----
+
+namespace glw {
+
+std::string Chart::Axis::label(double value) const {
+    const double step = time ? timeTicks_.step : step_;
+    if (format)
+        return format(value, step);
+    return (time ? formatTime(value, timeTicks_) : formatNumber(value, decimals_, step_)) + suffix;
+}
+
+void Chart::Axis::fit(const Chart& chart, ChartRange range, float length) {
+    range_ = range;
+    height_ = chart.textSize("0").height;
+    const bool across = orientation == Orientation::Horizontal;
+    // as many as fit: down, a label's height and some apart; across, by their widths (tried, then fewer if they are wide)
+    const auto make = [&](int count) {
+        values_.clear();
+        labels_.clear();
+        if (time) {
+            timeTicks_ = timeTicks(range, count);
+            values_ = timeTicks_.values;
+        } else {
+            const ChartTicks ticks = niceTicks(range, count);
+            values_ = ticks.values;
+            step_ = ticks.step;
+            decimals_ = ticks.decimals;
+        }
+        widest_ = 0;
+        for (double v : values_) {
+            labels_.push_back(label(v));
+            widest_ = std::max(widest_, chart.textSize(labels_.back()).width);
+        }
+    };
+    int count = std::max(2, static_cast<int>(length / (across ? 90.0f : 34.0f)));
+    make(count);
+    if (across && (widest_ + 20) * static_cast<float>(labels_.size()) > length) {
+        count = std::max(2, static_cast<int>(length / (widest_ + 20)));
+        make(count);
+    }
+}
+
+float Chart::Axis::at(double value, float start, float length) const {
+    const double span = range_.span();
+    const auto f = static_cast<float>(span > 0 ? (value - range_.low) / span : 0.0);
+    const bool fromEnd = orientation == Orientation::Horizontal ? reversed : !reversed;
+    return fromEnd ? start + length - f * length : start + f * length;
+}
+
+void Chart::Axis::paintGrid(paint::Painter& painter, const Rect& plot, Color color) const {
+    const float ppd = painter.pixelsPerDip();
+    const float hair = 1.0f / ppd;
+    const bool across = orientation == Orientation::Horizontal;
+    for (double v : values_) {
+        if (across) {
+            const float x = snap(at(v, plot.x, plot.width), ppd);
+            if (x >= plot.x - 0.5f && x <= plot.right() + 0.5f)
+                painter.fillRect({x, plot.y, hair, plot.height}, color);
+        } else {
+            const float y = snap(at(v, plot.y, plot.height), ppd);
+            if (y >= plot.y - 0.5f && y <= plot.bottom() + 0.5f)
+                painter.fillRect({plot.x, y, plot.width, hair}, color);
+        }
+    }
+}
+
+void Chart::Axis::paintLabels(PaintContext& context, const Chart& chart, const Rect& plot, Side side, Color color, const Rect& bounds) const {
+    const bool across = orientation == Orientation::Horizontal;
+    for (std::size_t i = 0; i < values_.size(); ++i) {
+        if (across) {
+            const float x = at(values_[i], plot.x, plot.width);
+            const float half = chart.textSize(labels_[i]).width / 2;
+            if (x < plot.x - 1 || x > plot.right() + 1 || x - half < bounds.x || x + half > bounds.right())
+                continue;
+            if (side == Side::Top)
+                chart.drawText(context, labels_[i], {x, plot.y - 4}, color, 0, {0.5f, 1});
+            else
+                chart.drawText(context, labels_[i], {x, plot.bottom() + 5}, color, 0, {0.5f, 0});
+        } else {
+            const float y = at(values_[i], plot.y, plot.height);
+            if (y < plot.y - 1 || y > plot.bottom() + 1)
+                continue;
+            if (side == Side::Right)
+                chart.drawText(context, labels_[i], {plot.right() + 8, y}, color, 0, {0, 0.5f});
+            else
+                chart.drawText(context, labels_[i], {plot.x - 8, y}, color, 0, {1, 0.5f});
+        }
+    }
+}
+
+std::string Chart::Axis::precise(double value) const {
+    if (format)
+        return format(value, 0);
+    if (time) {
+        // to the second (to the millisecond when its ticks are), its day too when more than a day shows
+        const TimeUnit tick = timeTicks_.unit;
+        const TimeUnit unit = tick == TimeUnit::Millisecond ? TimeUnit::Millisecond : tick <= TimeUnit::Hour ? TimeUnit::Second : tick;
+        return formatTimeFully(value, unit, range_.span() > 86400);
+    }
+    return formatNumber(value, decimals_ + 1) + suffix;
 }
 
 } // namespace glw

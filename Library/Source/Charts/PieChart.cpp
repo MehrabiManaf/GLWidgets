@@ -405,9 +405,7 @@ void PieChart::paint(PaintContext& context) {
     // much), so that it never goes into the next ring, nor into the one before it
     const float ringGap = std::max(gap, (out + s.gap) / 2);
     const bool settled = sweep_.value() >= 1 && zoom_.value() >= 1;
-    // its slices raised as the style's bars are: reliefs (Plastic, Metal), lit from above with a light line along their top
-    // (Studio), flat (Fluid, Plain)
-    const Bevel& bevel = s.barBevel;
+    // its slices raised as the style's bars are (paintArc)
     for (std::size_t k = 0; k < painted_.size(); ++k) {
         const Item& item = painted_[k];
         const float ring = static_cast<float>(item.depth) - depth;      // 0: the first ring out of the hole
@@ -430,19 +428,8 @@ void PieChart::paint(PaintContext& context) {
         Color color = item.color;
         if (raised)
             color = mix(color, Color{1, 1, 1, color.a}, 0.10f);
-        if (bevel.relief > 0) {
-            // its shadow a little down (what shows of it: along its lower edges), then the relief (higher under the mouse)
-            if (bevel.shadow.a > 0)
-                p.fillArc({at.x, at.y + bevel.relief * 0.7f}, r0, r1, a0, sweep, gap, withAlpha(bevel.shadow, bevel.shadow.a * 0.6f));
-            p.fillArcRelief(at, r0, r1, a0, sweep, gap, bevel.relief * (raised ? 1.6f : 1.0f), bevel.roundness * 1.5f, color);
-        } else if (bevel.gradient > 0 || bevel.highlight.a > 0) {
-            p.fillArc(at, r0, r1, a0, sweep, gap, lit(color, bevel.gradient * 1.5f), lit(color, -bevel.gradient * 0.75f),
-                      paint::Painter::ArcShading::Vertical);
-            if (bevel.highlight.a > 0)
-                p.fillArc(at, r1 - 1.5f, r1, a0, sweep, gap, bevel.highlight, withAlpha(bevel.highlight, 0), paint::Painter::ArcShading::Vertical);
-        } else {
-            p.fillArc(at, r0, r1, a0, sweep, gap, color);
-        }
+        // (higher under the mouse)
+        paintArc(p, at, r0, r1, a0, sweep, gap, color, raised ? 1.6f : 1.0f);
         shown_.push_back({k, r0, r1, a0, sweep, at});
         // its share of what shows in it, where it fits
         if (props_.shares && settled && whole > 0) {

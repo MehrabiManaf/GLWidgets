@@ -75,8 +75,9 @@ public:
     }
     // ... a relief (as fillRelief is): `height` dips above what it is on, its edges rounding down over `bevel` dips, lit by
     // the light of the target; its flat top in `color`. A slice of a pie as a control of a lit style is.
+    // Its corners (where a side meets an arc) rounded over `corner` dips (no more than half as far as across it there).
     void fillArcRelief(Point center, float inner, float outer, float start, float sweep, float inset, float height, float bevel,
-                       Color color);
+                       Color color, float corner = 0);
 
     // ---- images ----
 

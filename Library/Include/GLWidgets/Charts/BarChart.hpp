@@ -132,7 +132,7 @@ private:
     int valueTickCount_ = 6;
 
     Rect plot_;
-    ChartTicks ticks_;
+    Axis valueAxis_;                            // as last painted
     struct Bar {
         Rect rect;
         std::size_t series, category;

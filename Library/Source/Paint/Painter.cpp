@@ -484,7 +484,7 @@ void Painter::fillArc(Point center, float inner, float outer, float start, float
 }
 
 void Painter::fillArcRelief(Point center, float inner, float outer, float start, float sweep, float inset, float height,
-                            float bevel, Color color) {
+                            float bevel, Color color, float corner) {
     if (sweep <= 0 || outer <= inner || outer <= 0 || color.a <= 0)
         return;
     const Transform& t = transform();
@@ -528,13 +528,16 @@ void Painter::fillArcRelief(Point center, float inner, float outer, float start,
     const std::uint32_t packed = packColor(color);
     // its half angle and how far its sides are in, packed (see Painter.hlsl's kind 4); a whole ring, no sides
     const float sides = whole ? -1.0f : half + 8.0f * std::round(gap * 16);
+    // its bevel and its corners' radius, packed too (eighths of a dip above a bevel under 256: exact enough in a float)
+    const float corners = std::round(std::clamp(corner * t.scale, 0.0f, 120.0f) * 8);
+    const float bevelAndCorners = std::clamp(bevel * t.scale, 0.5f, 255.0f) + 256.0f * corners;
     for (Point local : {Point{lowX, lowY}, Point{highX, lowY}, Point{highX, highY}, Point{lowX, highY}}) {
         Vertex v;
         v.position = c + axis * local.x + across * local.y;
         v.uv = local;
         v.halfSize = {r0, r1};
         v.radius = sides;
-        v.border = std::max(bevel * t.scale, 0.5f);        // the bevel
+        v.border = bevelAndCorners;
         v.kind = ringReliefKind;
         v.blur = height * t.scale;                         // the height
         v.color = packed;

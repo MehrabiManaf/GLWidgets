@@ -52,8 +52,8 @@ struct StateColor {
 
 // The looks a theme is made in, each in the dark and in the light (Theme::dark, Theme::light; Application::setStyle):
 //   Studio  (the default) as a tool's (Qt's Fusion, made finer): square, controls raised and lit from above, fields sunk; quick motions.
-//   Fluid   modern: rounded, flat with soft shadows; more motion and longer: a press ripples out of where it was, the
-//           selection slides from row to row, popups come in from further.
+//   Fluid   modern: Plastic's reliefs lit softly, rounder (pills, round panels, rows and slices); more motion and longer:
+//           a press ripples out of where it was, the selection slides from row to row, popups come in from further.
 //   Plain   simple: square and flat, no shadows, no glows, and nothing animated (every motion at once).
 //   Plastic real: its controls reliefs lit by a light (the theme's lighting): buttons rise out of the panel, rounding
 //           down to it, fields are sunk into it, their rims shadowing their floors; pressed, a button goes down.
@@ -204,8 +204,8 @@ struct ItemViewStyle {
     Color ripple{0, 0, 0, 0};                   // a press on a row: a circle out of where it was pressed (transparent: none)
     bool slideSelection = false;    // the selection slides from the row it was on to the one it goes to
     Color headerBackground{0, 0, 0, 0};         // behind a header's titles (transparent: none)
-    Bevel headerBevel;              // ... raised as a control (Plastic, Metal)
-    Bevel rowBevel;                 // the rows' highlights (under the mouse, pressed, selected) raised as controls (Plastic, Metal)
+    Bevel headerBevel;              // ... raised as a control (Plastic, Metal, Fluid)
+    Bevel rowBevel;                 // the rows' highlights (under the mouse, pressed, selected) raised as controls (reliefs)
 };
 
 struct SplitterStyle {
@@ -233,13 +233,13 @@ struct DockStyle {
     float tabHeight = 28;
     float tabMinimumWidth = 56;     // a tab is as wide as its title, between these (a longer title is cut with …)
     float tabMaximumWidth = 200;
-    // The tab shown: joined to its content under the bar (Studio's, Plain's; a relief of the content's color in Plastic
-    // and Metal, its face the content's), or standing on the bar as a control does, raised by `tabBevel` (a pill in
-    // Fluid); a tab under the mouse, the same.
+    // The tab shown: joined to its content under the bar (Studio's, Plain's; a relief of the content's color in Plastic,
+    // Metal and Fluid, its face the content's), or standing on the bar as a control does, raised by `tabBevel` (a pill
+    // when `tabRadius` is past half its height); a tab under the mouse, the same.
     bool tabsJoined = true;
     Bevel tabBevel;
     float tabRadius = 4;            // a tab's corners (a standing one's: at most half its height, a pill)
-    // A stack raised as a control (Plastic, Metal): under its tab bar, a slab of its background, the tab shown a relief
+    // A stack raised as a control (reliefs): under its tab bar, a slab of its background, the tab shown a relief
     // of it as high, joined to it as a folder's tab is (its face the slab's, no seam), the other tabs on the window.
     Bevel islandBevel;
 };
@@ -256,7 +256,7 @@ struct MajorTabStyle {
     float cornerRadius = 0;
     float topGap = 4;               // above the tabs: the caption, to drag the window by
     // The tab shown: joined to the window's content under it (as a browser's; a relief of its color in Plastic and Metal),
-    // or standing on the strip as a control does, raised by `bevel` in `raised` (a pill in Fluid).
+    // or standing on the strip as a control does, raised by `bevel` in `raised`.
     bool joined = true;
     Bevel bevel;
     Color raised{0, 0, 0, 0};

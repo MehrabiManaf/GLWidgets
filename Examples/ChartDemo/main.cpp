@@ -4,9 +4,12 @@
 // appended `--rate` points a second each, its last minute shown and following; a donut of shares that drift, in rings
 // (regions, their countries, a few cities: a click goes into a slice, a click in the hole out); a race of `--race`
 // packages' downloads (stacked by system), a month every 0.6 seconds; stacked bars of each second's counts, appended as
-// they come; a treemap of a project's folders and files, their sizes changing now and then. Above them, the style and the
+// they come; a treemap of a project's folders and files, their sizes changing now and then; a dashboard of the measures
+// now (gauges, CPU's and memory's colored by bands, the network's a half circle with a needle) and of their last half
+// minute (sparklines, the errors' in columns). Above them, the style and the
 // colors of everything, whether the charts ease, how the bars are laid out, and whether the donut and the race show
-// only their top ones (the rest as one of others).
+// only their top ones (the rest as one of others). Each chart is a docked panel: moved, split, floated, closed by its
+// tab; the View menu hides and shows each (one closed by its tab too), back beside a neighbour of where it was.
 //
 //   chart_demo [--rate N] [--race N] [--style studio|fluid|plain|plastic|metal] [--colors dark|light|dusk|sand|turquoise]
 //              [--frames N]
@@ -16,11 +19,16 @@
 // series; a click on a treemap's tile goes into it, a right click out.
 #include <GLWidgets/Charts/BarChart.hpp>
 #include <GLWidgets/Charts/BarRace.hpp>
+#include <GLWidgets/Charts/Gauge.hpp>
 #include <GLWidgets/Charts/LineChart.hpp>
 #include <GLWidgets/Charts/PieChart.hpp>
+#include <GLWidgets/Charts/Sparkline.hpp>
 #include <GLWidgets/Charts/TreeMap.hpp>
 #include <GLWidgets/Widgets/Application.hpp>
+#include <GLWidgets/Widgets/Action.hpp>
 #include <GLWidgets/Widgets/Declarative.hpp>
+#include <GLWidgets/Widgets/Docking.hpp>
+#include <GLWidgets/Widgets/MenuBar.hpp>
 #include <GLWidgets/Widgets/UiRoot.hpp>
 
 #include <algorithm>
@@ -30,6 +38,7 @@
 #include <cstdlib>
 #include <ctime>
 #include <exception>
+#include <map>
 #include <memory>
 #include <optional>
 #include <random>
@@ -56,13 +65,21 @@ struct Demo {
     glw::PieChart* pie = nullptr;
     glw::BarChart* bars = nullptr;
     glw::TreeMap* tree = nullptr;
+    // the dashboard: the measures now, and their last half minute (with the last value by each)
+    std::array<glw::Gauge*, 3> gauges{};
+    std::array<glw::Sparkline*, 4> sparks{};
+    std::array<glw::Label*, 4> lasts{};
     glw::Label* status = nullptr;
+    // the charts' panels: those hidden kept to come back; the View menu's items
+    glw::DockArea* area = nullptr;
+    std::map<std::string, glw::DockPanel> hidden;
+    std::map<std::string, std::shared_ptr<glw::Action>> toggles;
     glw::BarRace* race = nullptr;
     std::size_t racers = 500;
     std::vector<std::array<double, 3>> downloads;   // each package's, by system
     std::vector<double> momentum;                   // how fast each grows
     int month = 0;
-    glw::Timer feed, drift, second, disk, count, months;
+    glw::Timer feed, drift, second, disk, count, months, now;
     std::mt19937 random{42};
     double fed = 0;                         // the time of the last point
     double cpuValue = 30, memoryValue = 55, networkValue = 10;
@@ -123,10 +140,28 @@ struct Demo {
         project = makeProject();
         tree->setRoot(project);
 
-        const auto card = [](std::unique_ptr<glw::Widget> chart, float stretch = 1) {
+        // each chart a panel: the dashboard at the left edge, the line chart and the race by it, the bars by the race, the
+        // donut and the treemap on the right
+        auto docked = std::make_unique<glw::DockArea>();
+        docked->setStretch(1);          // all of the window under the bar above it
+        area = docked.get();
+        const auto panel = [](std::string id, glw::LocalizedText title, std::unique_ptr<glw::Widget> chart) {
             chart->setPadding(glw::Insets::all(14));
-            return ui::Card(std::move(chart)).stretch(stretch).build();
+            return glw::DockPanel{.id = std::move(id), .title = std::move(title), .content = std::move(chart)};
         };
+        glw::DockTabs& lineStack = area->addPanel(panel("line", tr("Measures"), std::move(made)));
+        glw::DockTabs& donutStack = area->addPanel(panel("donut", tr("Requests"), std::move(donut)), &lineStack, glw::DockSide::End, 0.4f);
+        glw::DockTabs& raceStack = area->addPanel(panel("race", tr("Race"), std::move(racing)), &lineStack, glw::DockSide::Bottom, 0.5f);
+        area->addPanel(panel("bars", tr("Events"), std::move(stacked)), &raceStack, glw::DockSide::End, 0.5f);
+        area->addPanel(panel("tree", tr("Files"), std::move(map)), &donutStack, glw::DockSide::Bottom, 0.5f);
+        area->addPanel(glw::DockPanel{.id = "dash", .title = tr("Dashboard"), .content = dashboard()}, nullptr, glw::DockSide::Start, 0.22f);
+        // one closed by its tab: kept, its item in the View menu unchecked
+        area->setOnPanelClosed([this](glw::DockPanel closed) {
+            const std::string id = closed.id;
+            hidden.insert_or_assign(id, std::move(closed));
+            if (const auto toggle = toggles.find(id); toggle != toggles.end())
+                toggle->second->setChecked(false);
+        });
         return ui::VStack(
                    {.spacing = 10},
                    ui::HStack({.spacing = 10},
@@ -161,11 +196,96 @@ struct Demo {
                                             }}),
                               ui::Spacer(),
                               ui::Label({.muted = true}).bind(status).alignment(glw::Alignment::End, glw::Alignment::Center)),
-                   ui::Splitter({.orientation = glw::Orientation::Vertical},
-                                ui::Splitter({}, card(std::move(made), 3), card(std::move(donut), 2)).stretch(1),
-                                ui::Splitter({}, card(std::move(racing)), card(std::move(stacked)), card(std::move(map))).stretch(1))
-                       .stretch(1))
+                   std::unique_ptr<glw::Widget>(std::move(docked)))
             .padding(glw::Insets::all(12));
+    }
+
+    // The measures now: CPU and memory side by side, colored by how near a limit they are, the network under them; a
+    // sparkline of each (and of the errors) with its last value.
+    std::unique_ptr<glw::Widget> dashboard() {
+        const glw::Color fine{0.30f, 0.69f, 0.47f, 1}, near{0.96f, 0.65f, 0.20f, 1}, over{0.91f, 0.30f, 0.27f, 1};
+        // fine to a limit, near it, over it
+        const auto bands = [&](double limit, double close) {
+            return std::vector<glw::Gauge::Band>{{.to = close, .color = fine}, {.to = limit, .color = near}, {.to = 100, .color = over}};
+        };
+        const auto gauge = [](glw::Gauge*& out, glw::LocalizedText title, glw::Gauge::Props props) {
+            return glw::ui::Element<glw::Gauge>(std::make_unique<glw::Gauge>(std::move(props)))
+                .bind(out)
+                .with([&](glw::Gauge& g) { g.setTitle(std::move(title)); })
+                .stretch(1);
+        };
+        const auto row = [&](glw::LocalizedText name, std::size_t i, glw::Sparkline::Props props) {
+            return glw::ui::HStack({.spacing = 8},
+                                   glw::ui::Label({.text = std::move(name)}).minimumSize({64, 0}).alignment(glw::Alignment::Start, glw::Alignment::Center),
+                                   glw::ui::Element<glw::Sparkline>(std::make_unique<glw::Sparkline>(std::move(props))).bind(sparks[i]).stretch(1),
+                                   glw::ui::Label({.text = std::string("-")})
+                                       .bind(lasts[i])
+                                       .minimumSize({48, 0})
+                                       .alignment(glw::Alignment::End, glw::Alignment::Center));
+        };
+        auto made = glw::ui::VStack(
+                        {.spacing = 12},
+                        glw::ui::HStack({.spacing = 8},
+                                        gauge(gauges[0], tr("CPU"), {.bands = bands(90, 70), .unit = "%"}),
+                                        gauge(gauges[1], tr("Memory"), {.bands = bands(90, 75), .unit = "%"})),
+                        gauge(gauges[2], tr("Network"), {.range = {0, 60}, .sweep = 180, .series = 2, .unit = "MB/s", .needle = true}),
+                        row(tr("CPU"), 0, {.capacity = 60, .series = 0, .range = glw::ChartRange{0, 100}}),
+                        row(tr("Memory"), 1, {.capacity = 60, .series = 1, .extremes = true}),
+                        row(tr("Network"), 2, {.capacity = 60, .series = 2, .level = 20}),
+                        row(tr("Errors"), 3, {.kind = glw::Sparkline::Kind::Columns, .capacity = 30, .color = over}))
+                        .build();
+        return made;
+    }
+
+    // The View menu: an item for each chart, checked while it shows.
+    std::unique_ptr<glw::MenuBar> menus() {
+        std::vector<glw::MenuItem> items;
+        for (const auto& [id, title] : std::initializer_list<std::pair<const char*, const char*>>{
+                 {"dash", "&Dashboard"}, {"line", "&Measures"}, {"donut", "Re&quests"}, {"race", "R&ace"}, {"bars", "&Events"},
+                 {"tree", "&Files"}}) {
+            auto toggle = std::make_shared<glw::Action>(tr(title));
+            toggle->setCheckable(true);
+            toggle->setChecked(true);
+            toggle->setOnTriggered([this, id = std::string(id), toggle = toggle.get()] {
+                if (toggle->checked())
+                    show(id);
+                else
+                    area->closePanel(id);
+            });
+            toggles[id] = toggle;
+            items.push_back({.action = toggle});
+        }
+        auto bar = std::make_unique<glw::MenuBar>();
+        bar->setMenus({{.text = tr("&View"), .items = std::move(items)}});
+        return bar;
+    }
+
+    // A chart hidden shown again: beside the first of its neighbours that shows (where it was), or at the end.
+    void show(const std::string& id) {
+        const auto it = hidden.find(id);
+        if (it == hidden.end())
+            return;
+        glw::DockPanel panel = std::move(it->second);
+        hidden.erase(it);
+        static const std::map<std::string, std::vector<std::pair<std::string, glw::DockSide>>> beside{
+            {"line", {{"race", glw::DockSide::Top}, {"donut", glw::DockSide::Start}, {"bars", glw::DockSide::Top}}},
+            {"donut", {{"tree", glw::DockSide::Top}, {"line", glw::DockSide::End}}},
+            {"race", {{"bars", glw::DockSide::Start}, {"line", glw::DockSide::Bottom}}},
+            {"bars", {{"race", glw::DockSide::End}, {"tree", glw::DockSide::Start}, {"line", glw::DockSide::Bottom}}},
+            {"tree", {{"donut", glw::DockSide::Bottom}, {"bars", glw::DockSide::End}}},
+            {"dash", {}},
+        };
+        if (id == "dash") {             // at the left edge again
+            area->addPanel(std::move(panel), nullptr, glw::DockSide::Start, 0.22f);
+            return;
+        }
+        for (const auto& [next, side] : beside.at(id)) {
+            if (glw::DockTabs* tabs = area->tabsOf(next)) {
+                area->addPanel(std::move(panel), tabs, side, 0.5f);
+                return;
+            }
+        }
+        area->addPanel(std::move(panel), nullptr, glw::DockSide::End, 0.4f);
     }
 
     // Packages with names made up, each with a share of each system and a pace of its own.
@@ -213,8 +333,10 @@ struct Demo {
     }
 
     void animate(bool on) {
-        for (glw::Chart* chart : std::initializer_list<glw::Chart*>{line, pie, race, bars, tree})
+        for (glw::Chart* chart : std::initializer_list<glw::Chart*>{line, pie, race, bars, tree, gauges[0], gauges[1], gauges[2]})
             chart->setAnimated(on);
+        for (glw::Sparkline* spark : sparks)
+            spark->setAnimated(on);
     }
 
     // Folders of folders and files, their sizes made up.
@@ -276,6 +398,17 @@ struct Demo {
             std::snprintf(label, sizeof label, "%02d:%02d:%02d", t.tm_hour, t.tm_min, t.tm_sec);
             const double values[] = {std::round(uniform(40, 120)), std::round(uniform(10, 60)), std::round(uniform(0, 1) < 0.2 ? uniform(1, 25) : 0)};
             bars->appendCategory(std::string(label), values);
+            sparks[3]->append(values[2]);
+            lasts[3]->setText(std::to_string(static_cast<int>(values[2])));
+        }, true);
+        // the dashboard: the measures now, twice a second
+        now.start(scheduler, std::chrono::milliseconds(500), [this] {
+            const double values[] = {cpuValue, memoryValue, networkValue};
+            for (std::size_t i = 0; i < 3; ++i) {
+                gauges[i]->setValue(values[i]);
+                sparks[i]->append(values[i]);
+                lasts[i]->setText(glw::formatNumber(values[i], 1));
+            }
         }, true);
         // a file grows or shrinks now and then
         disk.start(scheduler, std::chrono::milliseconds(2500), [this] {
@@ -339,7 +472,8 @@ int main(int argc, char** argv) {
             app.setColorScheme(*colors, false);
         Demo demo{.app = app, .rate = rate};
         demo.racers = racers;
-        app.openWindow({.title = tr("Charts"), .size = {1280, 820}}, demo.build());
+        glw::Window& window = app.openWindow({.title = tr("Charts"), .size = {1280, 820}}, demo.build());
+        window.setMenuBar(demo.menus(), glw::MenuBarPlacement::TitleBar);
         demo.start();
         return app.run(frames);
     } catch (const std::exception& e) {

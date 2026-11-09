@@ -147,8 +147,6 @@ void BarChart::setFormatter(std::function<std::string(double, double)> format) {
 std::string BarChart::format(double value, double step) const {
     if (format_)
         return format_(value, step);
-    if (step > 0)
-        return formatNumber(value, ticks_.decimals, step) + (props_.layout == BarLayout::Percent ? "%" : "");
     return formatNumber(value, value == std::floor(value) ? 0 : 2);
 }
 
@@ -310,13 +308,13 @@ void BarChart::paint(PaintContext& context) {
     const ChartRange cv = absoluteView(), vv = valueView();
     if (!(cv.span() > 0) || !(vv.span() > 0))
         return;
-    ticks_ = niceTicks(vv, valueTickCount_);
-    std::vector<std::string> valueLabels;
-    float valueWidth = 0;
-    for (double v : ticks_.values) {
-        valueLabels.push_back(format(v, ticks_.step));
-        valueWidth = std::max(valueWidth, textSize(valueLabels.back()).width);
-    }
+    // the values' axis: up the side (bars standing), or along the bottom (lying: from the start side)
+    valueAxis_.orientation = standing ? Orientation::Vertical : Orientation::Horizontal;
+    valueAxis_.reversed = !standing && rtl;
+    valueAxis_.suffix = props_.layout == BarLayout::Percent ? "%" : "";
+    valueAxis_.format = format_;
+    valueAxis_.fit(*this, vv, standing ? plot.height : plot.width);
+    const float valueWidth = valueAxis_.labelWidth();
     // the categories that show (a part of one too)
     const auto begin = static_cast<long long>(dropped_);
     const auto end = begin + static_cast<long long>(categories_.size());
@@ -359,21 +357,9 @@ void BarChart::paint(PaintContext& context) {
 
     if (s.plot.a > 0)
         p.fillRect(plot, s.plot);
-    // the grid at the values' ticks, the axis at 0
-    for (std::size_t i = 0; i < ticks_.values.size(); ++i) {
-        const float at = snap(across(ticks_.values[i]), ppd);
-        if (standing) {
-            if (at < plot.y - 0.5f || at > plot.bottom() + 0.5f)
-                continue;
-            p.fillRect({plot.x, at, plot.width, hair}, s.grid);
-            drawText(context, valueLabels[i], {rtl ? plot.right() + 8 : plot.x - 8, at}, s.text, 0, {rtl ? 0.0f : 1.0f, 0.5f});
-        } else {
-            if (at < plot.x - 0.5f || at > plot.right() + 0.5f)
-                continue;
-            p.fillRect({at, plot.y, hair, plot.height}, s.grid);
-            drawText(context, valueLabels[i], {at, plot.bottom() + 5}, s.text, 0, {0.5f, 0});
-        }
-    }
+    // the grid at the values' ticks, their labels beside the plot, the axis at 0
+    valueAxis_.paintGrid(p, plot, s.grid);
+    valueAxis_.paintLabels(context, *this, plot, standing ? (rtl ? Axis::Side::Right : Axis::Side::Left) : Axis::Side::Bottom, s.text, area);
     const float zero = snap(across(vv.contains(0) ? 0 : vv.low), ppd);
     if (standing)
         p.fillRect({plot.x, zero, plot.width, hair}, s.axis);

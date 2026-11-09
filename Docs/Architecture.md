@@ -360,10 +360,11 @@ bevels fading; a pill's radius as round as a control is high, so that it rounds 
 
 - **Studio** (the default), described below: square, controls raised and lit from above, fields sunk, quick motions (what the tests and
   the benchmarks measure).
-- **Fluid**, modern: round: buttons, fields, combo boxes and tool buttons pills (a half circle at each end: the
-  painter takes a radius past half a box's height as half of it), panels' headers 10, menus' items and the menu bar's titles 6, docks and cards 10, the
-  scroll thumbs pills; buttons, combo boxes, tool buttons under the mouse and panels' headers raised a little (lighter at
-  their top, a fine light line, a soft shadow), fields flat; deeper palettes with a brighter accent; more motion and longer (150, 260
+- **Fluid**, modern: Plastic's and Metal's reliefs (below), lit softly (a broad, gentle white highlight), and rounder:
+  buttons, fields, combo boxes and tool buttons pills (a half circle at each end: the painter takes a radius past half a
+  box's height as half of it), panels 10, menus' items and the menu bar's titles 6, docks and cards 10 (the tab shown a
+  folder's tab of its stack, 8), nodes 12, bars and tiles 6, the scroll thumbs pills; their edges rounding down over
+  further; deeper palettes with a brighter accent; more motion and longer (150, 260
   and 380 ms, the wheel 240): a press on a button or a row ripples out of where it was (`Ripple`: as
   high as the control and as round, out sideways to its ends, full until halfway and then fading: inside a pill's ends
   too; `ButtonStyle::ripple` and `motion.ripple`), the selection of a list, tree or table slides from the row it was on
@@ -373,8 +374,7 @@ bevels fading; a pill's radius as round as a control is high, so that it rounds 
   from 12 dips.
 - A collapsible panel is a card: its body a step above the window (not sunk below it), the header over it. In Studio, a
   line between them (`CollapsiblePanelStyle::separator`), a soft edge around it and a soft shadow under it (`shadow`);
-  in Plain the same, crisp and without the shadow; in Fluid without a frame, the header raised a little over its body
-  (lighter at its top, a fine light line, a soft shadow), a soft shadow under all of it. In none is there a ring of the
+  in Plain the same, crisp and without the shadow; in Plastic, Metal and Fluid its header a relief. In none is there a ring of the
   focus: the header shows it, lighter (`header.focused`), as under the mouse. As it opens, its header's lower corners
   square, eased with it.
 - **Plain**, simple: square and flat, no light from above, no shadows, no glow of the focus (its edge says it), gray
@@ -526,8 +526,8 @@ by it (the table's rows left as they are: `TableView::setSortIndicator`); a cell
 the arrow (`TableView::setEditorArea`). A tree of one column is a list still: no header unless that column has a title.
 
 **Headers look as controls do**, in every style: a strip behind their titles (`ItemViewStyle::headerBackground`)
-raised as the style's controls are (`headerBevel`: lit from above in Studio, raised a little in Fluid, flat in Plain, a
-relief in Plastic and Metal).
+raised as the style's controls are (`headerBevel`: lit from above in Studio, flat in Plain, a
+relief in Plastic, Metal and Fluid).
 
 **Headers show and hide.** A list has a header of one column when it has a title (`ListView::setHeader`): its rows
 under it, a click sorting them (ascending, descending, not; an arrow in it), unless sorting is off. A table's header,
@@ -670,11 +670,12 @@ raised too, slabs (`DockStyle::islandBevel`, `CardStyle::bevel`), and the tab sh
 relief as high in its color, its lower part over the slab's top edge (cut there), so that its face is the slab's with no
 seam; the slabs only a little round (5 dips) and low, the first tab after the slab's rounded corner, not over it; the
 other tabs are on the window, one under the mouse a little raised (a major tab joined to the window's content
-the same way); in Fluid it stands on its bar as a control does, a pill raised a little (`DockStyle::tabsJoined`,
-`tabBevel`, `tabRadius`; `MajorTabStyle::joined`, `bevel`, `raised`).
+the same way); Fluid's the same, rounder. A style may have the tab shown stand on its bar as a control does instead,
+raised (`DockStyle::tabsJoined`, `tabBevel`, `tabRadius`: a pill past half its height; `MajorTabStyle::joined`, `bevel`,
+`raised`).
 
 **A node of a node editor looks as the style's controls do** (`NodeStyle`, `Theme::node`: what node_editor draws its
-nodes with): its corners (3 dips in Studio, 10 in Fluid, square in Plain, 8 in Plastic and Metal), its body and its
+nodes with): its corners (3 dips in Studio, square in Plain, 8 in Plastic and Metal, 12 in Fluid), its body and its
 header of its kind's color raised as controls are (`bevel`, `bodyBevel`: lit from above, flat, reliefs), a shadow under
 it (none in Plain), its edge and the ring around it selected. On a zoomed canvas its relief is scaled with it.
 
@@ -768,16 +769,18 @@ shape, the edges of a borderless window the resize shapes of its sides and corne
 ### Charts
 
 Charts (`Library/Include/GLWidgets/Charts`) are widgets made for data that changes as it comes: a feed of measures, of
-events, of shares. Five for now: **lines** over values or time (`LineChart`), **pies**, donuts and sunbursts
-(`PieChart`), **treemaps** (`TreeMap`), **bars**, stacked, grouped or in percent, standing or lying (`BarChart`), and
-**bar races** (`BarRace`). What they share
-is in `Chart`:
+events, of shares. Seven for now: **lines** over values or time (`LineChart`), **pies**, donuts and sunbursts
+(`PieChart`), **treemaps** (`TreeMap`), **bars**, stacked, grouped or in percent, standing or lying (`BarChart`), **bar
+races** (`BarRace`), and for dashboards **sparklines** (`Sparkline`) and **gauges** (`Gauge`). What they share is in
+`Chart`:
 
 - **The theme.** `ChartStyle` (`Theme::chart`): the grid, the axes, the labels, the crosshair; ten series colors from the
   color scheme, the accent first, the others told apart by hue and as bright (Dusk, Sand and Turquoise have their own);
-  bars and tiles raised as the style's controls are (`barBevel`, `barRadius`: lit from above in Studio, rounded and flat
-  in Fluid, square and flat in Plain, reliefs in Plastic and Metal; a pie's slices the same: lit from above with a light line along their top in Studio, flat
-  in Fluid and Plain, reliefs in Plastic and Metal).
+  bars and tiles raised as the style's controls are (`barBevel`, `barRadius`: lit from above in Studio, square and flat in
+  Plain, reliefs in Plastic, Metal and Fluid, Fluid's rounder; a pie's slices and a gauge's arc the same: lit from above
+  with a light line along their top in Studio, flat in Plain, reliefs in Plastic, Metal and Fluid, their corners rounded
+  as the bars' are: `Painter::fillArcRelief`'s `corner`, no more than half as far as across the slice there, so that a
+  thin one is a capsule).
   A chart may have its own (`setStyle`).
 - **Motion, optional.** New data, a new view, a series hidden are eased to (the theme's motions; none in Plain; none when
   `setAnimated(false)`): the axes glide as data comes, bars grow to their new lengths, slices to their new angles, tiles
@@ -786,7 +789,9 @@ is in `Chart`:
 - **Room.** A chart takes the room it gets and uses all of it: its axes as wide as their labels, as many ticks as their
   labels fit (round values, 1, 2 or 5 times a power of ten; round local times: every 5 seconds, quarter of an hour, at
   midnight, on the first of a month: `niceTicks`, `timeTicks`), its legend in as many rows as it needs, a pie as large as
-  its square, tiles squarified.
+  its square, tiles squarified. The axes of values and of times are one (`Chart::Axis`: a line chart's x and y, a bar
+  chart's values, a race's): their ticks for a range and a length, their labels, the room those take, the grid across
+  the plot, the labels beside it, a value as a tooltip shows it; so that every chart's axes look and fit alike.
 - **A title, a legend** (a click on an item hides its series, slice or group, eased, and shows it again), **a tooltip** by
   the mouse (the values under it, with their colors).
 
@@ -863,12 +868,26 @@ parts, all changing, in 2.1 ms a frame (2.5 ms changed at random), two hundred t
 change shows over as long as the time since the one before, linearly, so that a race flows on at the pace its data
 comes (or over `Props::pace`).
 
+**Sparklines** (`Sparkline`): a measure's recent values at a glance, small (120 x 28 dips when nothing says), without
+axes: a line with an area fading under it, or columns from 0 (those under it fainter); a dot on its last value, on its
+lowest and highest if asked, a level across it (a target, a limit). Its values are appended (the oldest dropped past its
+capacity; until it has as many, they fill it from the left), its range fitted to them and eased there, or its own; the
+value under the mouse in a tooltip. More values than it has columns of pixels: each column shows what falls in it, as a
+line chart's do, so a million values draw as a line of its width.
+
+**Gauges** (`Gauge`): a value against its range, an arc (270 degrees, open at the bottom; 180 a half circle; or any
+sweep) filled to it, raised as the style's bars are: the same ring sectors as a pie's slices (`Chart::paintArc`: a
+relief, lit, or flat by the style). Its value large in its middle with its unit under it, its range's ends under the
+arc's. Bands along its inside (fine, near a limit, over it) color the value as the band it is in; a needle, if asked,
+points at it: tapering from a hub to a round tip, a short tail behind, its two faces lit and shaded by the theme's light,
+a shadow under it and a cap over its root raised as the bars are (flat in Plain); the value under it. A new value is eased to.
+
 `chart_demo` shows them all, fed live: a race of 500 packages' monthly downloads by system (`--race N` of them), three series at 200 points a second each over a minute (and ten minutes of
 history to pan into; an area under one, a band of the range around another), shares that drift in rings (regions, their
 countries, a few cities), a second's counts appended every second, a project's files changing now and
-then; the style, the colors, the motion and the bars' layout chosen above them.
+then, a dashboard of the measures now (gauges, sparklines); the style, the colors, the motion and the bars' layout chosen above them.
 
-Still to come: more kinds (scatter, area stacked, candlesticks, histograms, heat maps, gauges), logarithmic axes, a
+Still to come: more kinds (scatter, area stacked, candlesticks, histograms, heat maps), logarithmic axes, a
 second y axis, Persian digits and the Solar Hijri calendar on axes (with the `Locale` of
 [Localization](#localization-and-right-to-left)).
 
@@ -1122,7 +1141,7 @@ The `GLW_USE_SYSTEM_SDL3` option uses an installed SDL3 instead of the pinned re
 | M3 | Widget core: tree, events, focus, layout, a UI root independent of the platform, window chrome as widgets (with the native extras), live resize | Done, apart from the native extras of the chrome and what is listed in [Widgets](#widgets) |
 | M4 | Basic widgets (label, button, line edit, scroll area, splitter), styles, `LocalizedText` and catalogs, right-to-left layouts | Done, apart from plural rules and the formatting of numbers and dates (see [Localization](#localization-and-right-to-left)) |
 | M5 | Docking: major and panel tabs, windows merging and splitting by their tabs, both modes, layout persistence | Done: docking in a window, major tabs and saved layouts (M5a), across windows in the full mode (M5b), global panels, saved workspaces and Wayland's restricted mode (M5c). Wayland's drag-and-drop between windows, and keeping restored windows on the screens there are, later; the restricted mode not yet run on Wayland |
-| M6 | Validation: a node canvas and a code editor (FlowGraph), charts, an engine embedding example | In progress: the node canvas (`Canvas`, `node_editor`), menus, popups and dialogs, the code editor (`TextEdit`, `code_editor`), charts (lines, pies, treemaps, bars: `chart_demo`) |
+| M6 | Validation: a node canvas and a code editor (FlowGraph), charts, an engine embedding example | In progress: the node canvas (`Canvas`, `node_editor`), menus, popups and dialogs, the code editor (`TextEdit`, `code_editor`), charts (lines, pies, treemaps, bars, races, sparklines, gauges: `chart_demo`) |
 
 ## Open questions
 

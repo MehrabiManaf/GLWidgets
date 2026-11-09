@@ -663,81 +663,47 @@ Theme Theme::blend(const Theme& a, const Theme& b, float t) {
 // ---- the other styles: Studio's, changed ----
 
 void Theme::fluid(Theme& t, bool dark) {
-    const Palette& p = t.palette;
-    const Color clear{0, 0, 0, 0};
-    const Color white{1, 1, 1, 1};
-    const Color black{0, 0, 0, 1};
-    // lower, and round: buttons, fields, combo boxes, tool buttons pills (a half circle at each end: a radius past half
-    // their height is half of it); panels' headers, rows, menus round; docks and cards a little
+    // Plastic's and Metal's reliefs, lit softly: a broad, gentle white highlight
+    reliefs(t, dark);
+    t.lighting = {.x = -0.42f, .y = -0.62f, .z = 0.66f,
+                  .ambient = dark ? 0.60f : 0.66f,
+                  .diffuse = dark ? 0.40f : 0.34f,
+                  .specular = dark ? 0.28f : 0.34f,
+                  .shininess = 20,
+                  .rimShadow = dark ? 0.45f : 0.30f};
+    // rounder: buttons, fields, combo boxes, tool buttons and scroll thumbs pills (a half circle at each end: a radius
+    // past half their height is half of it), as low as every style's and wider for their ends; the rest round
     constexpr float pill = 1000;
     t.cornerRadius = 6;
-    t.button.padding = {14, 3, 14, 3};      // as low as every style's, wider for the round ends
+    t.button.padding = {14, 3, 14, 3};
     t.lineEdit.padding = {14, 3, 14, 3};
-    t.button.cornerRadius = t.lineEdit.cornerRadius = t.toolBar.cornerRadius = pill;
-    t.menuBar.cornerRadius = 6;
+    t.button.cornerRadius = t.lineEdit.cornerRadius = t.toolBar.cornerRadius = t.scrollBar.cornerRadius = pill;
+    t.menuBar.cornerRadius = t.menu.cornerRadius = 6;       // its items; its window square (a menu's, in every style)
     t.checkBox.cornerRadius = 5;
     t.itemView.cornerRadius = t.table.cornerRadius = 8;
     t.collapsiblePanel.cornerRadius = 10;
-    t.menu.cornerRadius = 6;               // its items; its window square (a menu's, in every style)
     t.dock.cornerRadius = t.card.cornerRadius = 10;
-    t.majorTab.cornerRadius = 8;
-    t.scrollBar.cornerRadius = pill;
-    t.frame.popupRadius = 8;                // tooltips, dialogs, search popups (not menus): as the system rounds them
-    // flat, a soft shadow under what stands out; a field without its inner shadow
-    // raised a little: lighter at its top, a fine light line inside along it, a soft shadow under it (buttons, combo
-    // boxes, tool buttons under the mouse, panels' headers)
-    const Bevel raised{.gradient = dark ? 0.05f : 0.04f, .highlight = withAlpha(white, dark ? 0.07f : 0.8f),
-                       .shadow = withAlpha(black, dark ? 0.30f : 0.08f)};
-    t.button.bevel = raised;
-    t.button.background = {.normal = p.surface, .hovered = lit(p.surface, dark ? 0.06f : -0.03f), .pressed = lit(p.surface, dark ? 0.10f : -0.07f),
-                           .disabled = mix(p.surface, p.layer, 0.5f)};
-    t.button.border = {.normal = withAlpha(p.text, dark ? 0.08f : 0.12f), .focused = p.accent, .disabled = withAlpha(p.text, 0.05f)};
-    t.lineEdit.bevel = {};
-    t.checkBox.bevel = {};
-    t.checkBox.checkedBevel = {};
-    t.toolBar.bevel = raised;
-    t.collapsiblePanel.bevel = {};
-    // panels: no frame; the header raised a little (lighter at its top, a fine light line, a soft shadow) over the body,
-    // lighter under the mouse or with the focus; a soft shadow under all of it
-    const Color strip = dark ? mix(p.layer, p.surface, 0.40f) : lit(p.window, -0.035f);
-    const Color lighter = dark ? mix(p.layer, p.surface, 0.75f) : lit(p.window, -0.06f);
-    t.collapsiblePanel.header = {.normal = strip, .hovered = lighter, .pressed = dark ? mix(p.layer, p.surface, 0.25f) : lit(p.window, -0.08f),
-                                 .focused = lighter};
-    t.collapsiblePanel.content = dark ? mix(p.layer, p.surface, 0.15f) : lit(p.window, -0.015f);
-    t.collapsiblePanel.bevel = raised;
-    // tabs: standing on their bars as pills, raised as buttons (the one shown), the others lighter under the mouse
-    t.dock.tabsJoined = false;
-    t.dock.tabBevel = raised;
-    t.dock.tabRadius = 1000;
-    t.dock.selectedTab = t.button.background.normal;
-    t.majorTab.joined = false;
-    t.majorTab.bevel = raised;
-    t.majorTab.raised = t.button.background.normal;
-    t.majorTab.cornerRadius = 1000;
-    for (ItemViewStyle* view : {&t.itemView, &t.table}) {
-        view->headerBackground = strip;
-        view->headerBevel = raised;
-    }
-    t.node.cornerRadius = 10;
-    t.chart.barRadius = 4;
-    t.chart.barBevel = {};
-    t.node.border = p.border;
-    t.node.bevel = raised;
-    t.node.shadow = withAlpha(black, dark ? 0.40f : 0.12f);
-    t.collapsiblePanel.border = clear;
-    t.collapsiblePanel.separator = withAlpha(black, dark ? 0.22f : 0.05f);
-    t.collapsiblePanel.shadow = withAlpha(black, dark ? 0.30f : 0.08f);
-    t.collapsiblePanel.arrow = p.text;
+    t.dock.tabRadius = 8;
+    t.majorTab.cornerRadius = 10;
+    t.frame.popupRadius = 10;               // tooltips, dialogs, search popups (not menus): as the system rounds them
+    t.node.cornerRadius = 12;
+    t.chart.barRadius = 6;
+    // their edges rounding down over further
+    for (Bevel* bevel : {&t.button.bevel, &t.toolBar.bevel, &t.collapsiblePanel.bevel, &t.lineEdit.bevel, &t.dock.tabBevel,
+                         &t.dock.islandBevel, &t.card.bevel, &t.majorTab.bevel, &t.itemView.headerBevel, &t.table.headerBevel,
+                         &t.itemView.rowBevel, &t.table.rowBevel, &t.chart.barBevel})
+        bevel->roundness *= 1.4f;
     // lists and trees: pills, no lines between them; the selection sliding to where it goes
     t.itemView.rowLines = false;
     t.itemView.inset = 4;
     t.itemView.slideSelection = true;
     t.table.slideSelection = true;
     // a press ripples
-    t.button.ripple = withAlpha(dark ? white : p.accent, dark ? 0.16f : 0.14f);
-    t.itemView.ripple = withAlpha(p.accent, dark ? 0.22f : 0.16f);
+    const Color white{1, 1, 1, 1};
+    t.button.ripple = withAlpha(dark ? white : t.palette.accent, dark ? 0.16f : 0.14f);
+    t.itemView.ripple = withAlpha(t.palette.accent, dark ? 0.22f : 0.16f);
     t.table.ripple = t.itemView.ripple;
-    // longer motions, popups from further
+    // more motion and longer, popups from further
     t.motion.fast = std::chrono::milliseconds(150);
     t.motion.normal = std::chrono::milliseconds(260);
     t.motion.slow = std::chrono::milliseconds(380);

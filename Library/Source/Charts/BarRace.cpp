@@ -360,15 +360,13 @@ void BarRace::paint(PaintContext& context) {
     };
 
     // the grid at round values, gliding as the scale changes
-    const ChartTicks ticks = niceTicks({0, highest}, std::max(2, static_cast<int>(plot.width / 90)));
-    for (double v : ticks.values) {
-        const float gx = snap(x(v), ppd);
-        p.fillRect({gx, plot.y, hair, plot.height}, v == 0 ? s.axis : s.grid);
-        const std::string label = format(v, ticks.step);
-        const float half = textSize(label).width / 2;
-        if (gx - half >= area.x && gx + half <= area.right())
-            drawText(context, label, {gx, area.y}, s.text, 0, {0.5f, 0});
-    }
+    valueAxis_.orientation = Orientation::Horizontal;
+    valueAxis_.reversed = rtl;
+    valueAxis_.format = format_;
+    valueAxis_.fit(*this, {0, highest}, plot.width);
+    valueAxis_.paintGrid(p, plot, s.grid);
+    p.fillRect({snap(x(0), ppd), plot.y, hair, plot.height}, s.axis);
+    valueAxis_.paintLabels(context, *this, plot, Axis::Side::Top, s.text, area);
     // the period, large in the end corner at the bottom, under the bars
     if (!period_.source.empty()) {
         const float size = std::clamp(plot.height * 0.16f, s.titleSize, s.titleSize * 5);

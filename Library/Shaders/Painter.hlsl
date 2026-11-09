@@ -17,7 +17,8 @@
 //      and it is brushed: fine lines along it. One anti-aliased pixel at its edge.
 //   4  relief of a sector of a ring (a slice of a pie, of a donut), raised as 3 is: uv is the point in the sector's own
 //      frame (its center at the origin, its middle along +x), halfSize its inner and outer radii; shape.x its half angle
-//      and how far its sides are moved in, packed (half angle + 8 * sixteenths of a dip; negative: a whole ring).
+//      and how far its sides are moved in, packed (half angle + 8 * sixteenths of a dip; negative: a whole ring); shape.y
+//      its bevel and the radius of its corners, packed (bevel + 256 * eighths of a dip).
 //
 // Resources are numbered as SDL's GPU API wants them (SDL_CreateGPUShader): the vertex shader's uniform buffer in space1
 // (descriptor set 1 in SPIR-V), the fragment shader's texture and sampler in space2 (set 2, one combined image sampler),
@@ -90,35 +91,37 @@ float2 roundedBoxGradient(float2 p, float2 b, float r) {
 }
 
 // Distance from p to a sector of a ring around the origin, its middle along +x: from the radius radii.x to radii.y, its
-// half angle and how far its sides are moved in packed in `sides` (see kind 4; negative: a whole ring, no sides).
+// half angle and how far its sides are moved in packed in `sides` (see kind 4; negative: a whole ring, no sides), its
+// corners (where a side meets an arc) rounded over `corner` dips: no more than half as far as across it there.
 // `g`: the direction in which it grows at p.
-float ringSector(float2 p, float2 radii, float sides, out float2 g) {
+float ringSector(float2 p, float2 radii, float sides, float corner, out float2 g) {
     float len = length(p);
     float2 radial = len > 1e-4 ? p / len : float2(1.0, 0.0);
-    float d = len - radii.y;
-    g = radial;
+    // its arcs: out of the outer one, into the hole
+    float outer = len - radii.y;
     float within = radii.x - len;
-    if (within > d) {
-        d = within;
-        g = -radial;
-    }
-    if (sides >= 0.0) {
-        float steps = floor(sides / 8.0);
-        float angle = sides - steps * 8.0;
-        float inset = steps / 16.0;
-        // its sides' outward normals; a sector up to a half turn is inside both, a wider one inside either
-        float2 up = float2(-sin(angle), cos(angle));
-        float2 down = float2(up.x, -up.y);
-        float d1 = dot(p, up) + inset;
-        float d2 = dot(p, down) + inset;
-        bool narrow = angle <= 1.5707963;
-        float side = narrow ? max(d1, d2) : min(d1, d2);
-        if (side > d) {
-            d = side;
-            g = (narrow ? d1 > d2 : d1 < d2) ? up : down;
-        }
-    }
-    return d;
+    float arcs = max(outer, within);
+    float2 arcsOut = outer > within ? radial : -radial;
+    // its sides' outward normals; a sector up to a half turn is inside both, a wider one inside either
+    bool ring = sides < 0.0;
+    float steps = floor(max(sides, 0.0) / 8.0);
+    float angle = max(sides, 0.0) - steps * 8.0;
+    float inset = steps / 16.0;
+    float2 up = float2(-sin(angle), cos(angle));
+    float2 down = float2(up.x, -up.y);
+    float d1 = dot(p, up) + inset;
+    float d2 = dot(p, down) + inset;
+    bool narrow = angle <= 1.5707963;
+    float side = ring ? -1e6 : (narrow ? max(d1, d2) : min(d1, d2));
+    float2 sideOut = (narrow ? d1 > d2 : d1 < d2) ? up : down;
+    // the corners: as a rounded box's, the arcs and a side across each other there
+    float r = ring ? 0.0 : min(corner, 0.5 * (radii.y - radii.x));
+    r = max(0.0, narrow ? min(r, len * sin(angle) - inset) : r);
+    float2 q = float2(arcs, side) + r;
+    float2 beyond = max(q, 0.0);
+    float outside = length(beyond);
+    g = outside > 1e-5 ? normalize(arcsOut * beyond.x + sideOut * beyond.y) : (q.x > q.y ? arcsOut : sideOut);
+    return outside + min(max(q.x, q.y), 0.0) - r;
 }
 
 // A relief's color (premultiplied `color`) at p, `d` inside its edge, its edge's outward direction `g` there: lit by its
@@ -157,9 +160,12 @@ float4 fragmentMain(VertexOutput input) : SV_Target {
     float4 textured = input.color * texel;
     float4 mask = input.color * texel.r;
 
-    float2 arcSlope;
-    float arc = ringSector(input.uv, input.halfSize, input.shape.x, arcSlope);
+    // a sector's bevel and corners, packed (kind 4)
     bool sector = input.shape.z > 3.5;
+    float corners = sector ? floor(input.shape.y / 256.0) : 0.0;
+    float shapeY = input.shape.y - corners * 256.0;
+    float2 arcSlope;
+    float arc = ringSector(input.uv, input.halfSize, input.shape.x, corners / 8.0, arcSlope);
     float d = sector ? arc : roundedBox(input.uv, input.halfSize, input.shape.x);
     bool lit = input.shape.z > 2.5;
     float edge = max(fwidth(d) * 0.5, lit ? 0.0 : input.shape.w);
@@ -168,7 +174,7 @@ float4 fragmentMain(VertexOutput input) : SV_Target {
     float4 box = input.color * (inside * (1.0 - hole));
     // sunk (a box): what its rim hides of the light (the floor and the walls toward it), as deep as it is there: where a
     // ray toward the light leaves it
-    float bevel = max(input.shape.y, 0.5);
+    float bevel = max(shapeY, 0.5);
     float depth = input.shape.w < 0.0 ? -input.shape.w * sin(saturate(-d / bevel) * 1.5707963) : 0.0;
     float3 toward = normalize(light.xyz);
     float2 exit = input.uv + toward.xy / max(toward.z, 0.2) * depth;

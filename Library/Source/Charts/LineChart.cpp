@@ -205,12 +205,12 @@ void LineChart::setIncludeZero(bool include) {
 }
 
 void LineChart::setXFormatter(std::function<std::string(double, double)> format) {
-    formatX_ = std::move(format);
+    xAxis_.format = std::move(format);
     invalidatePaint();
 }
 
 void LineChart::setYFormatter(std::function<std::string(double, double)> format) {
-    formatY_ = std::move(format);
+    yAxis_.format = std::move(format);
     invalidatePaint();
 }
 
@@ -360,24 +360,6 @@ Point LineChart::pointOf(ChartPoint value) const {
             static_cast<float>(plot_.bottom() - (value.y - y.low) / y.span() * plot_.height)};
 }
 
-std::string LineChart::formatX(double v, double step) const {
-    if (formatX_)
-        return formatX_(v, step);
-    if (props_.xAxis == ChartAxisKind::Time) {
-        // to the second (to the millisecond when its ticks are), its day when more than a day shows
-        const TimeUnit tick = timeTicks_.unit;
-        const TimeUnit unit = tick == TimeUnit::Millisecond ? TimeUnit::Millisecond : tick <= TimeUnit::Hour ? TimeUnit::Second : tick;
-        return formatTimeFully(v, unit, xView().span() > 86400);
-    }
-    return formatNumber(v, xTicks_.decimals + 1);
-}
-
-std::string LineChart::formatY(double v, double step) const {
-    if (formatY_)
-        return formatY_(v, step);
-    return formatNumber(v, yTicks_.decimals + 1);
-}
-
 // ---- painting ----
 
 void LineChart::paint(PaintContext& context) {
@@ -398,14 +380,9 @@ void LineChart::paint(PaintContext& context) {
     const ChartRange xv = xView(), yv = yView();
 
     // the y axis as wide as its labels
-    yTicks_ = niceTicks(yv, yTickCount_);
-    std::vector<std::string> yLabels;
-    float yWidth = 0;
-    for (double v : yTicks_.values) {
-        yLabels.push_back(formatY_ ? formatY_(v, yTicks_.step) : formatNumber(v, yTicks_.decimals, yTicks_.step));
-        yWidth = std::max(yWidth, textSize(yLabels.back()).width);
-    }
-    const float axisWidth = yWidth + 8;
+    yAxis_.orientation = Orientation::Vertical;
+    yAxis_.fit(*this, yv, plot.height);
+    const float axisWidth = yAxis_.labelWidth() + 8;
     plot.width = std::max(0.0f, plot.width - axisWidth - 6);
     if (!rtl)
         plot.x += axisWidth;
@@ -414,67 +391,19 @@ void LineChart::paint(PaintContext& context) {
     plot_ = plot;
     if (plot.width < 4 || plot.height < 4 || !(xv.span() > 0) || !(yv.span() > 0))
         return;
-
     // the x axis's ticks: as many as their labels fit
-    std::vector<double> xValues;
-    std::vector<std::string> xLabels;
-    const auto ticksFor = [&](int count) {
-        xValues.clear();
-        xLabels.clear();
-        if (time) {
-            timeTicks_ = timeTicks(xv, count);
-            xValues = timeTicks_.values;
-            for (double v : xValues)
-                xLabels.push_back(formatX_ ? formatX_(v, timeTicks_.step) : formatTime(v, timeTicks_));
-        } else {
-            xTicks_ = niceTicks(xv, count);
-            xValues = xTicks_.values;
-            for (double v : xValues)
-                xLabels.push_back(formatX_ ? formatX_(v, xTicks_.step) : formatNumber(v, xTicks_.decimals, xTicks_.step));
-        }
-    };
-    int count = std::max(2, static_cast<int>(plot.width / 90));
-    ticksFor(count);
-    float widest = 0;
-    for (const std::string& label : xLabels)
-        widest = std::max(widest, textSize(label).width);
-    if ((widest + 20) * static_cast<float>(xLabels.size()) > plot.width) {
-        count = std::max(2, static_cast<int>(plot.width / (widest + 20)));
-        ticksFor(count);
-    }
-
-    const auto px = [&](double x) { return static_cast<float>(plot.x + (x - xv.low) / xv.span() * plot.width); };
-    const auto py = [&](double y) { return static_cast<float>(plot.bottom() - (y - yv.low) / yv.span() * plot.height); };
-    const float hair = 1.0f / ppd;
+    xAxis_.orientation = Orientation::Horizontal;
+    xAxis_.time = time;
+    xAxis_.fit(*this, xv, plot.width);
 
     if (s.plot.a > 0)
         p.fillRect(plot, s.plot);
-    // the grid, sharp on the pixels
-    for (double v : yTicks_.values) {
-        const float y = snap(py(v), ppd);
-        if (y >= plot.y - 0.5f && y <= plot.bottom() + 0.5f)
-            p.fillRect({plot.x, y, plot.width, hair}, s.grid);
-    }
-    for (double v : xValues) {
-        const float x = snap(px(v), ppd);
-        if (x >= plot.x - 0.5f && x <= plot.right() + 0.5f)
-            p.fillRect({x, plot.y, hair, plot.height}, s.grid);
-    }
-    p.fillRect({plot.x, snap(plot.bottom(), ppd), plot.width, hair}, s.axis);
-    // the labels
-    for (std::size_t i = 0; i < yTicks_.values.size(); ++i) {
-        const float y = py(yTicks_.values[i]);
-        if (y < plot.y - 1 || y > plot.bottom() + 1)
-            continue;
-        drawText(context, yLabels[i], {rtl ? plot.right() + 8 : plot.x - 8, y}, s.text, 0, {rtl ? 0.0f : 1.0f, 0.5f});
-    }
-    for (std::size_t i = 0; i < xValues.size(); ++i) {
-        const float x = px(xValues[i]);
-        const float half = textSize(xLabels[i]).width / 2;
-        if (x < plot.x - 1 || x > plot.right() + 1 || x - half < area.x || x + half > area.right())
-            continue;
-        drawText(context, xLabels[i], {x, plot.bottom() + 5}, s.text, 0, {0.5f, 0});
-    }
+    // the grid, sharp on the pixels; the axis along the bottom; the labels beside them
+    yAxis_.paintGrid(p, plot, s.grid);
+    xAxis_.paintGrid(p, plot, s.grid);
+    p.fillRect({plot.x, snap(plot.bottom(), ppd), plot.width, 1.0f / ppd}, s.axis);
+    yAxis_.paintLabels(context, *this, plot, rtl ? Axis::Side::Right : Axis::Side::Left, s.text, area);
+    xAxis_.paintLabels(context, *this, plot, Axis::Side::Bottom, s.text, area);
 
     // the series, cut to the plot (a little above and below it: a line along its edge)
     p.pushClip({plot.x, plot.y - 2, plot.width, plot.height + 4});
@@ -489,7 +418,7 @@ void LineChart::paint(PaintContext& context) {
                               std::abs(dragTo_.y - dragFrom_.y)}
                              .intersected(plot);
         p.fillRect(box, s.selection);
-        p.strokeRoundedRect(box, 0, hair, s.crosshair);
+        p.strokeRoundedRect(box, 0, 1.0f / ppd, s.crosshair);
     } else if (mouse_ && drag_ == Drag::None && plot.contains(*mouse_)) {
         paintHover(context);
     }
@@ -734,10 +663,10 @@ void LineChart::paintHover(PaintContext& context) {
             p.fillCircle(dot, 4.5f, ring);
             p.fillCircle(dot, 3.2f, color);
         }
-        rows.push_back({color, translate(series.props_.name), formatY(y, yTicks_.step)});
+        rows.push_back({color, translate(series.props_.name), yAxis_.precise(y)});
     }
     if (!rows.empty())
-        paintToolTip(context, {cross.x, mouse.y}, formatX(*snapped, xTicks_.step), rows);
+        paintToolTip(context, {cross.x, mouse.y}, xAxis_.precise(*snapped), rows);
 }
 
 // ---- the mouse ----

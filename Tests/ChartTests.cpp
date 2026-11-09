@@ -9,9 +9,11 @@
 #include <GLWidgets/Charts/BarChart.hpp>
 #include <GLWidgets/Charts/BarRace.hpp>
 #include <GLWidgets/Charts/ChartAxis.hpp>
+#include <GLWidgets/Charts/Gauge.hpp>
 #include <GLWidgets/Charts/LineChart.hpp>
 #include <GLWidgets/Charts/PieChart.hpp>
 #include <GLWidgets/Charts/SeriesBuffer.hpp>
+#include <GLWidgets/Charts/Sparkline.hpp>
 #include <GLWidgets/Charts/TreeMap.hpp>
 #include <GLWidgets/Paint/DrawList.hpp>
 #include <GLWidgets/Paint/Painter.hpp>
@@ -486,6 +488,13 @@ TEST(aSliceOfAPieIsARingRelief) {
     // its quad around it: every corner of it within a pixel or so of the sector's reach
     for (const paint::Vertex& c : list.vertices)
         CHECK(std::hypot(c.position.x - 200, c.position.y - 200) <= 100 * 1.2f + 2);
+    // round corners (3 dips: 24 eighths) packed beside its bevel
+    list = {};
+    {
+        paint::Painter p(list, {0, 0, 400, 400}, 1);
+        p.fillArcRelief({200, 200}, 60, 100, -1.5708f, 1.0f, 1, 1.5f, 2, {1, 0, 0, 1}, 3);
+    }
+    CHECK(list.vertices.size() == 4 && list.vertices[0].border == 2 + 256 * 24);
 }
 
 TEST(aPieChartsPartsAreRingsFurtherOut) {
@@ -741,4 +750,59 @@ TEST(aTreeMapsLabelsStayAsItEases) {
         tests::advance(std::chrono::seconds(2));
     }
     tests::testScheduler().setAnimationsEnabled(false);
+}
+
+// ---- sparklines, gauges ----
+
+TEST(aSparklineKeepsItsNewestAndFitsThem) {
+    Shown<Sparkline> c(Sparkline::Props{.capacity = 5});
+    for (int i = 0; i < 10; ++i)
+        c.chart->append(i);
+    CHECK(c.chart->data().size() == 5);
+    CHECK(c.chart->last() == 9);
+    const std::size_t drawn = c.paint();
+    CHECK(drawn > 0);
+    CHECK(c.chart->shownRange() == (ChartRange{5, 9}));
+    // the value under the mouse: a tooltip more
+    c.move({300, 200});
+    CHECK(c.paint() > drawn);
+    // columns: from 0
+    Shown<Sparkline> columns(Sparkline::Props{.kind = Sparkline::Kind::Columns});
+    const double values[] = {3, 5, 4};
+    columns.chart->setValues(values);
+    columns.paint();
+    CHECK(columns.chart->shownRange() == (ChartRange{0, 5}));
+}
+
+TEST(aSparklineOfAMillionValuesDrawsWhatItsPixelsShow) {
+    Shown<Sparkline> c(Sparkline::Props{.capacity = 0, .area = false});
+    std::mt19937 random(7);
+    std::normal_distribution<double> noise;
+    for (int i = 0; i < 1'000'000; ++i)
+        c.chart->append(noise(random));
+    // a point for each column of pixels at most: as many vertices as a line of 600
+    CHECK(c.paint() < 600 * 24);
+}
+
+TEST(aGaugeEasesToItsValueColoredByItsBand) {
+    const Color good{0, 1, 0, 1}, high{1, 0, 0, 1};
+    tests::testScheduler().setAnimationsEnabled(true);
+    {
+        Shown<Gauge> c(Gauge::Props{.bands = {{.to = 70, .color = good}, {.to = 100, .color = high}}, .unit = "%"});
+        CHECK(c.chart->shownValue() == 0);
+        c.chart->setValue(90);
+        tests::advance(std::chrono::milliseconds(60));
+        CHECK(c.chart->shownValue() > 0 && c.chart->shownValue() < 90);
+        tests::advance(std::chrono::seconds(1));
+        CHECK(c.chart->shownValue() == 90);
+        CHECK(c.chart->colorOf(50) == good);
+        CHECK(c.chart->colorOf(90) == high);
+        CHECK(c.paint() > 0);
+    }
+    tests::testScheduler().setAnimationsEnabled(false);
+    // a needle, a half circle: drawn too
+    Shown<Gauge> half(Gauge::Props{.sweep = 180, .needle = true});
+    half.chart->setValue(40);
+    CHECK(half.chart->shownValue() == 40);
+    CHECK(half.paint() > 0);
 }
