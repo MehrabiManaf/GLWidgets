@@ -63,20 +63,21 @@ Renderer::Renderer(rhi::Device& device) : device_(device) {
     fragmentShader_ = device_.createShader(fragment);
 
     sampler_ = device_.createSampler({rhi::Filter::Linear, rhi::AddressMode::ClampToEdge});
+    nearest_ = device_.createSampler({rhi::Filter::Nearest, rhi::AddressMode::ClampToEdge});
     white_ = device_.createTexture({{1, 1}, rhi::TextureFormat::RGBA8, rhi::TextureUsage::Sampled});
 }
 
 Renderer::~Renderer() = default;
 
-TextureId Renderer::addTexture(const rhi::Texture* texture) {
+TextureId Renderer::addTexture(const rhi::Texture* texture, rhi::Filter filter) {
     const TextureId id = nextTexture_++;
-    textures_.emplace(id, texture);
+    textures_.emplace(id, Bound{texture, filter});
     return id;
 }
 
 void Renderer::setTexture(TextureId id, const rhi::Texture* texture) {
     GLW_EXPECTS(textures_.contains(id));
-    textures_[id] = texture;
+    textures_[id].texture = texture;
 }
 
 void Renderer::removeTexture(TextureId id) {
@@ -120,6 +121,7 @@ void Renderer::draw(rhi::CommandList& commands, const DrawList& list, const Rend
     commands.setIndexBuffer(*buffers.indices_, rhi::IndexType::UInt32);
 
     const rhi::Texture* bound = nullptr;
+    const rhi::Sampler* boundSampler = nullptr;
     for (const DrawCommand& cmd : list.commands) {
         if (cmd.indexCount == 0)
             continue;
@@ -127,10 +129,12 @@ void Renderer::draw(rhi::CommandList& commands, const DrawList& list, const Rend
         if (scissor.empty())
             continue;
         commands.setScissor(scissor);
-        const rhi::Texture& tex = texture(cmd.texture);
-        if (&tex != bound) {
-            commands.setTexture(0, tex, *sampler_);
-            bound = &tex;
+        const Bound tex = texture(cmd.texture);
+        const rhi::Sampler* sampler = tex.filter == rhi::Filter::Nearest ? nearest_.get() : sampler_.get();
+        if (tex.texture != bound || sampler != boundSampler) {
+            commands.setTexture(0, *tex.texture, *sampler);
+            bound = tex.texture;
+            boundSampler = sampler;
         }
         commands.drawIndexed(cmd.indexCount, cmd.firstIndex, 0);
     }
@@ -151,13 +155,13 @@ const rhi::Pipeline& Renderer::pipeline(rhi::TextureFormat format) {
     return *pipeline;
 }
 
-const rhi::Texture& Renderer::texture(TextureId id) const {
+Renderer::Bound Renderer::texture(TextureId id) const {
     if (id != whiteTexture) {
         const auto it = textures_.find(id);
-        if (it != textures_.end() && it->second)
-            return *it->second;
+        if (it != textures_.end() && it->second.texture)
+            return it->second;
     }
-    return *white_;
+    return {white_.get(), rhi::Filter::Linear};
 }
 
 } // namespace glw::paint

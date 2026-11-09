@@ -171,7 +171,12 @@ for zooming and panning a canvas) and a stack of clip rectangles apply to what i
   between a line and a level (`fillArea`: a chart's area under its line, in a gradient from the line down), and a sector
   of a ring (`fillArc`: a slice of a pie or a donut, its sides moved in so that slices side by side are a gap apart
   all along, a color at its inner radius and another at its outer, or one at its top and another at its bottom).
-- **Images:** a texture (by id) on a rectangle, tinted.
+- **Images:** a texture (by id) on a rectangle, tinted; sampled smoothly, or (a texture added so: `Renderer::addTexture`'s
+  filter) each of its pixels a sharp square however large it is drawn. A widget makes images of its own, pixel by pixel,
+  in the application's `ImageStore` (`UiContext::images`): it holds an `ImageStore::Image`, writes into its rows, says
+  what it changed, and draws it by its texture; what changed goes to the GPU once a frame, before the windows are drawn,
+  its texture made again when its size changes, gone when the image is (a heat map's cells; later a picture, a
+  spectrogram).
 - **Masks:** the red channel of a texture as coverage, in a color. Glyphs are masks of the glyph atlas (see [Text](#text)).
 
 **The vertex format and one shader are the whole contract of a draw list.** A vertex has a position, texture coordinates,
@@ -771,8 +776,8 @@ shape, the edges of a borderless window the resize shapes of its sides and corne
 Charts (`Library/Include/GLWidgets/Charts`) are widgets made for data that changes as it comes: a feed of measures, of
 events, of shares. Seven for now: **lines** over values or time (`LineChart`), **pies**, donuts and sunbursts
 (`PieChart`), **treemaps** (`TreeMap`), **bars**, stacked, grouped or in percent, standing or lying (`BarChart`), **bar
-races** (`BarRace`), and for dashboards **sparklines** (`Sparkline`) and **gauges** (`Gauge`). What they share is in
-`Chart`:
+races** (`BarRace`), **heat maps** (`HeatMap`), and for dashboards **sparklines** (`Sparkline`) and **gauges**
+(`Gauge`). What they share is in `Chart`:
 
 - **The theme.** `ChartStyle` (`Theme::chart`): the grid, the axes, the labels, the crosshair; ten series colors from the
   color scheme, the accent first, the others told apart by hue and as bright (Dusk, Sand and Turquoise have their own);
@@ -882,12 +887,34 @@ arc's. Bands along its inside (fine, near a limit, over it) color the value as t
 points at it: tapering from a hub to a round tip, a short tail behind, its two faces lit and shaded by the theme's light,
 a shadow under it and a cap over its root raised as the bars are (flat in Plain); the value under it. A new value is eased to.
 
+**Heat maps** (`HeatMap`): a matrix of values as colors, rows (named, the first at the top) across columns (of times, of
+values, or named), each cell of its value's color on a `ColorScale`: sequential (from the plot's color through the accent
+to a light end; a dark one in the light), diverging (from the second series color through a neutral one at its center to
+the accent: its range as far below the center as above), or stops of one's own; linear or by powers of ten; its range its
+own, or fitted to the values (exactly: their lowest and highest kept as they come, found again only when a column that
+held one goes), out to round values, or up to a quantile of them (a sample's: a few spikes at its end, not all the rest
+faint). The scale is a bar beside it with its values; the mouse over the bar leaves only the cells of the values there
+(between two of its ticks) in their colors. Columns come as they come (`appendColumn`: the oldest dropped past a capacity;
+a live one shows its last window, following), or all at once (`setValues`), a cell changed alone (`setValue`). Large cells
+are drawn one by one, round as the style's bars, their values in them when they fit (in the color that reads on them),
+eased to new values. Cells smaller than four dips, or more than forty thousand of them, are an image (`ImageStore`, its
+pixels sharp): of buckets of columns and rows, as many as a pixel shows rounded up to a power of two, each the highest
+of its values (a spike stays seen; or their mean); the buckets of columns are a ring kept from frame to frame (bucket b at
+b modulo its width), so that only those that came or changed are made again and uploaded, the view moving and scaling
+the image's one or two quads; zoomed by a power of two or panned along the rows, it is made again. Its cost is its
+pixels', not its cells': a thousand rows of ten thousand columns, a column appended and a frame in a fraction of a
+millisecond (`glw_benchmarks`). The mouse works as on a line chart (the wheel zooms the columns at the mouse, with Ctrl
+the rows; a drag pans, a live one following again when dragged back to its newest; the right button drags a rectangle to
+zoom into; a double click shows all); the cell under it is outlined (its row and column lit across when they are thin),
+its column's label, its row's name and its value in a tooltip; a click on a cell is told (`setOnCellClicked`).
+
 `chart_demo` shows them all, fed live: a race of 500 packages' monthly downloads by system (`--race N` of them), three series at 200 points a second each over a minute (and ten minutes of
 history to pan into; an area under one, a band of the range around another), shares that drift in rings (regions, their
 countries, a few cities), a second's counts appended every second, a project's files changing now and
-then, a dashboard of the measures now (gauges, sparklines); the style, the colors, the motion and the bars' layout chosen above them.
+then, a dashboard of the measures now (gauges, sparklines), heat maps of 200 endpoints' latency (a column a second,
+incidents and spikes in it, by powers of ten) and of requests by hour and weekday; the style, the colors, the motion and the bars' layout chosen above them.
 
-Still to come: more kinds (scatter, area stacked, candlesticks, histograms, heat maps), logarithmic axes, a
+Still to come: more kinds (scatter, area stacked, candlesticks, histograms; calendars and densities of points as heat maps), logarithmic axes, a
 second y axis, Persian digits and the Solar Hijri calendar on axes (with the `Locale` of
 [Localization](#localization-and-right-to-left)).
 
@@ -1141,7 +1168,7 @@ The `GLW_USE_SYSTEM_SDL3` option uses an installed SDL3 instead of the pinned re
 | M3 | Widget core: tree, events, focus, layout, a UI root independent of the platform, window chrome as widgets (with the native extras), live resize | Done, apart from the native extras of the chrome and what is listed in [Widgets](#widgets) |
 | M4 | Basic widgets (label, button, line edit, scroll area, splitter), styles, `LocalizedText` and catalogs, right-to-left layouts | Done, apart from plural rules and the formatting of numbers and dates (see [Localization](#localization-and-right-to-left)) |
 | M5 | Docking: major and panel tabs, windows merging and splitting by their tabs, both modes, layout persistence | Done: docking in a window, major tabs and saved layouts (M5a), across windows in the full mode (M5b), global panels, saved workspaces and Wayland's restricted mode (M5c). Wayland's drag-and-drop between windows, and keeping restored windows on the screens there are, later; the restricted mode not yet run on Wayland |
-| M6 | Validation: a node canvas and a code editor (FlowGraph), charts, an engine embedding example | In progress: the node canvas (`Canvas`, `node_editor`), menus, popups and dialogs, the code editor (`TextEdit`, `code_editor`), charts (lines, pies, treemaps, bars, races, sparklines, gauges: `chart_demo`) |
+| M6 | Validation: a node canvas and a code editor (FlowGraph), charts, an engine embedding example | In progress: the node canvas (`Canvas`, `node_editor`), menus, popups and dialogs, the code editor (`TextEdit`, `code_editor`), charts (lines, pies, treemaps, bars, races, heat maps, sparklines, gauges: `chart_demo`) |
 
 ## Open questions
 

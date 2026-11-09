@@ -8,6 +8,7 @@
 #include <GLWidgets/Text/GlyphAtlas.hpp>
 #include <GLWidgets/Widgets/DockingHost.hpp>
 #include <GLWidgets/Widgets/Icon.hpp>
+#include <GLWidgets/Widgets/ImageStore.hpp>
 #include <GLWidgets/Widgets/Layout.hpp>
 #include <GLWidgets/Widgets/MajorTabs.hpp>
 #include <GLWidgets/Widgets/WindowFrame.hpp>
@@ -87,6 +88,7 @@ struct Application::Impl final : DockingHost {
     std::unique_ptr<text::FontLibrary> fonts;
     std::unique_ptr<text::GlyphAtlas> atlas;
     std::unique_ptr<IconAtlas> icons;
+    std::unique_ptr<ImageStore> images;
     std::unique_ptr<Translator> translator;
     std::unique_ptr<UiContext> context;
     Scheduler scheduler;                                // before the windows: their timers go first
@@ -351,6 +353,7 @@ struct Application::Impl final : DockingHost {
             atlas->upload(*device, *commands, *renderer);
             icons->upload(*device, *commands, *renderer);
         }
+        images->upload(*device, *commands, *renderer);
         bool all = true;
         for (Window* w : which) {
             renderer->upload(*commands, w->list_, w->buffers_);
@@ -896,8 +899,9 @@ Application::Application() : impl_(std::make_unique<Impl>(*this)) {
     d.fonts = std::make_unique<text::FontLibrary>();
     d.atlas = std::make_unique<text::GlyphAtlas>(d.renderer->addTexture());
     d.icons = std::make_unique<IconAtlas>(d.renderer->addTexture());
+    d.images = std::make_unique<ImageStore>([renderer = d.renderer.get()](rhi::Filter filter) { return renderer->addTexture(nullptr, filter); });
     d.translator = std::make_unique<Translator>();
-    d.context = std::make_unique<UiContext>(UiContext{*d.fonts, *d.atlas, *d.translator, Theme::dark(), &d, &d.scheduler, d.icons.get()});
+    d.context = std::make_unique<UiContext>(UiContext{*d.fonts, *d.atlas, *d.translator, Theme::dark(), &d, &d.scheduler, d.icons.get(), d.images.get()});
 #ifdef _MSC_VER
 #pragma warning(push)
 #pragma warning(disable : 4996)     // getenv: read, not kept

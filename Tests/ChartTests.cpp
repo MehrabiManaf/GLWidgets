@@ -10,6 +10,7 @@
 #include <GLWidgets/Charts/BarRace.hpp>
 #include <GLWidgets/Charts/ChartAxis.hpp>
 #include <GLWidgets/Charts/Gauge.hpp>
+#include <GLWidgets/Charts/HeatMap.hpp>
 #include <GLWidgets/Charts/LineChart.hpp>
 #include <GLWidgets/Charts/PieChart.hpp>
 #include <GLWidgets/Charts/SeriesBuffer.hpp>
@@ -805,4 +806,87 @@ TEST(aGaugeEasesToItsValueColoredByItsBand) {
     half.chart->setValue(40);
     CHECK(half.chart->shownValue() == 40);
     CHECK(half.paint() > 0);
+}
+
+// ---- heat maps ----
+
+TEST(aHeatMapColorsItsCellsByTheirValues) {
+    Shown<HeatMap> c(HeatMap::Props{.rows = {"a", "b"}});
+    // three columns of two rows: a few large cells, one by one, their values in them
+    const double values[] = {1, 2, 3, 4, 5, std::nan("")};
+    c.chart->setValues(3, values);
+    c.paint();
+    CHECK(c.chart->drawn() == HeatMap::Drawn::Cells && c.chart->columnCount() == 3 && c.chart->rowCount() == 2);
+    CHECK(c.chart->value(1, 0) == 3 && std::isnan(c.chart->value(2, 1)) && std::isnan(c.chart->value(7, 0)));
+    // its colors from its lowest to its highest value, out to round values
+    const ChartRange r = c.chart->colorRange();
+    CHECK(r.low <= 1 && r.high >= 5 && r.span() <= 10);
+    CHECK(c.chart->colorOf(1) != c.chart->colorOf(5) && c.chart->colorOf(std::nan("")).a == 0);
+    // its own range; a diverging one as far below its center as above; a logarithmic one by powers of ten
+    c.chart->setScale({.range = ChartRange{0, 100}});
+    CHECK(c.chart->colorRange() == (ChartRange{0, 100}));
+    c.chart->setScale({.kind = ColorScale::Kind::Diverging});
+    const ChartRange d = c.chart->colorRange();
+    CHECK(near(d.low, -d.high) && d.high >= 5);
+    const double wide[] = {3, 2000};
+    c.chart->setValues(1, wide);
+    c.chart->setScale({.logarithmic = true});
+    CHECK(c.chart->colorRange() == (ChartRange{1, 10000}));
+}
+
+TEST(aLiveHeatMapKeepsItsNewestColumnsAndFollowsThem) {
+    Shown<HeatMap> c(HeatMap::Props{.rows = {"a", "b", "c"}, .capacity = 100, .window = 50});
+    for (int i = 0; i < 200; ++i) {
+        const double column[] = {double(i), double(i % 7), 1};
+        c.chart->appendColumn(column);
+    }
+    c.paint();
+    CHECK(c.chart->columnCount() == 100 && c.chart->firstColumn() == 100 && c.chart->value(199, 0) == 199);
+    CHECK(c.chart->following() && c.chart->columnView() == (ChartRange{150, 200}));
+    // its colors fitted to what it keeps: the dropped ones' values gone from it
+    CHECK(c.chart->colorRange().low >= 0 && c.chart->colorRange().low <= 1 && c.chart->colorRange().high >= 199);
+    // dragged back from the newest, then to it again: following again
+    c.drag({300, 200}, {500, 200});
+    CHECK(!c.chart->following());
+    c.drag({500, 200}, {100, 200});
+    CHECK(c.chart->following());
+}
+
+TEST(aHeatMapOfManyCellsIsAnImageOfThem) {
+    Shown<HeatMap> c(HeatMap::Props{.capacity = 4000, .window = 4000});
+    std::vector<double> column(500);
+    for (int i = 0; i < 4000; ++i) {
+        for (std::size_t r = 0; r < column.size(); ++r)
+            column[r] = std::sin(i * 0.01 + static_cast<double>(r) * 0.05);
+        c.chart->appendColumn(column);
+    }
+    // two million cells: an image (of buckets of them), drawn with a texture of its own, a few quads
+    const std::size_t vertices = c.paint();
+    CHECK(c.chart->drawn() == HeatMap::Drawn::Image && c.chart->rowCount() == 500 && tests::testContext().images->count() >= 1);
+    CHECK(vertices < 20000);
+    paint::DrawList list;
+    c.root.paint(list);
+    CHECK(std::any_of(list.commands.begin(), list.commands.end(), [](const paint::DrawCommand& d) { return d.texture != paint::whiteTexture; }));
+    // a column more: still an image; zoomed into ten columns (their rows still under a pixel): an image of them
+    c.chart->appendColumn(column);
+    c.paint();
+    CHECK(c.chart->drawn() == HeatMap::Drawn::Image && c.chart->firstColumn() == 1);
+    c.chart->setColumnView({100, 110});
+    c.paint();
+    CHECK(c.chart->columnView() == (ChartRange{100, 110}) && !c.chart->following() && c.chart->drawn() == HeatMap::Drawn::Image);
+}
+
+TEST(aClickOnAHeatMapsCellTellsWhichItIs) {
+    Shown<HeatMap> c(HeatMap::Props{.rows = {"a", "b"}});
+    const double values[] = {1, 2, 3, 4};
+    c.chart->setValues(2, values);
+    c.paint();
+    std::optional<std::pair<std::size_t, std::size_t>> clicked;
+    c.chart->setOnCellClicked([&](std::size_t column, std::size_t row) { clicked = std::pair{column, row}; });
+    // the lower right cell: of the second column, the second row
+    const Rect bounds = c.chart->bounds();
+    c.move({bounds.width * 0.6f, bounds.height * 0.75f});
+    c.button(platform::MouseButton::Left, true, {bounds.width * 0.6f, bounds.height * 0.75f});
+    c.button(platform::MouseButton::Left, false, {bounds.width * 0.6f, bounds.height * 0.75f});
+    CHECK(clicked && clicked->first == 1 && clicked->second == 1);
 }

@@ -43,8 +43,9 @@ public:
 
     // An id for draw lists to refer to `texture`, which must live while the id is used (not owned). None yet: lists may use
     // the id before setTexture gives it its texture (the glyph atlas is painted with before it is uploaded); until then it
-    // draws as white.
-    TextureId addTexture(const rhi::Texture* texture = nullptr);
+    // draws as white. `filter`: how it is sampled between its pixels (Nearest: each pixel a sharp square however large it is
+    // drawn: an image of cells, a heat map's).
+    TextureId addTexture(const rhi::Texture* texture = nullptr, rhi::Filter filter = rhi::Filter::Linear);
     void setTexture(TextureId id, const rhi::Texture* texture);
     void removeTexture(TextureId id);
 
@@ -60,16 +61,21 @@ public:
 
 private:
     const rhi::Pipeline& pipeline(rhi::TextureFormat format);
-    const rhi::Texture& texture(TextureId id) const;
+    struct Bound {
+        const rhi::Texture* texture = nullptr;
+        rhi::Filter filter = rhi::Filter::Linear;
+    };
+    Bound texture(TextureId id) const;
 
     rhi::Device& device_;
     std::unique_ptr<rhi::Shader> vertexShader_;
     std::unique_ptr<rhi::Shader> fragmentShader_;
     std::unique_ptr<rhi::Sampler> sampler_;
+    std::unique_ptr<rhi::Sampler> nearest_;
     std::unique_ptr<rhi::Texture> white_;
     bool whiteUploaded_ = false;
     std::unordered_map<rhi::TextureFormat, std::unique_ptr<rhi::Pipeline>> pipelines_;
-    std::unordered_map<TextureId, const rhi::Texture*> textures_;
+    std::unordered_map<TextureId, Bound> textures_;
     TextureId nextTexture_ = 1;
     Lighting lighting_;
 };

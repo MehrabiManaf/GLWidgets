@@ -18,6 +18,7 @@ add_library(GLWidgets ${GLW_LIB_TYPE}
     Source/Charts/Chart.cpp
     Source/Charts/ChartAxis.cpp
     Source/Charts/Gauge.cpp
+    Source/Charts/HeatMap.cpp
     Source/Charts/LineChart.cpp
     Source/Charts/PieChart.cpp
     Source/Charts/SeriesBuffer.cpp
@@ -50,6 +51,7 @@ add_library(GLWidgets ${GLW_LIB_TYPE}
     Source/Widgets/Docking.cpp
     Source/Widgets/Highlighter.cpp
     Source/Widgets/Icon.cpp
+    Source/Widgets/ImageStore.cpp
     Source/Widgets/ItemEditor.cpp
     Source/Widgets/ItemModel.cpp
     Source/Widgets/IndexSet.cpp

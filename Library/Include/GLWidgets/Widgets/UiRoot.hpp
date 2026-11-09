@@ -31,6 +31,7 @@ namespace glw {
 class Action;
 class DockingHost;
 class IconAtlas;
+class ImageStore;
 
 // What every root of an application shares.
 struct UiContext {
@@ -41,6 +42,7 @@ struct UiContext {
     DockingHost* docking = nullptr;         // the windows, for docking across them; none: in its window only
     Scheduler* scheduler = nullptr;         // timers and animations; none: things happen at once, no tooltips
     IconAtlas* icons = nullptr;             // where SVG icons are rasterized; none: they draw nothing
+    ImageStore* images = nullptr;           // the images widgets make themselves (a heat map's); none: they draw without
 };
 
 class UiRoot;

@@ -5,6 +5,7 @@
 // theme) and a host that stands for a window.
 #include <GLWidgets/Text/Font.hpp>
 #include <GLWidgets/Text/GlyphAtlas.hpp>
+#include <GLWidgets/Widgets/ImageStore.hpp>
 #include <GLWidgets/Widgets/UiRoot.hpp>
 
 #include <memory>
@@ -27,7 +28,8 @@ inline UiContext& testContext() {
     static Translator translator;
     static Scheduler scheduler([] { return testClock(); });
     static const bool still = (scheduler.setAnimationsEnabled(false), true);
-    static UiContext ui{fonts, atlas, translator, Theme::dark(ThemeStyle::Studio), nullptr, &scheduler};
+    static ImageStore images;
+    static UiContext ui{fonts, atlas, translator, Theme::dark(ThemeStyle::Studio), nullptr, &scheduler, nullptr, &images};
     (void)still;
     return ui;
 }

@@ -6,7 +6,8 @@
 // packages' downloads (stacked by system), a month every 0.6 seconds; stacked bars of each second's counts, appended as
 // they come; a treemap of a project's folders and files, their sizes changing now and then; a dashboard of the measures
 // now (gauges, CPU's and memory's colored by bands, the network's a half circle with a needle) and of their last half
-// minute (sparklines, the errors' in columns). Above them, the style and the
+// minute (sparklines, the errors' in columns); heat maps of 200 endpoints' latency over the last minutes (a column a
+// second, incidents and spikes in them) and of requests by hour and weekday. Above them, the style and the
 // colors of everything, whether the charts ease, how the bars are laid out, and whether the donut and the race show
 // only their top ones (the rest as one of others). Each chart is a docked panel: moved, split, floated, closed by its
 // tab; the View menu hides and shows each (one closed by its tab too), back beside a neighbour of where it was.
@@ -20,6 +21,7 @@
 #include <GLWidgets/Charts/BarChart.hpp>
 #include <GLWidgets/Charts/BarRace.hpp>
 #include <GLWidgets/Charts/Gauge.hpp>
+#include <GLWidgets/Charts/HeatMap.hpp>
 #include <GLWidgets/Charts/LineChart.hpp>
 #include <GLWidgets/Charts/PieChart.hpp>
 #include <GLWidgets/Charts/Sparkline.hpp>
@@ -69,6 +71,13 @@ struct Demo {
     std::array<glw::Gauge*, 3> gauges{};
     std::array<glw::Sparkline*, 4> sparks{};
     std::array<glw::Label*, 4> lasts{};
+    // the heat maps: each endpoint's latency (its own usual one), now and then an incident on some of them
+    glw::HeatMap* latency = nullptr;
+    glw::HeatMap* weekly = nullptr;
+    std::vector<double> usual;
+    std::int64_t latencyColumn = 0;
+    std::size_t incidentFrom = 0, incidentTo = 0;
+    std::int64_t incidentUntil = -1;
     glw::Label* status = nullptr;
     // the charts' panels: those hidden kept to come back; the View menu's items
     glw::DockArea* area = nullptr;
@@ -152,7 +161,8 @@ struct Demo {
         glw::DockTabs& lineStack = area->addPanel(panel("line", tr("Measures"), std::move(made)));
         glw::DockTabs& donutStack = area->addPanel(panel("donut", tr("Requests"), std::move(donut)), &lineStack, glw::DockSide::End, 0.4f);
         glw::DockTabs& raceStack = area->addPanel(panel("race", tr("Race"), std::move(racing)), &lineStack, glw::DockSide::Bottom, 0.5f);
-        area->addPanel(panel("bars", tr("Events"), std::move(stacked)), &raceStack, glw::DockSide::End, 0.5f);
+        glw::DockTabs& barsStack = area->addPanel(panel("bars", tr("Events"), std::move(stacked)), &raceStack, glw::DockSide::End, 0.5f);
+        area->addPanel(panel("heat", tr("Latency"), heatMaps()), &barsStack, glw::DockSide::Center, 0.5f);
         area->addPanel(panel("tree", tr("Files"), std::move(map)), &donutStack, glw::DockSide::Bottom, 0.5f);
         area->addPanel(glw::DockPanel{.id = "dash", .title = tr("Dashboard"), .content = dashboard()}, nullptr, glw::DockSide::Start, 0.22f);
         // one closed by its tab: kept, its item in the View menu unchecked
@@ -237,11 +247,71 @@ struct Demo {
         return made;
     }
 
+    // Each endpoint's latency, a column a second over the last five minutes (an hour kept), by powers of ten; requests by
+    // hour and weekday, the value in each cell.
+    std::unique_ptr<glw::Widget> heatMaps() {
+        std::vector<glw::LocalizedText> endpoints;
+        const char* resources[] = {"users", "orders", "payments", "search", "catalog", "cart", "auth", "reviews", "shipping", "stock"};
+        const std::pair<const char*, const char*> operations[] = {{"GET", ""}, {"POST", ""}, {"GET", "/{id}"}, {"PUT", "/{id}"}};
+        for (int version = 1; version <= 5; ++version) {
+            for (const char* resource : resources) {
+                for (const auto& [verb, item] : operations) {
+                    endpoints.emplace_back(std::string(verb) + " /v" + std::to_string(version) + "/" + resource + item);
+                    usual.push_back(std::exp(uniform(std::log(8.0), std::log(180.0))));
+                }
+            }
+        }
+        auto live = std::make_unique<glw::HeatMap>(glw::HeatMap::Props{
+            .title = tr("Latency of {n} endpoints, ms").arg("n", std::to_string(endpoints.size())), .rows = std::move(endpoints),
+            .xAxis = glw::ChartAxisKind::Time, .start = std::floor(glw::chartNow()) - 600, .step = 1, .capacity = 3600, .window = 300,
+            .scale = {.logarithmic = true, .clip = 0.99f}});
+        latency = live.get();
+        auto matrix = std::make_unique<glw::HeatMap>(glw::HeatMap::Props{
+            .title = tr("Requests by hour and weekday, thousands"),
+            .rows = {tr("Saturday"), tr("Sunday"), tr("Monday"), tr("Tuesday"), tr("Wednesday"), tr("Thursday"), tr("Friday")}});
+        weekly = matrix.get();
+        std::vector<glw::LocalizedText> hours;
+        std::vector<double> requests;
+        for (int hour = 0; hour < 24; ++hour) {
+            hours.emplace_back((hour < 10 ? "0" : "") + std::to_string(hour));
+            for (int day = 0; day < 7; ++day) {
+                // busy in working hours, on working days (Friday the weekend here)
+                const double working = day >= 1 && day <= 5 ? 1.0 : 0.45;
+                const double busy = std::exp(-std::pow((hour - 14) / 4.5, 2)) * 0.85 + 0.15;
+                requests.push_back(std::round(working * busy * 90 + uniform(0, 8)));
+            }
+        }
+        weekly->setColumnNames(std::move(hours));
+        weekly->setValues(24, requests);
+        return glw::ui::VStack({.spacing = 12}, std::unique_ptr<glw::Widget>(std::move(live)), std::unique_ptr<glw::Widget>(std::move(matrix)))
+            .build();
+    }
+
+    // A second of each endpoint's latency: its usual one, varying; a spike now and then; an incident on a run of them.
+    void nextLatency() {
+        if (latencyColumn > incidentUntil && uniform(0, 1) < 0.012) {
+            incidentFrom = std::uniform_int_distribution<std::size_t>(0, usual.size() - 30)(random);
+            incidentTo = incidentFrom + std::uniform_int_distribution<std::size_t>(5, 30)(random);
+            incidentUntil = latencyColumn + std::uniform_int_distribution<std::int64_t>(10, 40)(random);
+        }
+        std::vector<double> column(usual.size());
+        for (std::size_t e = 0; e < usual.size(); ++e) {
+            double v = usual[e] * std::exp(normal(0.25));
+            if (latencyColumn <= incidentUntil && e >= incidentFrom && e < incidentTo)
+                v *= uniform(6, 14);
+            if (uniform(0, 1) < 0.002)
+                v *= uniform(5, 30);
+            column[e] = v;
+        }
+        latency->appendColumn(column);
+        ++latencyColumn;
+    }
+
     // The View menu: an item for each chart, checked while it shows.
     std::unique_ptr<glw::MenuBar> menus() {
         std::vector<glw::MenuItem> items;
         for (const auto& [id, title] : std::initializer_list<std::pair<const char*, const char*>>{
-                 {"dash", "&Dashboard"}, {"line", "&Measures"}, {"donut", "Re&quests"}, {"race", "R&ace"}, {"bars", "&Events"},
+                 {"dash", "&Dashboard"}, {"line", "&Measures"}, {"donut", "Re&quests"}, {"race", "R&ace"}, {"bars", "&Events"}, {"heat", "&Latency"},
                  {"tree", "&Files"}}) {
             auto toggle = std::make_shared<glw::Action>(tr(title));
             toggle->setCheckable(true);
@@ -274,6 +344,7 @@ struct Demo {
             {"bars", {{"race", glw::DockSide::End}, {"tree", glw::DockSide::Start}, {"line", glw::DockSide::Bottom}}},
             {"tree", {{"donut", glw::DockSide::Bottom}, {"bars", glw::DockSide::End}}},
             {"dash", {}},
+            {"heat", {{"bars", glw::DockSide::Center}, {"race", glw::DockSide::Center}, {"line", glw::DockSide::Bottom}}},
         };
         if (id == "dash") {             // at the left edge again
             area->addPanel(std::move(panel), nullptr, glw::DockSide::Start, 0.22f);
@@ -333,7 +404,7 @@ struct Demo {
     }
 
     void animate(bool on) {
-        for (glw::Chart* chart : std::initializer_list<glw::Chart*>{line, pie, race, bars, tree, gauges[0], gauges[1], gauges[2]})
+        for (glw::Chart* chart : std::initializer_list<glw::Chart*>{line, pie, race, bars, tree, gauges[0], gauges[1], gauges[2], latency, weekly})
             chart->setAnimated(on);
         for (glw::Sparkline* spark : sparks)
             spark->setAnimated(on);
@@ -400,6 +471,7 @@ struct Demo {
             bars->appendCategory(std::string(label), values);
             sparks[3]->append(values[2]);
             lasts[3]->setText(std::to_string(static_cast<int>(values[2])));
+            nextLatency();
         }, true);
         // the dashboard: the measures now, twice a second
         now.start(scheduler, std::chrono::milliseconds(500), [this] {
@@ -436,6 +508,8 @@ struct Demo {
         const double from = fed - 600;
         for (double t = from; t < fed; t += 1 / rate)
             sample(t);
+        for (int i = 0; i < 600; ++i)
+            nextLatency();
         for (int i = 30; i > 0; --i) {
             const double values[] = {std::round(uniform(40, 120)), std::round(uniform(10, 60)), std::round(uniform(0, 1) < 0.2 ? uniform(1, 25) : 0)};
             bars->appendCategory("-" + std::to_string(i) + "s", values);

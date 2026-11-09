@@ -6,6 +6,7 @@
 //   glw_benchmarks [--count N]...     (1000, 10000 and 100000 labels by default)
 #include <GLWidgets/Charts/BarChart.hpp>
 #include <GLWidgets/Charts/BarRace.hpp>
+#include <GLWidgets/Charts/HeatMap.hpp>
 #include <GLWidgets/Charts/LineChart.hpp>
 #include <GLWidgets/Charts/TreeMap.hpp>
 #include <GLWidgets/Paint/DrawList.hpp>
@@ -20,6 +21,7 @@
 #include <GLWidgets/Widgets/TableView.hpp>
 #include <GLWidgets/Widgets/TextEdit.hpp>
 #include <GLWidgets/Widgets/TreeView.hpp>
+#include <GLWidgets/Widgets/ImageStore.hpp>
 #include <GLWidgets/Widgets/UiRoot.hpp>
 
 #include <algorithm>
@@ -639,6 +641,44 @@ void itemsInABarRace(glw::UiContext& ui, std::size_t count) {
     std::printf("%9zu | %8.2f | %8.2f | %8.2f | %8.2f | %8zu\n", count, changing / 5, frame, drifting, scrolled, drawn.vertices.size());
 }
 
+// A heat map of `rows` rows and `columns` columns, live (each column appended): filled; the first frame (its image made
+// all of it); a column more and a frame (its image made where it changed); zoomed out (all of it made again, buckets twice
+// as large); zoomed into fewer cells than show one by one (its rows in 40 columns, when they are few enough).
+void cellsInAHeatMap(glw::UiContext& ui, std::size_t rows, std::size_t columns) {
+    glw::UiRoot root(ui);
+    root.setSize({1280, 720});
+    auto made = std::make_unique<glw::HeatMap>(glw::HeatMap::Props{.capacity = columns, .scale = {.range = glw::ChartRange{0, 1}}});
+    glw::HeatMap& heat = *made;
+    root.setContent(std::move(made));
+    std::mt19937 random(3);
+    std::uniform_real_distribution<double> value(0, 1);
+    std::vector<double> column(rows);
+    const auto next = [&] {
+        for (double& v : column)
+            v = value(random);
+        heat.appendColumn(column);
+    };
+    const double fill = once([&] {
+        for (std::size_t c = 0; c < columns; ++c)
+            next();
+    });
+    glw::paint::DrawList drawn;
+    const double first = once([&] { root.paint(drawn); });
+    const double live = best(5, [&] {
+        next();
+        root.paint(drawn);
+    });
+    const glw::ChartRange all = heat.columnView();
+    heat.setColumnView({all.low - all.span(), all.high});
+    const double rezoomed = once([&] { root.paint(drawn); });
+    const double end = static_cast<double>(heat.firstColumn() + heat.columnCount());
+    heat.setColumnView({end - 40, end});
+    root.paint(drawn);
+    const double cells = best(5, [&] { root.paint(drawn); });
+    std::printf("%6zu | %8zu | %8.2f | %8.2f | %8.2f | %8.2f | %8.2f | %8zu\n", rows, columns, fill, first, live, rezoomed, cells,
+                drawn.vertices.size());
+}
+
 // A text of `count` lines of C++, highlighted.
 void linesInATextEdit(glw::UiContext& ui, int count) {
     std::string code;
@@ -693,7 +733,8 @@ int main(int argc, char** argv) {
     glw::text::FontLibrary fonts;
     glw::text::GlyphAtlas atlas(1, 1024);
     glw::Translator translator;
-    glw::UiContext ui{fonts, atlas, translator, glw::Theme::dark(glw::ThemeStyle::Studio)};
+    glw::ImageStore images;
+    glw::UiContext ui{fonts, atlas, translator, glw::Theme::dark(glw::ThemeStyle::Studio), nullptr, nullptr, nullptr, &images};
 
     std::printf("Labels in a scroll area, milliseconds (paint and after: the best of 5)\n");
     std::printf("   labels |    build |   layout |    paint |   scroll |     text | vertices\n");
@@ -753,6 +794,12 @@ int main(int argc, char** argv) {
     std::printf("    items |  changed |   random |  drifted | scrolled | vertices\n");
     for (std::size_t count : {std::size_t{1'000}, std::size_t{20'000}, std::size_t{200'000}})
         itemsInABarRace(ui, count);
+
+    std::printf("\nA heat map, live, milliseconds: filled; the first frame; a column more and a frame; zoomed out; its rows in\n"
+                "40 columns\n");
+    std::printf("  rows |  columns |     fill |    first |     live |   rezoom |    cells | vertices\n");
+    cellsInAHeatMap(ui, 200, 3600);
+    cellsInAHeatMap(ui, 1000, 10'000);
 
     std::printf("\nLines of C++ in a text edit, highlighted, milliseconds\n");
     std::printf("    lines |     load |    first |    paint |   scroll |     type | to the end |     laid\n");
