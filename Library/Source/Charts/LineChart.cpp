@@ -204,6 +204,11 @@ void LineChart::setIncludeZero(bool include) {
     invalidatePaint();
 }
 
+void LineChart::setPercent(bool percent) {
+    props_.percent = percent;
+    invalidatePaint();
+}
+
 void LineChart::setXFormatter(std::function<std::string(double, double)> format) {
     xAxis_.format = std::move(format);
     invalidatePaint();
@@ -279,8 +284,23 @@ ChartRange LineChart::fitY(ChartRange x) const {
     if (userY_)
         return *userY_;
     std::optional<ChartExtent> all;
+    // the stack: from 0 to its highest sum (its shares: 0 to 100)
+    if (!stackMembers().empty()) {
+        if (props_.percent)
+            return {0, 100};
+        sampleStack(x, std::max(64.0, static_cast<double>(plot_.width) * 2));
+        const std::size_t n = stackX_.size(), last = stacked_.size() - 1;
+        double high = 0, low = 0;
+        for (std::size_t i = 0; i < n; ++i) {
+            for (std::size_t k = 0; k <= last; ++k) {
+                high = std::max(high, stackTops_[k * n + i]);
+                low = std::min(low, stackTops_[k * n + i]);
+            }
+        }
+        all = ChartExtent{low, high};
+    }
     for (const auto& s : series_) {
-        if (!s->visible_)
+        if (!s->visible_ || s->props_.stacked)
             continue;
         const SeriesBuffer& d = s->data_;
         std::optional<ChartExtent> e;
@@ -298,16 +318,17 @@ ChartRange LineChart::fitY(ChartRange x) const {
     if (!all)
         return {0, 1};
     ChartRange r{all->low, all->high};
-    if (props_.includeZero) {
+    if (props_.includeZero || !stacked_.empty()) {
         r.low = std::min(r.low, 0.0);
         r.high = std::max(r.high, 0.0);
     }
     r = opened(r, false);
     // a little room above and below its data (not below 0 when it starts there), then out to round values
     const double pad = r.span() * 0.04;
-    if (!(props_.includeZero && r.low == 0))
+    const bool zero = props_.includeZero || !stacked_.empty();
+    if (!(zero && r.low == 0))
         r.low -= pad;
-    if (!(props_.includeZero && r.high == 0))
+    if (!(zero && r.high == 0))
         r.high += pad;
     return niceRange(r, yTickCount_);
 }
@@ -379,8 +400,9 @@ void LineChart::paint(PaintContext& context) {
     updateView();
     const ChartRange xv = xView(), yv = yView();
 
-    // the y axis as wide as its labels
+    // the y axis as wide as its labels (a stack in shares: in percent)
     yAxis_.orientation = Orientation::Vertical;
+    yAxis_.suffix = props_.percent && !stackMembers().empty() ? "%" : "";
     yAxis_.fit(*this, yv, plot.height);
     const float axisWidth = yAxis_.labelWidth() + 8;
     plot.width = std::max(0.0f, plot.width - axisWidth - 6);
@@ -407,6 +429,7 @@ void LineChart::paint(PaintContext& context) {
 
     // the series, cut to the plot (a little above and below it: a line along its edge)
     p.pushClip({plot.x, plot.y - 2, plot.width, plot.height + 4});
+    paintStack(context);
     for (const auto& a : areas_)
         paintArea(context, *a);
     for (std::size_t i = 0; i < series_.size(); ++i)
@@ -428,7 +451,7 @@ void LineChart::paintSeries(PaintContext& context, const LineSeries& series, std
     const float alpha = series.shown_.value();
     const SeriesBuffer& d = series.data_;
     const std::size_t n = d.size();
-    if (alpha <= 0.002f || n == 0)
+    if (alpha <= 0.002f || n == 0 || series.props_.stacked)       // (a stacked one: the stack's)
         return;
     paint::Painter& p = context.painter;
     const ChartStyle& s = style();
@@ -524,6 +547,132 @@ void LineChart::paintSeries(PaintContext& context, const LineSeries& series, std
         for (std::size_t i = first; i < last; ++i)
             if (!std::isnan(d.y(i)))
                 p.fillCircle({px(d.x(i)), py(d.y(i))}, r, color);
+    }
+}
+
+// ---- the stack ----
+
+const std::vector<const LineSeries*>& LineChart::stackMembers() const {
+    stacked_.clear();
+    for (const auto& s : series_)
+        if (s->props_.stacked && s->shown_.value() > 0.002f)
+            stacked_.push_back(s.get());
+    return stacked_;
+}
+
+double LineChart::stackValue(const LineSeries& series, double x) const {
+    const SeriesBuffer& d = series.data_;
+    const std::size_t n = d.size();
+    if (n == 0)
+        return 0;
+    const auto y = [&](std::size_t i) { return std::isnan(d.y(i)) ? 0.0 : d.y(i); };
+    const double first = d.x(0), last = d.x(n - 1);
+    // past its ends: its end's value a little way (its points' spacing: a feed a point behind the others), then none
+    const double reach = n > 1 ? 2 * (last - first) / static_cast<double>(n - 1) : 0;
+    if (x <= first)
+        return first - x <= reach ? y(0) : 0;
+    if (x >= last)
+        return x - last <= reach ? y(n - 1) : 0;
+    const std::size_t i = d.lowerBound(x);
+    if (i == 0)
+        return y(0);
+    const double x0 = d.x(i - 1), x1 = d.x(i);
+    const double t = x1 > x0 ? (x - x0) / (x1 - x0) : 1;
+    return y(i - 1) + (y(i) - y(i - 1)) * t;
+}
+
+double LineChart::stackAt(double x, std::span<double> tops) const {
+    double sum = 0;
+    for (std::size_t k = 0; k < stacked_.size(); ++k) {
+        sum += stacked_[k]->shown_.value() * stackValue(*stacked_[k], x);
+        tops[k] = sum;
+    }
+    if (props_.percent)
+        for (double& top : tops)
+            top = sum != 0 ? top / sum * 100 : 0;
+    return sum;
+}
+
+void LineChart::sampleStack(ChartRange x, double columns) const {
+    stackX_.clear();
+    stackTops_.clear();
+    if (stackMembers().empty() || !(x.span() > 0))
+        return;
+    // where its series have points (and one on each side), when they are not many more than its columns of pixels; else
+    // once a column
+    std::size_t points = 0;
+    for (const LineSeries* s : stacked_) {
+        const SeriesBuffer& d = s->data_;
+        if (!d.sorted())
+            points += d.size();
+        else if (!d.empty())
+            points += std::min(d.size(), d.lowerBound(x.high) + 1) - std::min(d.size(), d.lowerBound(x.low) - (d.lowerBound(x.low) > 0 ? 1 : 0));
+    }
+    if (static_cast<double>(points) <= 2 * columns) {
+        for (const LineSeries* s : stacked_) {
+            const SeriesBuffer& d = s->data_;
+            if (d.empty() || !d.sorted())
+                continue;
+            std::size_t first = d.lowerBound(x.low);
+            first = first > 0 ? first - 1 : 0;
+            const std::size_t last = std::min(d.size(), d.lowerBound(x.high) + 1);
+            for (std::size_t i = first; i < last; ++i)
+                stackX_.push_back(d.x(i));
+        }
+        std::sort(stackX_.begin(), stackX_.end());
+        stackX_.erase(std::unique(stackX_.begin(), stackX_.end()), stackX_.end());
+    } else {
+        const double dx = x.span() / columns;
+        for (double c = -1; c <= columns; ++c)
+            stackX_.push_back(x.low + (c + 0.5) * dx);
+    }
+    const std::size_t n = stackX_.size(), members = stacked_.size();
+    stackTops_.resize(n * members);
+    std::vector<double> tops(members);
+    for (std::size_t i = 0; i < n; ++i) {
+        stackAt(stackX_[i], tops);
+        for (std::size_t k = 0; k < members; ++k)
+            stackTops_[k * n + i] = tops[k];
+    }
+}
+
+void LineChart::paintStack(PaintContext& context) {
+    paint::Painter& p = context.painter;
+    const ChartStyle& s = style();
+    const ChartRange xv = xView(), yv = yView();
+    sampleStack(xv, std::max(1.0, static_cast<double>(plot_.width) * p.pixelsPerDip()));
+    const std::size_t n = stackX_.size(), members = stacked_.size();
+    if (n < 2 || members == 0)
+        return;
+    const Rect plot = plot_;
+    const auto px = [&](double x) { return static_cast<float>(plot.x + (x - xv.low) / xv.span() * plot.width); };
+    const auto py = [&](double y) { return static_cast<float>(plot.bottom() - (y - yv.low) / yv.span() * plot.height); };
+    // each one's area from the one under it (the first's from 0) to its top, fuller at its top; then their lines over all
+    // of them
+    std::vector<std::vector<Point>> tops(members);
+    for (std::size_t k = 0; k < members; ++k) {
+        tops[k].resize(n);
+        for (std::size_t i = 0; i < n; ++i)
+            tops[k][i] = {px(stackX_[i]), py(stackTops_[k * n + i])};
+    }
+    lower_.resize(n);
+    for (std::size_t i = 0; i < n; ++i)
+        lower_[i] = {px(stackX_[i]), py(0)};
+    const float opacity = std::clamp(s.areaOpacity * 2.6f, 0.35f, 0.75f);
+    for (std::size_t k = 0; k < members; ++k) {
+        const LineSeries& series = *stacked_[k];
+        const Color color = colorOf(series);
+        const float alpha = series.shown_.value();
+        p.fillBand(tops[k], k == 0 ? lower_ : tops[k - 1], withAlpha(color, color.a * opacity * alpha),
+                   withAlpha(color, color.a * opacity * 0.7f * alpha));
+    }
+    for (std::size_t k = 0; k < members; ++k) {
+        const LineSeries& series = *stacked_[k];
+        if (!series.props_.line)
+            continue;
+        Color color = colorOf(series);
+        color.a *= series.shown_.value();
+        p.drawPolyline(tops[k], series.props_.width > 0 ? series.props_.width : s.lineWidth, color);
     }
 }
 
@@ -649,10 +798,32 @@ void LineChart::paintHover(PaintContext& context) {
     const Color ring = s.plot.a > 0.9f ? s.plot : palette.layer;
     std::vector<ToolTipRow> rows;
     const double tolerance = xv.span() / plot_.width * 6;       // six dips
+    // the stack: each one's dot on its top, its own value (and share) by it, the highest first; their sum after them
+    std::vector<double> tops(stackMembers().size());
+    const double sum = stacked_.empty() ? 0 : stackAt(*snapped, tops);
+    std::vector<ToolTipRow> stackRows;
     for (std::size_t index = 0; index < series_.size(); ++index) {
         const LineSeries& series = *series_[index];
         if (!series.visible_ || series.shown_.value() < 0.5f || series.props_.name.source.empty())
             continue;
+        if (series.props_.stacked) {
+            const auto k = static_cast<std::size_t>(std::find(stacked_.begin(), stacked_.end(), &series) - stacked_.begin());
+            if (k >= stacked_.size())
+                continue;
+            const double own = stackValue(series, *snapped);
+            const Color color = colorOf(series);
+            const Point dot = pointOf({*snapped, tops[k]});
+            if (plot_.inflated(2).contains(dot)) {
+                p.fillCircle(dot, 4.5f, ring);
+                p.fillCircle(dot, 3.2f, color);
+            }
+            const int decimals = std::abs(own) >= 100 ? 0 : std::abs(own) >= 10 ? 1 : 2;
+            std::string text = props_.percent ? formatNumber(own, decimals) : yAxis_.precise(own);
+            if (props_.percent)
+                text += "  " + formatNumber(sum != 0 ? own / sum * 100 : 0, 1) + "%";
+            stackRows.insert(stackRows.begin(), {color, translate(series.props_.name), std::move(text)});
+            continue;
+        }
         const auto i = nearest(series.data_, *snapped);
         if (!i || std::abs(series.data_.x(*i) - *snapped) > tolerance)
             continue;
@@ -664,6 +835,13 @@ void LineChart::paintHover(PaintContext& context) {
             p.fillCircle(dot, 3.2f, color);
         }
         rows.push_back({color, translate(series.props_.name), yAxis_.precise(y)});
+    }
+    if (!stackRows.empty()) {
+        if (stackRows.size() > 1) {
+            const int decimals = std::abs(sum) >= 100 ? 0 : std::abs(sum) >= 10 ? 1 : 2;
+            stackRows.push_back({std::nullopt, translate(LocalizedText("Total")), props_.percent ? formatNumber(sum, decimals) : yAxis_.precise(sum)});
+        }
+        rows.insert(rows.begin(), stackRows.begin(), stackRows.end());
     }
     if (!rows.empty())
         paintToolTip(context, {cross.x, mouse.y}, xAxis_.precise(*snapped), rows);

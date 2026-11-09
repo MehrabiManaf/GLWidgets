@@ -67,7 +67,8 @@ Then, in `build/<preset>/bin`:
   in the hole out),
   stacked bars of each second's counts, a treemap of a project's files (a click goes into a folder, a right click out),
   a dashboard of gauges (colored by bands; a needle) and sparklines of the measures now, heat maps of 200 endpoints'
-  latency (live, a column a second) and of requests by hour and weekday.
+  latency (live, a column a second) and of requests by hour and weekday, traffic by protocol as stacked areas (in shares
+  with Shares).
   The wheel zooms, a drag pans (back to the newest, it follows again), the right button drags a rectangle to zoom into,
   a double click shows all; a legend's item hides its series. Each chart is a docked panel (moved, split, floated, closed
   by its tab); the View menu hides and shows each.

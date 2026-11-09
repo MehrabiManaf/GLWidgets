@@ -774,7 +774,7 @@ shape, the edges of a borderless window the resize shapes of its sides and corne
 ### Charts
 
 Charts (`Library/Include/GLWidgets/Charts`) are widgets made for data that changes as it comes: a feed of measures, of
-events, of shares. Seven for now: **lines** over values or time (`LineChart`), **pies**, donuts and sunbursts
+events, of shares. Eight for now: **lines** over values or time and stacked areas (`LineChart`), **pies**, donuts and sunbursts
 (`PieChart`), **treemaps** (`TreeMap`), **bars**, stacked, grouped or in percent, standing or lying (`BarChart`), **bar
 races** (`BarRace`), **heat maps** (`HeatMap`), and for dashboards **sparklines** (`Sparkline`) and **gauges**
 (`Gauge`). What they share is in `Chart`:
@@ -825,6 +825,15 @@ the axis (fading down, if asked), or between two series's lines (a band: a range
 series' points at any x, the band zipped between them: `Painter::fillBand`). They are drawn under the lines, have their
 own legend items, and fade with their series; a series may be an area's edge only (no line of its own; without a name,
 in neither the legend nor the tooltip).
+
+**Stacked areas**: series stacked (`LineSeries::Props::stacked`) lie on one another in the order they were added, each
+its area filled down to the one under it (fuller at its top), their lines over all of them; the y axis from 0 to the
+highest sum that shows, or (`LineChart::Props::percent`, `setPercent`) their shares of their sum at each x, from 0 to
+100 %. Their points need not be at the same x: the stack is taken where any of them has a point (each of the others
+along its line there; past its ends, its end's value as far as its points are apart, so that a feed a point behind does
+not drop out at the edge), or once a column of pixels when they have more points than that. A series hidden by its
+legend item eases out of the stack, the ones over it coming down. The mouse shows a dot on each one's top, each one's
+value (and share), the highest first, and their total.
 
 **Pies** (`PieChart`): slices of a circle or of a ring (`hole`), a gap apart all along (`ChartStyle::gap`), each with its
 share in it where it fits; a donut's hole shows the total, or the value of the slice under the mouse, which comes out a
@@ -912,9 +921,10 @@ its column's label, its row's name and its value in a tooltip; a click on a cell
 history to pan into; an area under one, a band of the range around another), shares that drift in rings (regions, their
 countries, a few cities), a second's counts appended every second, a project's files changing now and
 then, a dashboard of the measures now (gauges, sparklines), heat maps of 200 endpoints' latency (a column a second,
-incidents and spikes in it, by powers of ten) and of requests by hour and weekday; the style, the colors, the motion and the bars' layout chosen above them.
+incidents and spikes in it, by powers of ten) and of requests by hour and weekday, a network's traffic by protocol stacked
+(in shares, if asked); the style, the colors, the motion and the bars' layout chosen above them.
 
-Still to come: more kinds (scatter, area stacked, candlesticks, histograms; calendars and densities of points as heat maps), logarithmic axes, a
+Still to come: more kinds (scatter, candlesticks, histograms; calendars and densities of points as heat maps), logarithmic axes, a
 second y axis, Persian digits and the Solar Hijri calendar on axes (with the `Locale` of
 [Localization](#localization-and-right-to-left)).
 

@@ -17,6 +17,12 @@
 // two series's lines (a band: a range, a spread around a mean), drawn under the lines; a series may show its area only
 // (Props::line false).
 //
+// Stacked areas: series stacked (LineSeries::Props::stacked) lie on one another, in the order they were added, each its
+// area filled down to the one under it; at each x what they add up to (or, Props::percent, their shares of it: the y axis
+// from 0 to 100 %). Their points need not be at the same x: each is taken where the others have theirs (between its
+// points, along its line), or once a column of pixels when they have more. A series hidden (its legend item) eases out of
+// the stack, the others coming down onto what is left. The mouse shows each one's value (and share) and their sum.
+//
 // With the mouse: the wheel zooms the x axis at the mouse (a live chart: its window, still following), with Ctrl the y
 // axis; with Shift (or a wheel turned sideways) it pans along x. A drag pans (a live chart stops following, and follows
 // again when dragged back to its newest data); the right button drags a rectangle to zoom into. A double click shows what
@@ -57,6 +63,7 @@ public:
         bool steps = false;             // a step at each point: a value held until the next
         bool markers = false;           // a dot at each point, when they are far enough apart to be told apart
         bool line = true;               // its line drawn (false: an area's edge only, its area if it has one)
+        bool stacked = false;           // on the chart's stack: on the series stacked before it, its area down to them
         std::size_t capacity = 0;       // the newest kept, the oldest dropped as more come; 0: all
     };
 
@@ -135,6 +142,7 @@ public:
         // A y range of its own; none: fitted to what shows.
         std::optional<ChartRange> yRange;
         bool includeZero = false;           // a fitted y axis shows 0 too
+        bool percent = false;               // its stacked series as their shares of their sum at each x (0 to 100 %)
     };
 
     LineChart();
@@ -156,6 +164,8 @@ public:
     double window() const { return props_.window; }
     void setYRange(std::optional<ChartRange> range);
     void setIncludeZero(bool include);
+    void setPercent(bool percent);
+    bool percent() const { return props_.percent; }
     // How a tick's label and a tooltip show a value (a step apart from the next tick); none: formatNumber, formatTime.
     void setXFormatter(std::function<std::string(double value, double step)> format);
     void setYFormatter(std::function<std::string(double value, double step)> format);
@@ -203,6 +213,13 @@ private:
     // shows of it when it has more points than columns.
     void project(const LineSeries& series, float pixelsPerDip, std::vector<Point>& out) const;
     Color colorOf(const LineSeries& series) const;
+    // The stack: its series that show (in order); a series's value at an x (along its line; 0 where it has none); each
+    // one's top at an x (in percent: of their sum); the tops at x where they have points, or once a column of pixels.
+    const std::vector<const LineSeries*>& stackMembers() const;
+    double stackValue(const LineSeries& series, double x) const;
+    double stackAt(double x, std::span<double> tops) const;
+    void sampleStack(ChartRange x, double columns) const;
+    void paintStack(PaintContext& context);
     void paintHover(PaintContext& context);
     void zoomX(double factor, double anchor);
     void zoomY(double factor, double anchor);
@@ -237,6 +254,9 @@ private:
     std::vector<Point> points_;         // scratch: a series as it is drawn
     std::vector<Rect> spans_;           // ... its columns' strokes, from their lowest to their highest
     std::vector<Point> lower_;          // ... an area's lower edge
+    mutable std::vector<const LineSeries*> stacked_;    // the stack, as it was last sampled
+    mutable std::vector<double> stackX_;                // ... where
+    mutable std::vector<double> stackTops_;             // ... each one's top there (member after member)
     // What its legend's items are, in order: an area (true) or a series, and its place.
     mutable std::vector<std::pair<bool, std::size_t>> legendTargets_;
 };

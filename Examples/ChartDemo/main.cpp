@@ -7,7 +7,8 @@
 // they come; a treemap of a project's folders and files, their sizes changing now and then; a dashboard of the measures
 // now (gauges, CPU's and memory's colored by bands, the network's a half circle with a needle) and of their last half
 // minute (sparklines, the errors' in columns); heat maps of 200 endpoints' latency over the last minutes (a column a
-// second, incidents and spikes in them) and of requests by hour and weekday. Above them, the style and the
+// second, incidents and spikes in them) and of requests by hour and weekday; a network's traffic by protocol, stacked
+// (in shares, if asked), ten points a second over the last two minutes. Above them, the style and the
 // colors of everything, whether the charts ease, how the bars are laid out, and whether the donut and the race show
 // only their top ones (the rest as one of others). Each chart is a docked panel: moved, split, floated, closed by its
 // tab; the View menu hides and shows each (one closed by its tab too), back beside a neighbour of where it was.
@@ -88,7 +89,11 @@ struct Demo {
     std::vector<std::array<double, 3>> downloads;   // each package's, by system
     std::vector<double> momentum;                   // how fast each grows
     int month = 0;
-    glw::Timer feed, drift, second, disk, count, months, now;
+    glw::Timer feed, drift, second, disk, count, months, now, flows;
+    // the traffic by protocol, stacked: each one's rate drifting, now and then a burst
+    glw::LineChart* traffic = nullptr;
+    std::array<glw::LineSeries*, 4> protocols{};
+    std::array<double, 4> rates{40, 18, 9, 4};
     std::mt19937 random{42};
     double fed = 0;                         // the time of the last point
     double cpuValue = 30, memoryValue = 55, networkValue = 10;
@@ -163,7 +168,8 @@ struct Demo {
         glw::DockTabs& raceStack = area->addPanel(panel("race", tr("Race"), std::move(racing)), &lineStack, glw::DockSide::Bottom, 0.5f);
         glw::DockTabs& barsStack = area->addPanel(panel("bars", tr("Events"), std::move(stacked)), &raceStack, glw::DockSide::End, 0.5f);
         area->addPanel(panel("heat", tr("Latency"), heatMaps()), &barsStack, glw::DockSide::Center, 0.5f);
-        area->addPanel(panel("tree", tr("Files"), std::move(map)), &donutStack, glw::DockSide::Bottom, 0.5f);
+        glw::DockTabs& treeStack = area->addPanel(panel("tree", tr("Files"), std::move(map)), &donutStack, glw::DockSide::Bottom, 0.5f);
+        area->addPanel(panel("traffic", tr("Traffic"), makeTraffic()), &treeStack, glw::DockSide::Center, 0.5f);
         area->addPanel(glw::DockPanel{.id = "dash", .title = tr("Dashboard"), .content = dashboard()}, nullptr, glw::DockSide::Start, 0.22f);
         // one closed by its tab: kept, its item in the View menu unchecked
         area->setOnPanelClosed([this](glw::DockPanel closed) {
@@ -188,6 +194,8 @@ struct Demo {
                               ui::Label({.text = tr("Bars")}).alignment(glw::Alignment::Start, glw::Alignment::Center),
                               ui::ComboBox({.items = {tr("Stacked"), tr("Grouped"), tr("Percent")},
                                             .onChanged = [this](std::size_t i) { bars->setLayout(static_cast<glw::BarLayout>(i)); }}),
+                              ui::CheckBox({.text = tr("Shares"), .onToggled = [this](bool on) { traffic->setPercent(on); }})
+                                  .alignment(glw::Alignment::Start, glw::Alignment::Center),
                               ui::CheckBox({.text = tr("Lying"),
                                             .onToggled = [this](bool on) {
                                                 bars->setOrientation(on ? glw::Orientation::Horizontal : glw::Orientation::Vertical);
@@ -245,6 +253,28 @@ struct Demo {
                         row(tr("Errors"), 3, {.kind = glw::Sparkline::Kind::Columns, .capacity = 30, .color = over}))
                         .build();
         return made;
+    }
+
+    // A network's traffic by protocol, stacked, its last two minutes (ten minutes kept).
+    std::unique_ptr<glw::Widget> makeTraffic() {
+        auto made = std::make_unique<glw::LineChart>(
+            glw::LineChart::Props{.title = tr("Traffic by protocol, MB/s"), .xAxis = glw::ChartAxisKind::Time, .window = 120});
+        traffic = made.get();
+        const glw::LocalizedText names[] = {tr("HTTP"), tr("gRPC"), tr("WebSocket"), tr("Other")};
+        for (std::size_t k = 0; k < protocols.size(); ++k)
+            protocols[k] = &traffic->addSeries({.name = names[k], .stacked = true, .capacity = 6000});
+        return made;
+    }
+
+    // A tenth of a second of traffic: each protocol's rate drifting back to its usual one, now and then a burst.
+    void nextTraffic(double t) {
+        static constexpr std::array<double, 4> typical{40, 18, 9, 4};
+        for (std::size_t k = 0; k < rates.size(); ++k) {
+            rates[k] = std::max(0.0, rates[k] + (typical[k] - rates[k]) * 0.02 + normal(typical[k] * 0.03));
+            if (uniform(0, 1) < 0.002)
+                rates[k] += typical[k] * uniform(0.8, 2.0);
+            protocols[k]->append(t, rates[k]);
+        }
     }
 
     // Each endpoint's latency, a column a second over the last five minutes (an hour kept), by powers of ten; requests by
@@ -311,7 +341,7 @@ struct Demo {
     std::unique_ptr<glw::MenuBar> menus() {
         std::vector<glw::MenuItem> items;
         for (const auto& [id, title] : std::initializer_list<std::pair<const char*, const char*>>{
-                 {"dash", "&Dashboard"}, {"line", "&Measures"}, {"donut", "Re&quests"}, {"race", "R&ace"}, {"bars", "&Events"}, {"heat", "&Latency"},
+                 {"dash", "&Dashboard"}, {"line", "&Measures"}, {"donut", "Re&quests"}, {"race", "R&ace"}, {"bars", "&Events"}, {"heat", "&Latency"}, {"traffic", "&Traffic"},
                  {"tree", "&Files"}}) {
             auto toggle = std::make_shared<glw::Action>(tr(title));
             toggle->setCheckable(true);
@@ -344,6 +374,7 @@ struct Demo {
             {"bars", {{"race", glw::DockSide::End}, {"tree", glw::DockSide::Start}, {"line", glw::DockSide::Bottom}}},
             {"tree", {{"donut", glw::DockSide::Bottom}, {"bars", glw::DockSide::End}}},
             {"dash", {}},
+            {"traffic", {{"tree", glw::DockSide::Center}, {"donut", glw::DockSide::Bottom}}},
             {"heat", {{"bars", glw::DockSide::Center}, {"race", glw::DockSide::Center}, {"line", glw::DockSide::Bottom}}},
         };
         if (id == "dash") {             // at the left edge again
@@ -404,7 +435,8 @@ struct Demo {
     }
 
     void animate(bool on) {
-        for (glw::Chart* chart : std::initializer_list<glw::Chart*>{line, pie, race, bars, tree, gauges[0], gauges[1], gauges[2], latency, weekly})
+        for (glw::Chart* chart : std::initializer_list<glw::Chart*>{line, pie, race, bars, tree, gauges[0], gauges[1], gauges[2], latency, weekly,
+                                                                    traffic})
             chart->setAnimated(on);
         for (glw::Sparkline* spark : sparks)
             spark->setAnimated(on);
@@ -473,6 +505,8 @@ struct Demo {
             lasts[3]->setText(std::to_string(static_cast<int>(values[2])));
             nextLatency();
         }, true);
+        // the traffic: ten points a second
+        flows.start(scheduler, std::chrono::milliseconds(100), [this] { nextTraffic(glw::chartNow()); }, true);
         // the dashboard: the measures now, twice a second
         now.start(scheduler, std::chrono::milliseconds(500), [this] {
             const double values[] = {cpuValue, memoryValue, networkValue};
@@ -510,6 +544,8 @@ struct Demo {
             sample(t);
         for (int i = 0; i < 600; ++i)
             nextLatency();
+        for (double t = fed - 600; t < fed; t += 0.1)
+            nextTraffic(t);
         for (int i = 30; i > 0; --i) {
             const double values[] = {std::round(uniform(40, 120)), std::round(uniform(10, 60)), std::round(uniform(0, 1) < 0.2 ? uniform(1, 25) : 0)};
             bars->appendCategory("-" + std::to_string(i) + "s", values);

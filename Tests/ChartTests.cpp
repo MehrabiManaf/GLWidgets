@@ -21,6 +21,7 @@
 #include <GLWidgets/Widgets/UiRoot.hpp>
 
 #include <algorithm>
+#include <array>
 #include <chrono>
 #include <cmath>
 #include <ctime>
@@ -889,4 +890,35 @@ TEST(aClickOnAHeatMapsCellTellsWhichItIs) {
     c.button(platform::MouseButton::Left, true, {bounds.width * 0.6f, bounds.height * 0.75f});
     c.button(platform::MouseButton::Left, false, {bounds.width * 0.6f, bounds.height * 0.75f});
     CHECK(clicked && clicked->first == 1 && clicked->second == 1);
+}
+
+// ---- stacked areas ----
+
+TEST(stackedSeriesLieOnTheOnesUnderThem) {
+    Shown<LineChart> c;
+    // three series of 1, 2 and 3, stacked: their sum 6, the y axis from 0 to it; one of them at other x than the others
+    std::array<LineSeries*, 3> series{};
+    for (int k = 0; k < 3; ++k) {
+        series[k] = &c.chart->addSeries({.name = std::string(1, static_cast<char>('a' + k)), .stacked = true});
+        for (int x = 0; x <= 10; ++x)
+            series[k]->append(k == 1 ? x + 0.5 : x, k + 1.0);
+    }
+    c.paint();
+    ChartRange y = c.chart->targetYView();
+    CHECK(y.low == 0 && y.high >= 6 && y.high < 8);
+    // the middle one hidden: the others down onto what is left (4)
+    series[1]->setVisible(false);
+    c.paint();
+    c.paint();
+    y = c.chart->targetYView();
+    CHECK(y.low == 0 && y.high >= 4 && y.high < 5.5);
+    // in shares: 0 to 100 %
+    series[1]->setVisible(true);
+    c.chart->setPercent(true);
+    c.paint();
+    CHECK(c.chart->targetYView() == (ChartRange{0, 100}));
+    // the mouse over it: a tooltip of each one's value and share, and their sum
+    const std::size_t drawn = c.paint();
+    c.move({300, 200});
+    CHECK(c.paint() > drawn);
 }
