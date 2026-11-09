@@ -10,7 +10,8 @@
 // second, incidents and spikes in them) and of requests by hour and weekday; a network's traffic by protocol, stacked
 // (in shares, if asked), ten points a second over the last two minutes; a price as candles made of trades twenty times
 // a second (of a second, five, fifteen, a minute or five: its buttons), its volume under it and two moving averages over
-// it (its legend hides each). Above them, the style and the
+// it (its legend hides each); how requests' latencies fall, live: a histogram of reads' and writes' (their median, 90th
+// and 99th percentiles, the share under each value), and boxes of eight services'. Above them, the style and the
 // colors of everything, whether the charts ease, how the bars are laid out, and whether the donut and the race show
 // only their top ones (the rest as one of others). Each chart is a docked panel: moved, split, floated, closed by its
 // tab; the View menu hides and shows each (one closed by its tab too), back beside a neighbour of where it was.
@@ -23,9 +24,11 @@
 // series; a click on a treemap's tile goes into it, a right click out.
 #include <GLWidgets/Charts/BarChart.hpp>
 #include <GLWidgets/Charts/BarRace.hpp>
+#include <GLWidgets/Charts/BoxChart.hpp>
 #include <GLWidgets/Charts/CandleChart.hpp>
 #include <GLWidgets/Charts/Gauge.hpp>
 #include <GLWidgets/Charts/HeatMap.hpp>
+#include <GLWidgets/Charts/HistogramChart.hpp>
 #include <GLWidgets/Charts/LineChart.hpp>
 #include <GLWidgets/Charts/PieChart.hpp>
 #include <GLWidgets/Charts/Sparkline.hpp>
@@ -92,7 +95,13 @@ struct Demo {
     std::vector<std::array<double, 3>> downloads;   // each package's, by system
     std::vector<double> momentum;                   // how fast each grows
     int month = 0;
-    glw::Timer feed, drift, second, disk, count, months, now, flows, trades;
+    glw::Timer feed, drift, second, disk, count, months, now, flows, trades, requests;
+    // latencies: reads' and writes' in a histogram, each service's in a box
+    glw::HistogramChart* histogram = nullptr;
+    glw::HistogramSeries* reads = nullptr;
+    glw::HistogramSeries* writes = nullptr;
+    glw::BoxChart* boxes = nullptr;
+    std::vector<double> serviceLatency;
     // the price: a walk, its trades made into candles
     glw::CandleChart* candles = nullptr;
     double price = 250, trend = 0;
@@ -172,6 +181,7 @@ struct Demo {
         glw::DockTabs& lineStack = area->addPanel(panel("line", tr("Measures"), std::move(made)));
         area->addPanel(panel("price", tr("Price"), makePrice()), &lineStack, glw::DockSide::Center, 0.5f);
         glw::DockTabs& donutStack = area->addPanel(panel("donut", tr("Requests"), std::move(donut)), &lineStack, glw::DockSide::End, 0.4f);
+        area->addPanel(panel("spread", tr("Distributions"), makeDistributions()), &donutStack, glw::DockSide::Center, 0.5f);
         glw::DockTabs& raceStack = area->addPanel(panel("race", tr("Race"), std::move(racing)), &lineStack, glw::DockSide::Bottom, 0.5f);
         glw::DockTabs& barsStack = area->addPanel(panel("bars", tr("Events"), std::move(stacked)), &raceStack, glw::DockSide::End, 0.5f);
         area->addPanel(panel("heat", tr("Latency"), heatMaps()), &barsStack, glw::DockSide::Center, 0.5f);
@@ -262,6 +272,42 @@ struct Demo {
         return made;
     }
 
+    // Requests' latencies: reads' and writes' (their last 20000 each) in a histogram, with their quantiles and the share
+    // under each value; each service's (its last 600) in a box.
+    std::unique_ptr<glw::Widget> makeDistributions() {
+        auto made = std::make_unique<glw::HistogramChart>(glw::HistogramChart::Props{.title = tr("Latency of requests, ms"), .scale = glw::HistogramChart::Scale::Percent, .cumulative = true});
+        histogram = made.get();
+        reads = &histogram->addSeries({.name = tr("Reads"), .capacity = 20000});
+        writes = &histogram->addSeries({.name = tr("Writes"), .capacity = 20000});
+        auto services = std::make_unique<glw::BoxChart>(glw::BoxChart::Props{
+            .title = tr("Latency by service, ms"),
+            .categories = {tr("Auth"), tr("Users"), tr("Orders"), tr("Payments"), tr("Search"), tr("Catalog"), tr("Cart"), tr("Stock")},
+            .capacity = 600});
+        boxes = services.get();
+        serviceLatency = {8, 14, 22, 45, 30, 12, 18, 26};
+        return glw::ui::VStack({.spacing = 12}, std::unique_ptr<glw::Widget>(std::move(made)), std::unique_ptr<glw::Widget>(std::move(services)))
+            .build();
+    }
+
+    // A tenth of a second of requests: reads quick, writes slower, both with a long tail; each service's of its own.
+    void nextRequests() {
+        std::lognormal_distribution<double> read(std::log(12.0), 0.45), write(std::log(32.0), 0.55);
+        double some[20];
+        for (double& v : some)
+            v = read(random) + (uniform(0, 1) < 0.01 ? uniform(50, 200) : 0);
+        reads->add(some);
+        for (int i = 0; i < 8; ++i)
+            some[i] = write(random) + (uniform(0, 1) < 0.02 ? uniform(80, 300) : 0);
+        writes->add(std::span<const double>(some, 8));
+        for (std::size_t k = 0; k < serviceLatency.size(); ++k) {
+            std::lognormal_distribution<double> service(std::log(serviceLatency[k]), 0.4);
+            double values[3];
+            for (double& v : values)
+                v = service(random) + (uniform(0, 1) < 0.005 ? uniform(1, 2.5) * serviceLatency[k] : 0);
+            boxes->addValues(k, values);
+        }
+    }
+
     // A price, its trades in candles of a second (an hour of them kept), shown in candles of five seconds (or of the
     // period chosen), the last 80; the averages of its last 20 and 50 closes.
     std::unique_ptr<glw::Widget> makePrice() {
@@ -327,18 +373,18 @@ struct Demo {
             .rows = {tr("Saturday"), tr("Sunday"), tr("Monday"), tr("Tuesday"), tr("Wednesday"), tr("Thursday"), tr("Friday")}});
         weekly = matrix.get();
         std::vector<glw::LocalizedText> hours;
-        std::vector<double> requests;
+        std::vector<double> counts;
         for (int hour = 0; hour < 24; ++hour) {
             hours.emplace_back((hour < 10 ? "0" : "") + std::to_string(hour));
             for (int day = 0; day < 7; ++day) {
                 // busy in working hours, on working days (Friday the weekend here)
                 const double working = day >= 1 && day <= 5 ? 1.0 : 0.45;
                 const double busy = std::exp(-std::pow((hour - 14) / 4.5, 2)) * 0.85 + 0.15;
-                requests.push_back(std::round(working * busy * 90 + uniform(0, 8)));
+                counts.push_back(std::round(working * busy * 90 + uniform(0, 8)));
             }
         }
         weekly->setColumnNames(std::move(hours));
-        weekly->setValues(24, requests);
+        weekly->setValues(24, counts);
         return glw::ui::VStack({.spacing = 12}, std::unique_ptr<glw::Widget>(std::move(live)), std::unique_ptr<glw::Widget>(std::move(matrix)))
             .build();
     }
@@ -367,7 +413,7 @@ struct Demo {
     std::unique_ptr<glw::MenuBar> menus() {
         std::vector<glw::MenuItem> items;
         for (const auto& [id, title] : std::initializer_list<std::pair<const char*, const char*>>{
-                 {"dash", "&Dashboard"}, {"line", "&Measures"}, {"price", "&Price"}, {"donut", "Re&quests"}, {"race", "R&ace"}, {"bars", "&Events"}, {"heat", "&Latency"}, {"traffic", "&Traffic"},
+                 {"dash", "&Dashboard"}, {"line", "&Measures"}, {"price", "&Price"}, {"donut", "Re&quests"}, {"race", "R&ace"}, {"bars", "&Events"}, {"heat", "&Latency"}, {"spread", "&Distributions"}, {"traffic", "&Traffic"},
                  {"tree", "&Files"}}) {
             auto toggle = std::make_shared<glw::Action>(tr(title));
             toggle->setCheckable(true);
@@ -400,6 +446,7 @@ struct Demo {
             {"bars", {{"race", glw::DockSide::End}, {"tree", glw::DockSide::Start}, {"line", glw::DockSide::Bottom}}},
             {"tree", {{"donut", glw::DockSide::Bottom}, {"bars", glw::DockSide::End}}},
             {"dash", {}},
+            {"spread", {{"donut", glw::DockSide::Center}, {"tree", glw::DockSide::Top}}},
             {"price", {{"line", glw::DockSide::Center}, {"race", glw::DockSide::Top}}},
             {"traffic", {{"tree", glw::DockSide::Center}, {"donut", glw::DockSide::Bottom}}},
             {"heat", {{"bars", glw::DockSide::Center}, {"race", glw::DockSide::Center}, {"line", glw::DockSide::Bottom}}},
@@ -463,7 +510,7 @@ struct Demo {
 
     void animate(bool on) {
         for (glw::Chart* chart : std::initializer_list<glw::Chart*>{line, pie, race, bars, tree, gauges[0], gauges[1], gauges[2], latency, weekly,
-                                                                    traffic, candles})
+                                                                    traffic, candles, histogram, boxes})
             chart->setAnimated(on);
         for (glw::Sparkline* spark : sparks)
             spark->setAnimated(on);
@@ -532,6 +579,8 @@ struct Demo {
             lasts[3]->setText(std::to_string(static_cast<int>(values[2])));
             nextLatency();
         }, true);
+        // the requests: their latencies, ten times a second
+        requests.start(scheduler, std::chrono::milliseconds(100), [this] { nextRequests(); }, true);
         // the trades: twenty a second
         trades.start(scheduler, std::chrono::milliseconds(50), [this] { nextTrade(glw::chartNow()); }, true);
         // the traffic: ten points a second
@@ -577,6 +626,8 @@ struct Demo {
             nextTraffic(t);
         for (double t = fed - 3600; t < fed; t += 0.25)
             nextTrade(t);
+        for (int i = 0; i < 300; ++i)
+            nextRequests();
         for (int i = 30; i > 0; --i) {
             const double values[] = {std::round(uniform(40, 120)), std::round(uniform(10, 60)), std::round(uniform(0, 1) < 0.2 ? uniform(1, 25) : 0)};
             bars->appendCategory("-" + std::to_string(i) + "s", values);

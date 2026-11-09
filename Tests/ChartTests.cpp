@@ -8,10 +8,12 @@
 
 #include <GLWidgets/Charts/BarChart.hpp>
 #include <GLWidgets/Charts/BarRace.hpp>
+#include <GLWidgets/Charts/BoxChart.hpp>
 #include <GLWidgets/Charts/CandleChart.hpp>
 #include <GLWidgets/Charts/ChartAxis.hpp>
 #include <GLWidgets/Charts/Gauge.hpp>
 #include <GLWidgets/Charts/HeatMap.hpp>
+#include <GLWidgets/Charts/HistogramChart.hpp>
 #include <GLWidgets/Charts/LineChart.hpp>
 #include <GLWidgets/Charts/PieChart.hpp>
 #include <GLWidgets/Charts/SeriesBuffer.hpp>
@@ -1065,4 +1067,72 @@ TEST(aCandleChartsPeriodsAreOfTheLocalCalendar) {
     c.chart->setPeriod(CandlePeriod::hours(5));
     CHECK(c.chart->period() == CandlePeriod::months(1));
     CHECK(c.paint() > 0);
+}
+
+// ---- distributions ----
+
+TEST(aHistogramCountsItsValuesIntoBins) {
+    Shown<HistogramChart> c(HistogramChart::Props{.bins = 10, .range = ChartRange{0, 100}});
+    HistogramSeries& s = c.chart->addSeries({.name = "a"});
+    for (int i = 0; i < 100; ++i)
+        s.add(i + 0.5);
+    // ten bins of ten, ten values in each; its quantiles within them
+    CHECK(c.chart->binCount() == 10 && c.chart->binWidth() == 10 && c.chart->binStart() == 0 && c.chart->binOf(55) == 5u);
+    CHECK(std::all_of(s.counts().begin(), s.counts().end(), [](std::uint32_t n) { return n == 10; }));
+    CHECK(near(s.quantile(0.5), 50, 1e-9) && near(s.quantile(0.9), 90, 1e-9) && near(s.mean(), 50, 1e-9));
+    // the mouse over a bin: its count by it
+    const std::size_t drawn = c.paint();
+    c.move({300, 250});
+    CHECK(c.paint() > drawn);
+}
+
+TEST(aHistogramFindsRoundBinsForWhatComes) {
+    Shown<HistogramChart> c;
+    HistogramSeries& s = c.chart->addSeries({.name = "latency", .capacity = 5000});
+    std::mt19937 random(9);
+    std::lognormal_distribution<double> latency(std::log(20.0), 0.5);
+    for (int i = 0; i < 8000; ++i)
+        s.add(latency(random));
+    // the newest 5000, all of them in its bins, of a round width (1, 2 or 5 times a power of ten)
+    CHECK(s.size() == 5000);
+    const std::size_t bins = c.chart->binCount();
+    CHECK(bins >= 5 && bins <= 200);
+    std::size_t total = 0;
+    for (std::uint32_t n : s.counts())
+        total += n;
+    CHECK(total == 5000);
+    const double w = c.chart->binWidth(), mantissa = w / std::pow(10.0, std::floor(std::log10(w)));
+    CHECK(near(mantissa, 1, 1e-9) || near(mantissa, 2, 1e-9) || near(mantissa, 5, 1e-9));
+    // its bins from the 1st percentile to the 99th: the farthest values in its first and last; one far past them too
+    CHECK(c.chart->binStart() + c.chart->binWidth() * static_cast<double>(bins) < 200);
+    const std::uint32_t last = s.counts().back();
+    s.add(1000);
+    CHECK(!c.chart->binOf(1000).has_value() && s.counts().back() == last + 1 && c.chart->binCount() == bins);
+    total = 0;
+    for (std::uint32_t n : s.counts())
+        total += n;
+    CHECK(total == 5000);
+    CHECK(c.paint() > 0);
+}
+
+TEST(aBoxPlotsQuartilesWhiskersAndOutliers) {
+    std::vector<double> values{9, 1, 8, 2, 7, 3, 6, 4, 5};
+    BoxSummary b = BoxChart::summarize(values, BoxChart::Whiskers::Tukey);
+    CHECK(b.q1 == 3 && b.median == 5 && b.q3 == 7 && b.low == 1 && b.high == 9 && b.outliers.empty() && b.count == 9 && b.mean == 5);
+    // one far out: an outlier, the whisker at the last value within reach
+    values.push_back(100);
+    b = BoxChart::summarize(values, BoxChart::Whiskers::Tukey);
+    CHECK(b.outliers.size() == 1 && b.outliers[0] == 100 && b.high == 9);
+    b = BoxChart::summarize(values, BoxChart::Whiskers::Range);
+    CHECK(b.high == 100 && b.outliers.empty());
+
+    Shown<BoxChart> c(BoxChart::Props{.categories = {"a", "b"}, .capacity = 4});
+    const double a[] = {1, 2, 3, 4, 5, 6};
+    c.chart->setValues(0, a);           // its newest four: 3 to 6
+    CHECK(c.chart->summary(0).count == 4 && c.chart->summary(0).low == 3 && c.chart->summary(0).median == 4.5);
+    c.chart->setSummary(1, {.low = 0, .q1 = 1, .median = 2, .q3 = 3, .high = 4, .mean = 2, .count = 100});
+    CHECK(c.chart->summary(1).count == 100);
+    const std::size_t drawn = c.paint();
+    c.move({200, 200});
+    CHECK(c.paint() > drawn);
 }

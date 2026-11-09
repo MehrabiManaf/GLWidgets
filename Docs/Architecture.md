@@ -774,8 +774,8 @@ shape, the edges of a borderless window the resize shapes of its sides and corne
 ### Charts
 
 Charts (`Library/Include/GLWidgets/Charts`) are widgets made for data that changes as it comes: a feed of measures, of
-events, of shares. Nine for now: **lines** over values or time and stacked areas (`LineChart`), **candles** of a price
-(`CandleChart`), **pies**, donuts and sunbursts
+events, of shares. Eleven for now: **lines** over values or time and stacked areas (`LineChart`), **candles** of a price
+(`CandleChart`), **histograms** (`HistogramChart`) and **box plots** (`BoxChart`), **pies**, donuts and sunbursts
 (`PieChart`), **treemaps** (`TreeMap`), **bars**, stacked, grouped or in percent, standing or lying (`BarChart`), **bar
 races** (`BarRace`), **heat maps** (`HeatMap`), and for dashboards **sparklines** (`Sparkline`) and **gauges**
 (`Gauge`). What they share is in `Chart`:
@@ -918,6 +918,27 @@ the rows; a drag pans, a live one following again when dragged back to its newes
 zoom into; a double click shows all); the cell under it is outlined (its row and column lit across when they are thin),
 its column's label, its row's name and its value in a tooltip; a click on a cell is told (`setOnCellClicked`).
 
+**Histograms** (`HistogramChart`): how values fall (latencies, sizes, scores): series of them counted into bins of a
+round width, a bar for each bin as high as its count or its share (`Scale::Percent`: series of other sizes alike). Values
+come as they come (`HistogramSeries::add`, the oldest dropped past a capacity) and are counted as they come, in constant
+time. Its bins span its values from a low quantile to a high one (`Props::clip`: the 1st and 99th percentiles, so that a
+long tail does not crowd the rest into a few bars), the farthest in its first and last bins (their tooltips say "< b"
+and "≥ a"); as many as twice the cube root of their number (Rice's), as its width has room for; found again only when many
+more values fall past them, there are many more or fewer of them, or they fill a third of the bins; or its own
+(`Props::bins`, `range`). Lines at quantiles of its first series (its median, 90th and 99th percentiles: what service levels
+are written in) and at its mean, their values above them; its share at or under each value a line (`cumulative`) on an
+axis of percent at the end side. Quantiles are found from the bins (within a bin, as if its values were spread evenly
+there), so a million values cost what their bins do. Several series lie over one another, translucent (one alone raised
+as the style's bars); new counts are eased to; a series's legend item hides it; the bin under the mouse is lit, its range
+and each series's count and share by it.
+
+**Box plots** (`BoxChart`): how the values of each category fall, side by side (Tukey's): a box from the first quartile
+to the third (raised as the bars are), a line across it at the median, whiskers to the last values within 1.5 times the
+box's height (or to the lowest and highest: `Whiskers::Range`), the values past them as dots, the mean a mark. Of each
+category's values (`setValues`, `addValues`, the oldest dropped past a capacity: summarized again when they change,
+quartiles linearly between values), or of a summary of one's own (`setSummary`: what a database computed). Each category
+in a series color in turn; new numbers eased to; the box under the mouse lit, its numbers by it.
+
 **Candles** (`CandleChart`): a price over time, a candle for each period (`Candle`: its open, high, low and close, its
 volume): a wick from the low to the high, a body from the open to the close, of the style's rise color when it closed
 higher (`ChartStyle::rise`, `fall`: of each color scheme, as green and red read in it; a chart's own if given), its
@@ -949,10 +970,11 @@ history to pan into; an area under one, a band of the range around another), sha
 countries, a few cities), a second's counts appended every second, a project's files changing now and
 then, a dashboard of the measures now (gauges, sparklines), heat maps of 200 endpoints' latency (a column a second,
 incidents and spikes in it, by powers of ten) and of requests by hour and weekday, a network's traffic by protocol stacked
-(in shares, if asked), a price as candles made of its trades (of a second to five minutes, by its buttons; its volume, two moving averages);
-the style, the colors, the motion and the bars' layout chosen above them.
+(in shares, if asked), a price as candles made of its trades (of a second to five minutes, by its buttons; its volume, two moving averages); latencies of
+requests as a histogram (reads' and writes', in percent, their quantiles and cumulative share) and boxes of eight
+services'; the style, the colors, the motion and the bars' layout chosen above them.
 
-Still to come: more kinds (scatter, histograms; calendars and densities of points as heat maps), logarithmic axes, a
+Still to come: more kinds (scatter; calendars and densities of points as heat maps), logarithmic axes, a
 second y axis, Persian digits and the Solar Hijri calendar on axes (with the `Locale` of
 [Localization](#localization-and-right-to-left)).
 
@@ -1206,7 +1228,7 @@ The `GLW_USE_SYSTEM_SDL3` option uses an installed SDL3 instead of the pinned re
 | M3 | Widget core: tree, events, focus, layout, a UI root independent of the platform, window chrome as widgets (with the native extras), live resize | Done, apart from the native extras of the chrome and what is listed in [Widgets](#widgets) |
 | M4 | Basic widgets (label, button, line edit, scroll area, splitter), styles, `LocalizedText` and catalogs, right-to-left layouts | Done, apart from plural rules and the formatting of numbers and dates (see [Localization](#localization-and-right-to-left)) |
 | M5 | Docking: major and panel tabs, windows merging and splitting by their tabs, both modes, layout persistence | Done: docking in a window, major tabs and saved layouts (M5a), across windows in the full mode (M5b), global panels, saved workspaces and Wayland's restricted mode (M5c). Wayland's drag-and-drop between windows, and keeping restored windows on the screens there are, later; the restricted mode not yet run on Wayland |
-| M6 | Validation: a node canvas and a code editor (FlowGraph), charts, an engine embedding example | In progress: the node canvas (`Canvas`, `node_editor`), menus, popups and dialogs, the code editor (`TextEdit`, `code_editor`), charts (lines, stacked areas, candles, pies, treemaps, bars, races, heat maps, sparklines, gauges: `chart_demo`) |
+| M6 | Validation: a node canvas and a code editor (FlowGraph), charts, an engine embedding example | In progress: the node canvas (`Canvas`, `node_editor`), menus, popups and dialogs, the code editor (`TextEdit`, `code_editor`), charts (lines, stacked areas, candles, histograms, box plots, pies, treemaps, bars, races, heat maps, sparklines, gauges: `chart_demo`) |
 
 ## Open questions
 
