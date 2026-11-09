@@ -70,7 +70,8 @@ Then, in `build/<preset>/bin`:
   latency (live, a column a second) and of requests by hour and weekday, traffic by protocol as stacked areas (in shares
   with Shares), a price as candles made of live trades (1s to 5m, by the buttons on the chart), with its volume and two moving
   averages (a click on the legend hides each), a live histogram of requests' latencies (their quantiles and cumulative
-  share) and box plots of eight services' latencies.
+  share) and box plots of eight services' latencies, requests' sizes against their latencies as a scatter plot (80000
+  points as their density, dots when zoomed in, a trend line).
   The wheel zooms, a drag pans (back to the newest, it follows again), the right button drags a rectangle to zoom into,
   a double click shows all; a legend's item hides its series. Each chart is a docked panel (moved, split, floated, closed
   by its tab); the View menu hides and shows each.

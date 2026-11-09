@@ -16,6 +16,7 @@
 #include <GLWidgets/Charts/HistogramChart.hpp>
 #include <GLWidgets/Charts/LineChart.hpp>
 #include <GLWidgets/Charts/PieChart.hpp>
+#include <GLWidgets/Charts/ScatterChart.hpp>
 #include <GLWidgets/Charts/SeriesBuffer.hpp>
 #include <GLWidgets/Charts/Sparkline.hpp>
 #include <GLWidgets/Charts/TreeMap.hpp>
@@ -1135,4 +1136,48 @@ TEST(aBoxPlotsQuartilesWhiskersAndOutliers) {
     const std::size_t drawn = c.paint();
     c.move({200, 200});
     CHECK(c.paint() > drawn);
+}
+
+// ---- scatter ----
+
+TEST(aScatterChartFitsItsPointsAndALineThroughThem) {
+    Shown<ScatterChart> c;
+    ScatterSeries& s = c.chart->addSeries({.name = "a", .trend = true});
+    for (int i = 0; i < 50; ++i)
+        s.append(i, 2.0 * i + 1);
+    // y = 2x + 1 exactly: its fit
+    const auto f = s.fit();
+    CHECK(f && near(f->slope, 2, 1e-9) && near(f->intercept, 1, 1e-9) && near(f->r2, 1, 1e-9));
+    c.paint();
+    CHECK(c.chart->drawn() == ScatterChart::Drawn::Markers);
+    const ChartRange x = c.chart->xView(), y = c.chart->yView();
+    CHECK(x.low <= 0 && x.high >= 49 && y.low <= 1 && y.high >= 99);
+    // the oldest dropped past a capacity: its fit and extents of those kept
+    ScatterSeries& live = c.chart->addSeries({.capacity = 10});
+    for (int i = 0; i < 100; ++i)
+        live.append(1000.0 + i, i % 2 == 0 ? 5.0 : -5.0);
+    CHECK(live.size() == 10 && live.x(0) == 1090);
+    // the mouse near a point: it ringed, its values by it
+    const std::size_t drawn = c.paint();
+    c.chart->setView({0, 49}, {1, 99});
+    c.paint();
+    const std::size_t still = c.paint();
+    const Rect plot = c.chart->bounds();
+    c.move({plot.width / 2, plot.height / 2});
+    CHECK(c.paint() >= still && drawn > 0);
+}
+
+TEST(aScatterChartOfAMillionPointsDrawsTheirDensity) {
+    Shown<ScatterChart> c(ScatterChart::Props{.markers = 20000});
+    ScatterSeries& s = c.chart->addSeries({.name = "many"});
+    std::mt19937 random(11);
+    std::normal_distribution<double> value;
+    for (int i = 0; i < 1'000'000; ++i)
+        s.append(value(random), value(random));
+    // an image of where they are: a quad, not a million dots
+    CHECK(c.paint() < 4000 && c.chart->drawn() == ScatterChart::Drawn::Density);
+    // zoomed into a corner of few of them: dots again
+    c.chart->setView({3.5, 4.5}, {3.5, 4.5});
+    c.paint();
+    CHECK(c.chart->drawn() == ScatterChart::Drawn::Markers);
 }

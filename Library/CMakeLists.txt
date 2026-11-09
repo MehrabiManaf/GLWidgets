@@ -24,6 +24,7 @@ add_library(GLWidgets ${GLW_LIB_TYPE}
     Source/Charts/HistogramChart.cpp
     Source/Charts/LineChart.cpp
     Source/Charts/PieChart.cpp
+    Source/Charts/ScatterChart.cpp
     Source/Charts/SeriesBuffer.cpp
     Source/Charts/Sparkline.cpp
     Source/Charts/TreeMap.cpp

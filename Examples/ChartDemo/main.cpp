@@ -11,7 +11,9 @@
 // (in shares, if asked), ten points a second over the last two minutes; a price as candles made of trades twenty times
 // a second (of a second, five, fifteen, a minute or five: its buttons), its volume under it and two moving averages over
 // it (its legend hides each); how requests' latencies fall, live: a histogram of reads' and writes' (their median, 90th
-// and 99th percentiles, the share under each value), and boxes of eight services'. Above them, the style and the
+// and 99th percentiles, the share under each value), and boxes of eight services'; requests' sizes against their
+// latencies, API calls' and static files', 40000 of each (their density; dots when zoomed into fewer), a line through
+// the calls'. Above them, the style and the
 // colors of everything, whether the charts ease, how the bars are laid out, and whether the donut and the race show
 // only their top ones (the rest as one of others). Each chart is a docked panel: moved, split, floated, closed by its
 // tab; the View menu hides and shows each (one closed by its tab too), back beside a neighbour of where it was.
@@ -31,6 +33,7 @@
 #include <GLWidgets/Charts/HistogramChart.hpp>
 #include <GLWidgets/Charts/LineChart.hpp>
 #include <GLWidgets/Charts/PieChart.hpp>
+#include <GLWidgets/Charts/ScatterChart.hpp>
 #include <GLWidgets/Charts/Sparkline.hpp>
 #include <GLWidgets/Charts/TreeMap.hpp>
 #include <GLWidgets/Widgets/Application.hpp>
@@ -102,6 +105,10 @@ struct Demo {
     glw::HistogramSeries* writes = nullptr;
     glw::BoxChart* boxes = nullptr;
     std::vector<double> serviceLatency;
+    // requests' sizes and latencies
+    glw::ScatterChart* scatter = nullptr;
+    glw::ScatterSeries* calls = nullptr;
+    glw::ScatterSeries* statics = nullptr;
     // the price: a walk, its trades made into candles
     glw::CandleChart* candles = nullptr;
     double price = 250, trend = 0;
@@ -182,6 +189,7 @@ struct Demo {
         area->addPanel(panel("price", tr("Price"), makePrice()), &lineStack, glw::DockSide::Center, 0.5f);
         glw::DockTabs& donutStack = area->addPanel(panel("donut", tr("Requests"), std::move(donut)), &lineStack, glw::DockSide::End, 0.4f);
         area->addPanel(panel("spread", tr("Distributions"), makeDistributions()), &donutStack, glw::DockSide::Center, 0.5f);
+        area->addPanel(panel("scatter", tr("Scatter"), makeScatter()), &donutStack, glw::DockSide::Center, 0.5f);
         glw::DockTabs& raceStack = area->addPanel(panel("race", tr("Race"), std::move(racing)), &lineStack, glw::DockSide::Bottom, 0.5f);
         glw::DockTabs& barsStack = area->addPanel(panel("bars", tr("Events"), std::move(stacked)), &raceStack, glw::DockSide::End, 0.5f);
         area->addPanel(panel("heat", tr("Latency"), heatMaps()), &barsStack, glw::DockSide::Center, 0.5f);
@@ -287,6 +295,27 @@ struct Demo {
         serviceLatency = {8, 14, 22, 45, 30, 12, 18, 26};
         return glw::ui::VStack({.spacing = 12}, std::unique_ptr<glw::Widget>(std::move(made)), std::unique_ptr<glw::Widget>(std::move(services)))
             .build();
+    }
+
+    // Requests' sizes against their latencies: API calls' (slower as they are larger, a line through them) and static
+    // files' (quick whatever their size), the last 40000 of each.
+    std::unique_ptr<glw::Widget> makeScatter() {
+        auto made = std::make_unique<glw::ScatterChart>(glw::ScatterChart::Props{.title = tr("Size against latency of requests (kB, ms)")});
+        scatter = made.get();
+        calls = &scatter->addSeries({.name = tr("API calls"), .capacity = 40000, .trend = true});
+        statics = &scatter->addSeries({.name = tr("Static files"), .capacity = 40000});
+        return made;
+    }
+
+    // A tenth of a second of requests: their sizes and latencies.
+    void nextSizes() {
+        std::lognormal_distribution<double> size(std::log(40.0), 0.45);
+        for (int i = 0; i < 60; ++i) {
+            const double kb = size(random);
+            calls->append(kb, std::max(0.5, 6 + 0.35 * kb + normal(4 + 0.05 * kb)));
+            const double file = size(random) * 2;
+            statics->append(file, std::max(0.2, 1.5 + 0.01 * file + std::abs(normal(1.2))));
+        }
     }
 
     // A tenth of a second of requests: reads quick, writes slower, both with a long tail; each service's of its own.
@@ -413,7 +442,7 @@ struct Demo {
     std::unique_ptr<glw::MenuBar> menus() {
         std::vector<glw::MenuItem> items;
         for (const auto& [id, title] : std::initializer_list<std::pair<const char*, const char*>>{
-                 {"dash", "&Dashboard"}, {"line", "&Measures"}, {"price", "&Price"}, {"donut", "Re&quests"}, {"race", "R&ace"}, {"bars", "&Events"}, {"heat", "&Latency"}, {"spread", "&Distributions"}, {"traffic", "&Traffic"},
+                 {"dash", "&Dashboard"}, {"line", "&Measures"}, {"price", "&Price"}, {"donut", "Re&quests"}, {"race", "R&ace"}, {"bars", "&Events"}, {"heat", "&Latency"}, {"spread", "&Distributions"}, {"scatter", "&Scatter"}, {"traffic", "&Traffic"},
                  {"tree", "&Files"}}) {
             auto toggle = std::make_shared<glw::Action>(tr(title));
             toggle->setCheckable(true);
@@ -447,6 +476,7 @@ struct Demo {
             {"tree", {{"donut", glw::DockSide::Bottom}, {"bars", glw::DockSide::End}}},
             {"dash", {}},
             {"spread", {{"donut", glw::DockSide::Center}, {"tree", glw::DockSide::Top}}},
+            {"scatter", {{"donut", glw::DockSide::Center}, {"tree", glw::DockSide::Top}}},
             {"price", {{"line", glw::DockSide::Center}, {"race", glw::DockSide::Top}}},
             {"traffic", {{"tree", glw::DockSide::Center}, {"donut", glw::DockSide::Bottom}}},
             {"heat", {{"bars", glw::DockSide::Center}, {"race", glw::DockSide::Center}, {"line", glw::DockSide::Bottom}}},
@@ -510,7 +540,7 @@ struct Demo {
 
     void animate(bool on) {
         for (glw::Chart* chart : std::initializer_list<glw::Chart*>{line, pie, race, bars, tree, gauges[0], gauges[1], gauges[2], latency, weekly,
-                                                                    traffic, candles, histogram, boxes})
+                                                                    traffic, candles, histogram, boxes, scatter})
             chart->setAnimated(on);
         for (glw::Sparkline* spark : sparks)
             spark->setAnimated(on);
@@ -580,7 +610,10 @@ struct Demo {
             nextLatency();
         }, true);
         // the requests: their latencies, ten times a second
-        requests.start(scheduler, std::chrono::milliseconds(100), [this] { nextRequests(); }, true);
+        requests.start(scheduler, std::chrono::milliseconds(100), [this] {
+            nextRequests();
+            nextSizes();
+        }, true);
         // the trades: twenty a second
         trades.start(scheduler, std::chrono::milliseconds(50), [this] { nextTrade(glw::chartNow()); }, true);
         // the traffic: ten points a second
@@ -628,6 +661,8 @@ struct Demo {
             nextTrade(t);
         for (int i = 0; i < 300; ++i)
             nextRequests();
+        for (int i = 0; i < 700; ++i)
+            nextSizes();
         for (int i = 30; i > 0; --i) {
             const double values[] = {std::round(uniform(40, 120)), std::round(uniform(10, 60)), std::round(uniform(0, 1) < 0.2 ? uniform(1, 25) : 0)};
             bars->appendCategory("-" + std::to_string(i) + "s", values);

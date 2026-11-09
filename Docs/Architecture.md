@@ -774,8 +774,8 @@ shape, the edges of a borderless window the resize shapes of its sides and corne
 ### Charts
 
 Charts (`Library/Include/GLWidgets/Charts`) are widgets made for data that changes as it comes: a feed of measures, of
-events, of shares. Eleven for now: **lines** over values or time and stacked areas (`LineChart`), **candles** of a price
-(`CandleChart`), **histograms** (`HistogramChart`) and **box plots** (`BoxChart`), **pies**, donuts and sunbursts
+events, of shares. Twelve for now: **lines** over values or time and stacked areas (`LineChart`), **candles** of a price
+(`CandleChart`), **histograms** (`HistogramChart`), **box plots** (`BoxChart`), **scatter** plots (`ScatterChart`), **pies**, donuts and sunbursts
 (`PieChart`), **treemaps** (`TreeMap`), **bars**, stacked, grouped or in percent, standing or lying (`BarChart`), **bar
 races** (`BarRace`), **heat maps** (`HeatMap`), and for dashboards **sparklines** (`Sparkline`) and **gauges**
 (`Gauge`). What they share is in `Chart`:
@@ -939,6 +939,18 @@ category's values (`setValues`, `addValues`, the oldest dropped past a capacity:
 quartiles linearly between values), or of a summary of one's own (`setSummary`: what a database computed). Each category
 in a series color in turn; new numbers eased to; the box under the mouse lit, its numbers by it.
 
+**Scatter plots** (`ScatterChart`): points of two values each (a request's size and its latency), series of them, each
+point a dot of its series's color, or a bubble as large as a third value (its area by it); both axes fitted to the points
+that show (not past 0 when they are all on one side of it) and eased there. Points come as they come (`append`, the
+oldest dropped past a capacity; their extents kept as they come, found again only when one of them goes). More points in
+view than it draws as dots (`Props::markers`, 50000): an image of them instead (`ImageStore`, a pixel of it a pixel of the
+screen), each pixel of the color of the series in it, as opaque as the logarithm of how many of its points fall there,
+the series laid over one another: where they are many shows darker, and a million of them cost what counting them and the
+plot's pixels do; zoomed into fewer, dots again. A series's least-squares line through its points (`trend`; its sums kept
+as points come and go, about its first point so that large values keep their precision), its r² by its end. The mouse:
+the wheel zooms at it (Ctrl: the y axis only, Shift: the x axis only), a drag pans, the right button drags a rectangle to
+zoom into, a double click fits all again; the point nearest to it ringed, its values by it; a series's legend item hides it.
+
 **Candles** (`CandleChart`): a price over time, a candle for each period (`Candle`: its open, high, low and close, its
 volume): a wick from the low to the high, a body from the open to the close, of the style's rise color when it closed
 higher (`ChartStyle::rise`, `fall`: of each color scheme, as green and red read in it; a chart's own if given), its
@@ -972,10 +984,11 @@ then, a dashboard of the measures now (gauges, sparklines), heat maps of 200 end
 incidents and spikes in it, by powers of ten) and of requests by hour and weekday, a network's traffic by protocol stacked
 (in shares, if asked), a price as candles made of its trades (of a second to five minutes, by its buttons; its volume, two moving averages); latencies of
 requests as a histogram (reads' and writes', in percent, their quantiles and cumulative share) and boxes of eight
-services'; the style, the colors, the motion and the bars' layout chosen above them.
+services'; requests' sizes against their latencies (80000 of
+them: their density, dots when zoomed into; a line through the API calls'); the style, the colors, the motion and the bars' layout chosen above them.
 
-Still to come: more kinds (scatter; calendars and densities of points as heat maps), logarithmic axes, a
-second y axis, Persian digits and the Solar Hijri calendar on axes (with the `Locale` of
+Still to come: more kinds (timelines and flame graphs, Sankey diagrams, radar charts; calendars as heat maps),
+logarithmic axes, a second y axis, Persian digits and the Solar Hijri calendar on axes (with the `Locale` of
 [Localization](#localization-and-right-to-left)).
 
 Still to come in the widget core: the native extras of the chrome (Windows 11 shadow, rounded corners and snap layouts).
@@ -1228,7 +1241,7 @@ The `GLW_USE_SYSTEM_SDL3` option uses an installed SDL3 instead of the pinned re
 | M3 | Widget core: tree, events, focus, layout, a UI root independent of the platform, window chrome as widgets (with the native extras), live resize | Done, apart from the native extras of the chrome and what is listed in [Widgets](#widgets) |
 | M4 | Basic widgets (label, button, line edit, scroll area, splitter), styles, `LocalizedText` and catalogs, right-to-left layouts | Done, apart from plural rules and the formatting of numbers and dates (see [Localization](#localization-and-right-to-left)) |
 | M5 | Docking: major and panel tabs, windows merging and splitting by their tabs, both modes, layout persistence | Done: docking in a window, major tabs and saved layouts (M5a), across windows in the full mode (M5b), global panels, saved workspaces and Wayland's restricted mode (M5c). Wayland's drag-and-drop between windows, and keeping restored windows on the screens there are, later; the restricted mode not yet run on Wayland |
-| M6 | Validation: a node canvas and a code editor (FlowGraph), charts, an engine embedding example | In progress: the node canvas (`Canvas`, `node_editor`), menus, popups and dialogs, the code editor (`TextEdit`, `code_editor`), charts (lines, stacked areas, candles, histograms, box plots, pies, treemaps, bars, races, heat maps, sparklines, gauges: `chart_demo`) |
+| M6 | Validation: a node canvas and a code editor (FlowGraph), charts, an engine embedding example | In progress: the node canvas (`Canvas`, `node_editor`), menus, popups and dialogs, the code editor (`TextEdit`, `code_editor`), charts (lines, stacked areas, candles, histograms, box plots, scatter plots, pies, treemaps, bars, races, heat maps, sparklines, gauges: `chart_demo`) |
 
 ## Open questions
 
