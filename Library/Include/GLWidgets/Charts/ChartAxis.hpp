@@ -7,7 +7,12 @@
 //
 // Time is in seconds since 1970-01-01 UTC (chartTime makes it of a time point), as a double: a millisecond is told apart
 // for 280 thousand years around it. Its labels are in local time.
+//
+// Labels are written in a locale (English's by default; a chart's, its window's language's: Chart::locale): its digits
+// and marks, its shortened numbers (12.5k; ۱۲٫۵ هزار), its calendar's days, months and years (a Solar Hijri axis's
+// months begin on the first of Farvardin, Ordibehesht...), its names of months.
 #include <GLWidgets/Export.hpp>
+#include <GLWidgets/Widgets/Locale.hpp>
 
 #include <chrono>
 #include <cstdint>
@@ -38,7 +43,7 @@ GLW_EXPORT ChartTicks niceTicks(ChartRange range, int count);
 GLW_EXPORT ChartRange niceRange(ChartRange range, int count);
 // A value as a tick shows it: `decimals` after the point, digits grouped by thousands; past a million (and when the
 // step is a thousand or more) shortened: 12.5k, 3M, 1.2G.
-GLW_EXPORT std::string formatNumber(double value, int decimals, double step = 0);
+GLW_EXPORT std::string formatNumber(double value, int decimals, double step = 0, const Locale& locale = Locale::english());
 
 // What the ticks of a time axis are a step of.
 enum class TimeUnit : std::uint8_t { Millisecond, Second, Minute, Hour, Day, Month, Year };
@@ -49,13 +54,15 @@ struct TimeTicks {
     double step = 1;                // seconds (Month and Year: their count, months or years)
 };
 
-GLW_EXPORT TimeTicks timeTicks(ChartRange seconds, int count);
-// A time as a tick of `ticks` shows it, in local time: 12:30:05.25, 12:30:05, 12:30, 6 Nov, Nov 2026, 2026; a tick at
-// midnight shows its day.
-GLW_EXPORT std::string formatTime(double seconds, const TimeTicks& ticks);
+// Ticks at round local times in `seconds`, as many as fit `count` (at least two apart); months and years of the
+// locale's calendar.
+GLW_EXPORT TimeTicks timeTicks(ChartRange seconds, int count, const Locale& locale = Locale::english());
+// A time as a tick of `ticks` shows it, in local time: 12:30:05.25, 12:30:05, 12:30, 6 Nov, Nov, 2026 (a month's tick
+// in January its year); a tick at midnight shows its day.
+GLW_EXPORT std::string formatTime(double seconds, const TimeTicks& ticks, const Locale& locale = Locale::english());
 // ... in full, to the precision of `unit` (a tooltip's): 12:30:05.250, with its day before it when `date` (2026-11-06
 // 12:30); Day and coarser, the day alone (2026-11-06, 2026-11, 2026).
-GLW_EXPORT std::string formatTimeFully(double seconds, TimeUnit unit, bool date);
+GLW_EXPORT std::string formatTimeFully(double seconds, TimeUnit unit, bool date, const Locale& locale = Locale::english());
 
 inline double chartTime(std::chrono::system_clock::time_point at) {
     return std::chrono::duration<double>(at.time_since_epoch()).count();

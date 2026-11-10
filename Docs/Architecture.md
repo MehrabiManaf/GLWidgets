@@ -1188,9 +1188,21 @@ An application can also run on XWayland to get the full mode (`SDL_VIDEO_DRIVER=
 - **The language changes while the application runs** (`Application::setLanguage`). Every widget is told
   (`onLanguageChanged`) and shows its texts again, window titles too. A language written right to left (Persian, Arabic,
   Hebrew, Urdu...) mirrors the windows.
-- **Still to come:** plural rules (from the CLDR data, Unicode license); numbers, dates and times through a `Locale`
-  interface (Persian digits, the Solar Hijri calendar), with a small implementation first and ICU behind the same interface
-  if the need grows; and a tool that writes and updates catalogs from the texts of an application.
+- **Numbers, dates and counts** are written by a `Locale` (`Widgets/Locale.hpp`), the language's (`Locale::of`, set
+  with the language) or one of the application's (`Translator::setLocale`): its digits (Latin, Persian ۰-۹, Arabic
+  ٠-٩), its decimal, grouping, minus and percent marks, its shortened numbers (12.5k; ۱۲٫۵ هزار), its calendar
+  (Gregorian, or the Solar Hijri calendar: `solarHijriFromGregorian` and back, Borkowski's arithmetic, right from 1799 to
+  2254), its months' and weekdays' names, the day its weeks begin on, and how its dates are written (2026-11-06,
+  ۱۴۰۵/۰۸/۱۵). English, Persian and Arabic are known in full; other languages take English's conventions with their own
+  plural rules. A number put into a text (`arg` with a number) is written by it.
+- **Plurals:** `trPlural("{n} file", "{n} files", count)` chooses its form by the count, and a catalog gives a language's
+  forms (`{"one": ..., "few": ..., "other": ...}`, CLDR's categories), chosen by `pluralCategory` (the CLDR rules of
+  English and its kind, Persian and its kind, French, Arabic, the East Slavic languages, Polish, Czech, Hebrew, and those
+  with one form). A language without its own catalog (fa-IR) takes its primary language's (fa).
+- **Charts** write their labels in the locale of their window (`Chart::locale`): ticks, tooltips, gauges, a Solar Hijri
+  time axis's months from their firsts, a candle chart's months, years and weeks in its calendar.
+- **Still to come:** ICU behind the same `Locale` if the need grows (more languages in full, collation); a tool that
+  writes and updates catalogs from the texts of an application.
 - **Layout direction:** every widget has a `LayoutDirection` (inherited, overridable). In right-to-left, layouts, scroll
   bars, tab order, docking and directional icons are mirrored. A text field takes its paragraph direction from its content
   unless told otherwise. A code editor stays left-to-right while still shaping the Persian inside strings and comments.
@@ -1245,7 +1257,7 @@ starting from a small task interface that can be implemented on top of `std::exe
 | SheenBidi 3.0.0 | Bidirectional text, script runs | Apache-2.0 | In use (pinned, SHA-256 checked) |
 | libunibreak 8.0 | Line breaks, graphemes | zlib | In use (pinned, SHA-256 checked) |
 | Vazirmatn 33.003 | Default font | OFL | In the repository (`Library/Fonts`), compiled in |
-| CLDR data | Plural rules, locale data | Unicode | Planned (M4) |
+| CLDR data | Plural rules, locale data | Unicode | Their rules and data for a few languages, written in `Locale` |
 
 Shader tools, needed only to change a shader (`Tools/CompileShaders.py`): `fxc` (Windows SDK), DXC (MIT /
 University of Illinois license), SPIRV-Cross (Apache-2.0).
@@ -1272,7 +1284,7 @@ The `GLW_USE_SYSTEM_SDL3` option uses an installed SDL3 instead of the pinned re
 | M1 | RHI resources and passes into textures, the shader pipeline, `Painter` / `DrawList` / `Renderer` (boxes, shadows, polylines, polygons, images, clipping, transforms), borderless windows with hit testing | Done: run on Direct3D 12 and Vulkan (Windows); Metal built, not yet run |
 | M2 | Text: HarfBuzz and FreeType, glyph atlas, bidi, line breaking, text layout with cursor and selection | Done, apart from system fonts and visual cursor movement (see [Text](#text)) |
 | M3 | Widget core: tree, events, focus, layout, a UI root independent of the platform, window chrome as widgets (with the native extras), live resize | Done, apart from the native extras of the chrome and what is listed in [Widgets](#widgets) |
-| M4 | Basic widgets (label, button, line edit, scroll area, splitter), styles, `LocalizedText` and catalogs, right-to-left layouts | Done, apart from plural rules and the formatting of numbers and dates (see [Localization](#localization-and-right-to-left)) |
+| M4 | Basic widgets (label, button, line edit, scroll area, splitter), styles, `LocalizedText` and catalogs, right-to-left layouts | Done: plural rules and the formatting of numbers and dates (`Locale`: Persian digits, the Solar Hijri calendar) too (see [Localization](#localization-and-right-to-left)) |
 | M5 | Docking: major and panel tabs, windows merging and splitting by their tabs, both modes, layout persistence | Done: docking in a window, major tabs and saved layouts (M5a), across windows in the full mode (M5b), global panels, saved workspaces and Wayland's restricted mode (M5c). Wayland's drag-and-drop between windows, and keeping restored windows on the screens there are, later; the restricted mode not yet run on Wayland |
 | M6 | Validation: a node canvas and a code editor (FlowGraph), charts, an engine embedding example | In progress: the node canvas (`Canvas`, `node_editor`), menus, popups and dialogs, the code editor (`TextEdit`, `code_editor`), charts (lines, stacked areas, candles, histograms, box plots, scatter plots, timelines, flame graphs, Sankey diagrams, pies, treemaps, bars, races, heat maps, sparklines, gauges: `chart_demo`) |
 

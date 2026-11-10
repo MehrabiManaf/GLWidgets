@@ -124,6 +124,7 @@ protected:
         double step_ = 1;
         int decimals_ = 0;
         TimeTicks timeTicks_;
+        const Locale* locale_ = &Locale::english();         // its chart's, as it was fitted
         float widest_ = 0;
         float height_ = 0;
     };
@@ -133,6 +134,14 @@ protected:
     // line along its top (Studio), flat (Plain). Painter::fillArc's angles and gap.
     void paintArc(paint::Painter& painter, Point center, float inner, float outer, float start, float sweep, float inset, Color color,
                   float lift = 1) const;
+
+    // How numbers and times are written in it: its window's language's (Translator::locale), English's outside one.
+    const Locale& locale() const;
+    // The axes' formats (ChartAxis.hpp) in its locale: its own, so that a chart's code calls them by their names.
+    std::string formatNumber(double value, int decimals, double step = 0) const { return glw::formatNumber(value, decimals, step, locale()); }
+    std::string formatTime(double seconds, const TimeTicks& ticks) const { return glw::formatTime(seconds, ticks, locale()); }
+    std::string formatTimeFully(double seconds, TimeUnit unit, bool date) const { return glw::formatTimeFully(seconds, unit, date, locale()); }
+    TimeTicks timeTicks(ChartRange seconds, int count) const { return glw::timeTicks(seconds, count, locale()); }
 
     // How long a change is eased over: the theme's normal motion (fast: its fast one), none when it is not animated or
     // not shown.

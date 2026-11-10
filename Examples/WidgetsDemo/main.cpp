@@ -130,7 +130,7 @@ class Records final : public glw::TableModel {
 public:
     std::size_t rowCount() const override { return 1'000'000; }
     std::size_t columnCount() const override { return 50; }
-    glw::LocalizedText header(std::size_t column) const override { return tr("Column {n}").arg("n", std::to_string(column + 1)); }
+    glw::LocalizedText header(std::size_t column) const override { return tr("Column {n}").arg("n", column + 1); }
     glw::ItemFlags flags(std::size_t, std::size_t) const override { return glw::ItemFlags::Editable; }
     bool sortable(std::size_t) const override { return true; }
     std::partial_ordering compare(std::size_t a, std::size_t b, std::size_t column) const override {
@@ -199,7 +199,7 @@ public:
             return glw::LocalizedText(std::to_string(2016 + d / 365) + "-" + std::to_string(d % 365 / 31 + 1) + "-" + std::to_string(d % 31 + 1));
         }
         if (node.id < count)
-            return tr("Folder {n}").arg("n", std::to_string(node.id + 1));
+            return tr("Folder {n}").arg("n", node.id + 1);
         return tr("File {n}").arg("n", std::to_string((node.id - count) / count + 1) + "." + std::to_string((node.id - count) % count + 1));
     }
 };
@@ -285,7 +285,7 @@ struct Page {
     std::unique_ptr<glw::Widget> list() {
         auto view = std::make_unique<glw::ListView>();
         view->setModel(std::make_shared<Million>());
-        view->setDelegate(std::make_unique<glw::TextDelegate>([](std::size_t i) { return tr("Item {n}").arg("n", std::to_string(i + 1)); }));
+        view->setDelegate(std::make_unique<glw::TextDelegate>([](std::size_t i) { return tr("Item {n}").arg("n", i + 1); }));
         view->setHeader(tr("Items"));           // a click sorts them
         view->setSelectionMode(glw::SelectionMode::Multiple);
         view->setStretch(1);
@@ -357,7 +357,7 @@ struct Page {
         auto add = std::make_shared<glw::Action>(tr("Adds a variable"), [this, list] {
             ++variableCount;
             list->addContent(ui::HStack({.spacing = 10},
-                                        ui::Label({.text = tr("Variable {n}").arg("n", std::to_string(variableCount))})
+                                        ui::Label({.text = tr("Variable {n}").arg("n", variableCount)})
                                             .alignment(glw::Alignment::Start, glw::Alignment::Center)
                                             .minimumSize({110, 0}),
                                         ui::LineEdit({.placeholder = tr("Its value")}).stretch(1))

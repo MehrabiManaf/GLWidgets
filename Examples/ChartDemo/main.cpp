@@ -21,7 +21,10 @@
 // tab; the View menu hides and shows each (one closed by its tab too), back beside a neighbour of where it was.
 //
 //   chart_demo [--rate N] [--race N] [--style studio|fluid|plain|plastic|metal] [--colors dark|light|dusk|sand|turquoise]
-//              [--frames N]
+//              [--language fa] [--frames N]
+//
+// In another language its numbers and times are written as it writes them (--language fa: Persian digits, the Solar
+// Hijri calendar's days and months); its texts stay English (it has no catalog).
 //
 // On a chart: the wheel zooms (with Ctrl, the y axis of the line chart), a drag pans (back to the newest, it follows
 // again), the right button drags a rectangle to zoom into, a double click shows all again; a legend's item hides its
@@ -179,7 +182,7 @@ struct Demo {
         bars->addSeries(tr("Errors"));
 
         auto racing = std::make_unique<glw::BarRace>(glw::BarRace::Props{
-            .title = tr("Downloads of {n} packages, by system").arg("n", std::to_string(racers)), .shown = 10,
+            .title = tr("Downloads of {n} packages, by system").arg("n", racers), .shown = 10,
             .parts = {tr("Windows"), tr("Linux"), tr("macOS")}});
         race = racing.get();
         makeRace();
@@ -502,7 +505,7 @@ struct Demo {
             }
         }
         auto live = std::make_unique<glw::HeatMap>(glw::HeatMap::Props{
-            .title = tr("Latency of {n} endpoints, ms").arg("n", std::to_string(endpoints.size())), .rows = std::move(endpoints),
+            .title = tr("Latency of {n} endpoints, ms").arg("n", endpoints.size()), .rows = std::move(endpoints),
             .xAxis = glw::ChartAxisKind::Time, .start = std::floor(glw::chartNow()) - 600, .step = 1, .capacity = 3600, .window = 300,
             .scale = {.logarithmic = true, .clip = 0.99f}});
         latency = live.get();
@@ -623,16 +626,18 @@ struct Demo {
         nextMonth();
     }
 
-    // A month on: each package grows by its pace (which wanders), now and then one takes off.
+    // A month on: each package grows by its pace (which wanders), now and then one takes off. Its name in the language's
+    // calendar (the month of the language's calendar the first of this one is in).
     void nextMonth() {
-        static constexpr const char* names[] = {"Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"};
+        const glw::Locale& locale = app.translator().locale();
         for (std::size_t i = 0; i < racers; ++i) {
             momentum[i] = std::clamp(momentum[i] + normal(0.004) + (uniform(0, 1) < 0.002 ? 0.12 : 0.0), -0.02, 0.25);
             for (double& d : downloads[i])
                 d = std::max(0.0, d * (1 + momentum[i] * uniform(0.9, 1.1)));
             race->setValues(i, downloads[i]);
         }
-        race->setPeriod(std::string(names[month % 12]) + " " + std::to_string(2015 + month / 12));
+        const glw::CivilDate day = locale.date({2015 + month / 12, month % 12 + 1, 1});
+        race->setPeriod(locale.shortMonths[static_cast<std::size_t>(day.month - 1)] + " " + locale.digitsOf(day.year));
         ++month;
     }
 
@@ -717,7 +722,7 @@ struct Demo {
             const double values[] = {std::round(uniform(40, 120)), std::round(uniform(10, 60)), std::round(uniform(0, 1) < 0.2 ? uniform(1, 25) : 0)};
             bars->appendCategory(std::string(label), values);
             sparks[3]->append(values[2]);
-            lasts[3]->setText(std::to_string(static_cast<int>(values[2])));
+            lasts[3]->setText(app.translator().locale().number(values[2]));
             nextLatency();
         }, true);
         // the requests: their latencies, ten times a second
@@ -745,7 +750,7 @@ struct Demo {
             for (std::size_t i = 0; i < 3; ++i) {
                 gauges[i]->setValue(values[i]);
                 sparks[i]->append(values[i]);
-                lasts[i]->setText(glw::formatNumber(values[i], 1));
+                lasts[i]->setText(glw::formatNumber(values[i], 1, 0, app.translator().locale()));
             }
         }, true);
         // a file grows or shrinks now and then
@@ -768,7 +773,7 @@ struct Demo {
         }, true);
         count.start(scheduler, std::chrono::milliseconds(500), [this] {
             const std::size_t points = cpu->data().size() + memory->data().size() + network->data().size();
-            status->setText(tr("{n} points, {rate} a second").arg("n", std::to_string(points)).arg("rate", std::to_string(static_cast<int>(rate * 3))));
+            status->setText(tr("{n} points, {rate} a second").arg("n", points).arg("rate", static_cast<int>(rate * 3)));
         }, true);
         // what came before it opened: the last ten minutes, so that there is a history to pan into
         const double from = fed - 600;
@@ -801,6 +806,7 @@ int main(int argc, char** argv) {
     std::size_t racers = 500;
     std::optional<glw::ThemeStyle> style;
     std::optional<glw::ColorScheme> colors;
+    std::string language = "en";
     for (int i = 1; i < argc; ++i) {
         const std::string_view arg(argv[i]);
         if (arg == "--frames" && i + 1 < argc)
@@ -813,9 +819,12 @@ int main(int argc, char** argv) {
             style = glw::themeStyleNamed(argv[++i]);
         else if (arg == "--colors" && i + 1 < argc)
             colors = glw::colorSchemeNamed(argv[++i]);
+        else if (arg == "--language" && i + 1 < argc)
+            language = argv[++i];
     }
     try {
         glw::Application app;
+        app.setLanguage(language);
         if (style)
             app.setStyle(*style, false);
         if (colors)

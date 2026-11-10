@@ -120,7 +120,7 @@ double CandlePeriod::length() const {
     return unitSeconds(unit) * count;
 }
 
-double CandlePeriod::start(double time, int weekStart) const {
+double CandlePeriod::start(double time, int weekStart, Calendar calendar) const {
     std::tm t = localTime(time);
     if (clockUnit(unit)) {
         // seconds, minutes, hours: from local midnight (a run longer than a day: from 1970)
@@ -148,18 +148,33 @@ double CandlePeriod::start(double time, int weekStart) const {
         t.tm_mday -= static_cast<int>(back + (week - floorDiv(week, count) * count) * 7);
         break;
     }
-    case Unit::Month: {
-        const long long month = (t.tm_year + 1900LL) * 12 + t.tm_mon;
-        const long long first = floorDiv(month, count) * count;
-        t.tm_year = static_cast<int>(floorDiv(first, 12) - 1900);
-        t.tm_mon = static_cast<int>(first - floorDiv(first, 12) * 12);
-        t.tm_mday = 1;
-        break;
-    }
+    case Unit::Month:
     case Unit::Year:
-        t.tm_year = static_cast<int>(floorDiv(t.tm_year + 1900LL, count) * count - 1900);
-        t.tm_mon = 0;
-        t.tm_mday = 1;
+        if (calendar == Calendar::SolarHijri) {
+            // the first of a Solar Hijri month (a year's first), a whole number of runs from its year 0
+            const CivilDate j = solarHijriFromGregorian({t.tm_year + 1900, t.tm_mon + 1, t.tm_mday});
+            CivilDate first{j.year, 1, 1};
+            if (unit == Unit::Month) {
+                const long long month = floorDiv(j.year * 12LL + (j.month - 1), count) * count;
+                first = {static_cast<int>(floorDiv(month, 12)), static_cast<int>(month - floorDiv(month, 12) * 12) + 1, 1};
+            } else {
+                first.year = static_cast<int>(floorDiv(j.year, count) * count);
+            }
+            const CivilDate g = gregorianFromSolarHijri(first);
+            t.tm_year = g.year - 1900;
+            t.tm_mon = g.month - 1;
+            t.tm_mday = g.day;
+        } else if (unit == Unit::Month) {
+            const long long month = (t.tm_year + 1900LL) * 12 + t.tm_mon;
+            const long long first = floorDiv(month, count) * count;
+            t.tm_year = static_cast<int>(floorDiv(first, 12) - 1900);
+            t.tm_mon = static_cast<int>(first - floorDiv(first, 12) * 12);
+            t.tm_mday = 1;
+        } else {
+            t.tm_year = static_cast<int>(floorDiv(t.tm_year + 1900LL, count) * count - 1900);
+            t.tm_mon = 0;
+            t.tm_mday = 1;
+        }
         break;
     default:
         break;
@@ -167,8 +182,20 @@ double CandlePeriod::start(double time, int weekStart) const {
     return fromLocal(t);
 }
 
-double CandlePeriod::next(double start) const {
+double CandlePeriod::next(double start, Calendar calendar) const {
     std::tm t = localTime(start);
+    if (calendar == Calendar::SolarHijri && (unit == Unit::Month || unit == Unit::Year)) {
+        // so many Solar Hijri months on (its day kept, as far as the month has it)
+        const CivilDate j = solarHijriFromGregorian({t.tm_year + 1900, t.tm_mon + 1, t.tm_mday});
+        const long long month = j.year * 12LL + (j.month - 1) + (unit == Unit::Month ? count : 12LL * count);
+        CivilDate to{static_cast<int>(floorDiv(month, 12)), static_cast<int>(month - floorDiv(month, 12) * 12) + 1, j.day};
+        to.day = std::min(to.day, solarHijriMonthDays(to.year, to.month));
+        const CivilDate g = gregorianFromSolarHijri(to);
+        t.tm_year = g.year - 1900;
+        t.tm_mon = g.month - 1;
+        t.tm_mday = g.day;
+        return fromLocal(t);
+    }
     switch (unit) {
     case Unit::Second:
     case Unit::Minute:
@@ -286,7 +313,7 @@ void CandleChart::setLast(const Candle& candle) {
 }
 
 void CandleChart::trade(double time, double price, double volume) {
-    const double start = props_.period.start(time, props_.weekStart);
+    const double start = props_.period.start(time, weekStart(), calendar());
     if (given_.empty() || start > given_.back().time) {
         append({start, price, price, price, price, volume});
         return;
@@ -317,7 +344,7 @@ void CandleChart::refreshLast() {
         return;
     }
     // else the last of the period that shows, made again of the given candles in it
-    const double start = period_.start(given_.back().time, props_.weekStart);
+    const double start = period_.start(given_.back().time, weekStart(), calendar());
     std::size_t i = given_.size();
     while (i > 0 && given_[i - 1].time >= start)
         --i;
@@ -342,7 +369,7 @@ void CandleChart::dropFront() {
         return;
     }
     // the first that shows: gone when none of its given ones are left, else made again of those that are
-    const double start = candles_.front().time, end = period_.next(start);
+    const double start = candles_.front().time, end = period_.next(start, calendar());
     if (given_.empty() || given_.front().time >= end) {
         candles_.pop_front();
         ++first_;
@@ -363,11 +390,11 @@ void CandleChart::rebuild() {
         return;
     }
     for (const Candle& c : given_) {
-        if (!candles_.empty() && c.time < period_.next(candles_.back().time)) {
+        if (!candles_.empty() && c.time < period_.next(candles_.back().time, calendar())) {
             mergeInto(candles_.back(), c);
         } else {
             Candle made = c;
-            made.time = period_.start(c.time, props_.weekStart);
+            made.time = period_.start(c.time, weekStart(), calendar());
             candles_.push_back(made);
         }
     }

@@ -72,9 +72,10 @@ struct GLW_EXPORT CandlePeriod {
     // About how long it is, in seconds (a month: a mean one's).
     double length() const;
     // The start of the one `time` is in (seconds since 1970), of the local calendar, its weeks from `weekStart` (0:
-    // Sunday, 1: Monday, 6: Saturday); the start of the one after the one that starts at `start`.
-    double start(double time, int weekStart = 1) const;
-    double next(double start) const;
+    // Sunday, 1: Monday, 6: Saturday), its months and years those of `calendar` (a Solar Hijri month from its first);
+    // the start of the one after the one that starts at `start`.
+    double start(double time, int weekStart = 1, Calendar calendar = Calendar::Gregorian) const;
+    double next(double start, Calendar calendar = Calendar::Gregorian) const;
     // Whether candles of `base` make it up: each of its candles all of some of theirs (minutes of seconds, a month of
     // days; not a month of weeks).
     bool madeOf(const CandlePeriod& base) const;
@@ -95,7 +96,10 @@ public:
         CandlePeriod period = CandlePeriod::minutes(1);     // of the candles it is given: the shortest it shows
         // Periods to choose from (each made of `period`'s candles), buttons on its title's row; none: no buttons.
         std::vector<CandlePeriod> periods;
-        int weekStart = 1;                  // the day a week begins on: 0 Sunday, 1 Monday, 6 Saturday
+        // the day a week begins on (0 Sunday, 1 Monday, 6 Saturday), and the calendar of its months and years; none: its
+        // locale's (Chart::locale: the window's language's)
+        std::optional<int> weekStart;
+        std::optional<Calendar> calendar;
         std::size_t capacity = 0;           // the newest candles of `period` kept; 0: all
         std::size_t window = 0;             // its last `window` candles shown, following the newest; 0: all
         bool volume = true;                 // its volume as bars along the bottom
@@ -182,6 +186,9 @@ protected:
     void legendItemClicked(std::size_t index) override;
 
 private:
+    // Its weeks' first day and its calendar: its own, or its locale's.
+    int weekStart() const { return props_.weekStart.value_or(locale().firstDayOfWeek); }
+    Calendar calendar() const { return props_.calendar.value_or(locale().calendar); }
     enum class XMode : std::uint8_t { Fit, Window, Manual };
     // The last of the period that shows made again of the given candles in it; the oldest given one dropped (the first
     // that shows made again of those left in it, or gone); all of those that show made again (a new period).

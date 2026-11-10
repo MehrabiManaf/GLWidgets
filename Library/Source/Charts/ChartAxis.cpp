@@ -85,12 +85,14 @@ double approximateSeconds(const TimeStep& s) {
     return s.unit == TimeUnit::Month ? s.seconds * 30.44 * 86400 : s.unit == TimeUnit::Year ? s.seconds * 365.25 * 86400 : s.seconds;
 }
 
-constexpr const char* monthNames[] = {"Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"};
+// A local time's day in the locale's calendar.
+CivilDate dayOf(const std::tm& t, const Locale& locale) {
+    return locale.date({t.tm_year + 1900, t.tm_mon + 1, t.tm_mday});
+}
 
-std::string dayLabel(const std::tm& t) {
-    char out[32];
-    std::snprintf(out, sizeof out, "%d %s", t.tm_mday, monthNames[std::clamp(t.tm_mon, 0, 11)]);
-    return out;
+std::string dayLabel(const std::tm& t, const Locale& locale) {
+    const CivilDate d = dayOf(t, locale);
+    return locale.digitsOf(d.day) + " " + locale.shortMonths[static_cast<std::size_t>(std::clamp(d.month, 1, 12) - 1)];
 }
 
 // Digits grouped by thousands: 1234567 is 1,234,567.
@@ -144,21 +146,21 @@ ChartRange niceRange(ChartRange range, int count) {
     return out;
 }
 
-std::string formatNumber(double value, int decimals, double step) {
+std::string formatNumber(double value, int decimals, double step, const Locale& locale) {
     if (!std::isfinite(value))
-        return std::isnan(value) ? "\xE2\x80\x93" : value > 0 ? "\xE2\x88\x9E" : "-\xE2\x88\x9E";
+        return std::isnan(value) ? "\xE2\x80\x93" : value > 0 ? "\xE2\x88\x9E" : locale.minus + "\xE2\x88\x9E";
     const double size = std::max(std::abs(value), std::abs(step));
     char out[64];
     if (size >= 1e6 || (std::abs(step) >= 1000 && std::abs(value) >= 1000)) {
-        static constexpr std::pair<double, const char*> scales[] = {{1e12, "T"}, {1e9, "G"}, {1e6, "M"}, {1e3, "k"}};
+        static constexpr std::pair<double, std::size_t> scales[] = {{1e12, 3}, {1e9, 2}, {1e6, 1}, {1e3, 0}};
         for (const auto& [scale, suffix] : scales) {
             if (size >= scale) {
                 const int d = step > 0 ? decimalsFor(step / scale) : std::min(decimals, 1);
-                std::snprintf(out, sizeof out, "%.*f%s", d, value / scale, suffix);
+                std::snprintf(out, sizeof out, "%.*f", d, value / scale);
                 std::string s = out;
                 if (s.rfind("-0", 0) == 0 && std::strtod(s.c_str(), nullptr) == 0)
                     s.erase(0, 1);
-                return s;
+                return locale.localized(s) + locale.compact[suffix];
             }
         }
     }
@@ -166,10 +168,10 @@ std::string formatNumber(double value, int decimals, double step) {
     std::string s = out;
     if (s[0] == '-' && std::strtod(s.c_str(), nullptr) == 0)        // -0.0
         s.erase(0, 1);
-    return grouped(std::move(s));
+    return locale.localized(grouped(std::move(s)));
 }
 
-TimeTicks timeTicks(ChartRange range, int count) {
+TimeTicks timeTicks(ChartRange range, int count, const Locale& locale) {
     TimeTicks ticks;
     count = std::max(count, 2);
     const double span = range.span();
@@ -188,6 +190,29 @@ TimeTicks timeTicks(ChartRange range, int count) {
     }
     ticks.unit = chosen->unit;
     ticks.step = chosen->seconds;
+    if ((chosen->unit == TimeUnit::Month || chosen->unit == TimeUnit::Year) && locale.calendar != Calendar::Gregorian) {
+        // on the first of a month of the locale's calendar (of a year), a whole number of steps into its year (its
+        // century): months counted from its year 0, each made a Gregorian day again
+        const int n = static_cast<int>(chosen->seconds);
+        const CivilDate at = dayOf(localTime(static_cast<std::time_t>(std::floor(range.low))), locale);
+        long long month = chosen->unit == TimeUnit::Month ? at.year * 12LL + (at.month - 1) - (at.month - 1) % n
+                                                          : (at.year - ((at.year % n) + n) % n) * 12LL;
+        for (int i = 0; i < mostTicks + 2; ++i) {
+            const CivilDate g = locale.gregorian({static_cast<int>(month / 12), static_cast<int>(month % 12) + 1, 1});
+            std::tm t{};
+            t.tm_year = g.year - 1900;
+            t.tm_mon = g.month - 1;
+            t.tm_mday = g.day;
+            t.tm_isdst = -1;
+            const double v = static_cast<double>(std::mktime(&t));
+            if (v > range.high)
+                break;
+            if (v >= range.low)
+                ticks.values.push_back(v);
+            month += chosen->unit == TimeUnit::Month ? n : n * 12LL;
+        }
+        return ticks;
+    }
     if (chosen->unit == TimeUnit::Month || chosen->unit == TimeUnit::Year) {
         // on the first of a month (of a year), a whole number of steps into its year (its century)
         std::tm t = localTime(static_cast<std::time_t>(std::floor(range.low)));
@@ -229,7 +254,7 @@ TimeTicks timeTicks(ChartRange range, int count) {
     return ticks;
 }
 
-std::string formatTime(double seconds, const TimeTicks& ticks) {
+std::string formatTime(double seconds, const TimeTicks& ticks, const Locale& locale) {
     if (!std::isfinite(seconds))
         return "\xE2\x80\x93";
     const double whole = std::floor(seconds);
@@ -243,50 +268,49 @@ std::string formatTime(double seconds, const TimeTicks& ticks) {
         const int scale = decimals == 1 ? 10 : decimals == 2 ? 100 : 1000;
         const int part = std::min(scale - 1, static_cast<int>(std::lround(fraction * scale)));
         std::snprintf(out, sizeof out, "%02d:%02d:%02d.%0*d", t.tm_hour, t.tm_min, t.tm_sec, decimals, part);
-        return out;
+        return locale.localized(out);
     }
     case TimeUnit::Second:
         if (midnight)
-            return dayLabel(t);
+            return dayLabel(t, locale);
         std::snprintf(out, sizeof out, "%02d:%02d:%02d", t.tm_hour, t.tm_min, t.tm_sec);
-        return out;
+        return locale.localized(out);
     case TimeUnit::Minute:
     case TimeUnit::Hour:
         if (midnight)
-            return dayLabel(t);
+            return dayLabel(t, locale);
         std::snprintf(out, sizeof out, "%02d:%02d", t.tm_hour, t.tm_min);
-        return out;
+        return locale.localized(out);
     case TimeUnit::Day:
-        return dayLabel(t);
-    case TimeUnit::Month:
-        if (t.tm_mon == 0) {
-            std::snprintf(out, sizeof out, "%d", t.tm_year + 1900);
-            return out;
-        }
-        return monthNames[std::clamp(t.tm_mon, 0, 11)];
+        return dayLabel(t, locale);
+    case TimeUnit::Month: {
+        // the first month of its year: the year
+        const CivilDate d = dayOf(t, locale);
+        if (d.month == 1)
+            return locale.digitsOf(d.year);
+        return locale.shortMonths[static_cast<std::size_t>(std::clamp(d.month, 1, 12) - 1)];
+    }
     case TimeUnit::Year:
-        std::snprintf(out, sizeof out, "%d", t.tm_year + 1900);
-        return out;
+        return locale.digitsOf(dayOf(t, locale).year);
     }
     return {};
 }
 
-std::string formatTimeFully(double seconds, TimeUnit unit, bool date) {
+std::string formatTimeFully(double seconds, TimeUnit unit, bool date, const Locale& locale) {
     if (!std::isfinite(seconds))
         return "\xE2\x80\x93";
     const double whole = std::floor(seconds);
     const std::tm t = localTime(static_cast<std::time_t>(whole));
-    char day[48], time[48];         // (room for any int: a compiler counts them so)
-    std::snprintf(day, sizeof day, "%04d-%02d-%02d", t.tm_year + 1900, t.tm_mon + 1, t.tm_mday);
+    const CivilDate d = dayOf(t, locale);
+    const std::string& to = locale.dateSeparator;
+    char time[48];          // (room for any int: a compiler counts them so)
     switch (unit) {
     case TimeUnit::Year:
-        std::snprintf(day, sizeof day, "%04d", t.tm_year + 1900);
-        return day;
+        return locale.digitsOf(d.year, 4);
     case TimeUnit::Month:
-        std::snprintf(day, sizeof day, "%04d-%02d", t.tm_year + 1900, t.tm_mon + 1);
-        return day;
+        return locale.digitsOf(d.year, 4) + to + locale.digitsOf(d.month, 2);
     case TimeUnit::Day:
-        return day;
+        return locale.formatDate(d);
     case TimeUnit::Millisecond:
         std::snprintf(time, sizeof time, "%02d:%02d:%02d.%03d", t.tm_hour, t.tm_min, t.tm_sec,
                       std::min(999, static_cast<int>(std::lround((seconds - whole) * 1000))));
@@ -299,7 +323,7 @@ std::string formatTimeFully(double seconds, TimeUnit unit, bool date) {
         std::snprintf(time, sizeof time, "%02d:%02d", t.tm_hour, t.tm_min);
         break;
     }
-    return date ? std::string(day) + " " + time : std::string(time);
+    return date ? locale.formatDate(d) + " " + locale.localized(time) : locale.localized(time);
 }
 
 } // namespace glw

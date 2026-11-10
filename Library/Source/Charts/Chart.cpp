@@ -259,15 +259,22 @@ Color Chart::textOn(Color background) {
 
 namespace glw {
 
+const Locale& Chart::locale() const {
+    if (const UiContext* ui = context())
+        return ui->translator.locale();
+    return Locale::english();
+}
+
 std::string Chart::Axis::label(double value) const {
     const double step = time ? timeTicks_.step : step_;
     if (format)
         return format(value, step);
-    return (time ? formatTime(value, timeTicks_) : formatNumber(value, decimals_, step_)) + suffix;
+    return (time ? glw::formatTime(value, timeTicks_, *locale_) : glw::formatNumber(value, decimals_, step_, *locale_)) + suffix;
 }
 
 void Chart::Axis::fit(const Chart& chart, ChartRange range, float length) {
     range_ = range;
+    locale_ = &chart.locale();
     height_ = chart.textSize("0").height;
     const bool across = orientation == Orientation::Horizontal;
     // as many as fit: down, a label's height and some apart; across, by their widths (tried, then fewer if they are wide)
@@ -275,7 +282,7 @@ void Chart::Axis::fit(const Chart& chart, ChartRange range, float length) {
         values_.clear();
         labels_.clear();
         if (time) {
-            timeTicks_ = timeTicks(range, count);
+            timeTicks_ = glw::timeTicks(range, count, *locale_);
             values_ = timeTicks_.values;
         } else {
             const ChartTicks ticks = niceTicks(range, count);
@@ -352,9 +359,9 @@ std::string Chart::Axis::precise(double value) const {
         // to the second (to the millisecond when its ticks are), its day too when more than a day shows
         const TimeUnit tick = timeTicks_.unit;
         const TimeUnit unit = tick == TimeUnit::Millisecond ? TimeUnit::Millisecond : tick <= TimeUnit::Hour ? TimeUnit::Second : tick;
-        return formatTimeFully(value, unit, range_.span() > 86400);
+        return glw::formatTimeFully(value, unit, range_.span() > 86400, *locale_);
     }
-    return formatNumber(value, decimals_ + 1) + suffix;
+    return glw::formatNumber(value, decimals_ + 1, 0, *locale_) + suffix;
 }
 
 } // namespace glw

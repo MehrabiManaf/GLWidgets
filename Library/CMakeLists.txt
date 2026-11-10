@@ -68,6 +68,7 @@ add_library(GLWidgets ${GLW_LIB_TYPE}
     Source/Widgets/Layout.cpp
     Source/Widgets/LineEdit.cpp
     Source/Widgets/ListView.cpp
+    Source/Widgets/Locale.cpp
     Source/Widgets/Menu.cpp
     Source/Widgets/MenuBar.cpp
     Source/Widgets/Localization.cpp
