@@ -14,7 +14,8 @@
 // and 99th percentiles, the share under each value), and boxes of eight services'; requests' sizes against their
 // latencies, API calls' and static files', 40000 of each (their density; dots when zoomed into fewer), a line through
 // the calls'; a program profiled: a trace of its threads' work, frame after frame (the last quarter of a second,
-// following), and a flame graph of where its time goes (stacks sampled as it runs; a search finds a function). Above them, the style and the
+// following), and a flame graph of where its time goes (stacks sampled as it runs; a search finds a function); where requests flow, from
+// their sources through the edge and the services to the stores (a Sankey diagram, its values drifting). Above them, the style and the
 // colors of everything, whether the charts ease, how the bars are laid out, and whether the donut and the race show
 // only their top ones (the rest as one of others). Each chart is a docked panel: moved, split, floated, closed by its
 // tab; the View menu hides and shows each (one closed by its tab too), back beside a neighbour of where it was.
@@ -35,6 +36,7 @@
 #include <GLWidgets/Charts/HistogramChart.hpp>
 #include <GLWidgets/Charts/LineChart.hpp>
 #include <GLWidgets/Charts/PieChart.hpp>
+#include <GLWidgets/Charts/SankeyChart.hpp>
 #include <GLWidgets/Charts/ScatterChart.hpp>
 #include <GLWidgets/Charts/Sparkline.hpp>
 #include <GLWidgets/Charts/TimelineChart.hpp>
@@ -101,7 +103,7 @@ struct Demo {
     std::vector<std::array<double, 3>> downloads;   // each package's, by system
     std::vector<double> momentum;                   // how fast each grows
     int month = 0;
-    glw::Timer feed, drift, second, disk, count, months, now, flows, trades, requests, frames;
+    glw::Timer feed, drift, second, disk, count, months, now, flows, trades, requests, frames, flowing;
     // latencies: reads' and writes' in a histogram, each service's in a box
     glw::HistogramChart* histogram = nullptr;
     glw::HistogramSeries* reads = nullptr;
@@ -117,6 +119,9 @@ struct Demo {
     glw::FlameGraph* flame = nullptr;
     double traced = 0;                      // when its last frame began
     std::array<double, 4> workerFree{};     // when each worker is done with its job
+    // where requests flow: each link's usual value
+    glw::SankeyChart* flow = nullptr;
+    std::vector<glw::SankeyLink> flowValues;
     // the price: a walk, its trades made into candles
     glw::CandleChart* candles = nullptr;
     double price = 250, trend = 0;
@@ -196,6 +201,7 @@ struct Demo {
         glw::DockTabs& lineStack = area->addPanel(panel("line", tr("Measures"), std::move(made)));
         area->addPanel(panel("price", tr("Price"), makePrice()), &lineStack, glw::DockSide::Center, 0.5f);
         area->addPanel(panel("profile", tr("Profile"), makeProfile()), &lineStack, glw::DockSide::Center, 0.5f);
+        area->addPanel(panel("flow", tr("Flow"), makeFlow()), &lineStack, glw::DockSide::Center, 0.5f);
         glw::DockTabs& donutStack = area->addPanel(panel("donut", tr("Requests"), std::move(donut)), &lineStack, glw::DockSide::End, 0.4f);
         area->addPanel(panel("spread", tr("Distributions"), makeDistributions()), &donutStack, glw::DockSide::Center, 0.5f);
         area->addPanel(panel("scatter", tr("Scatter"), makeScatter()), &donutStack, glw::DockSide::Center, 0.5f);
@@ -313,6 +319,25 @@ struct Demo {
         scatter = made.get();
         calls = &scatter->addSeries({.name = tr("API calls"), .capacity = 40000, .trend = true});
         statics = &scatter->addSeries({.name = tr("Static files"), .capacity = 40000});
+        return made;
+    }
+
+    // Where requests flow: from their sources through the edge and the services to the stores.
+    std::unique_ptr<glw::Widget> makeFlow() {
+        auto made = std::make_unique<glw::SankeyChart>(
+            glw::SankeyChart::Props{.title = tr("Requests through the system, thousands a minute"), .unit = "k"});
+        flow = made.get();
+        const std::size_t web = flow->addNode(tr("Web")), mobile = flow->addNode(tr("Mobile")), partners = flow->addNode(tr("Partners"));
+        const std::size_t cdn = flow->addNode(tr("CDN")), balancer = flow->addNode(tr("Load balancer"));
+        const std::size_t auth = flow->addNode(tr("Auth")), catalog = flow->addNode(tr("Catalog")), search = flow->addNode(tr("Search"));
+        const std::size_t orders = flow->addNode(tr("Orders"));
+        const std::size_t cached = flow->addNode(tr("Served from the edge")), cache = flow->addNode(tr("Cache"));
+        const std::size_t database = flow->addNode(tr("Database")), queue = flow->addNode(tr("Queue"));
+        flowValues = {{web, cdn, 60},      {web, balancer, 40},     {mobile, cdn, 25},     {mobile, balancer, 45}, {partners, balancer, 30},
+                      {cdn, cached, 70},   {cdn, balancer, 15},     {balancer, auth, 30},  {balancer, catalog, 45}, {balancer, search, 25},
+                      {balancer, orders, 30}, {auth, cache, 20},    {auth, database, 10},  {catalog, cache, 30},   {catalog, database, 15},
+                      {search, cache, 10}, {search, database, 15},  {orders, database, 20}, {orders, queue, 10}};
+        flow->setLinks(flowValues);
         return made;
     }
 
@@ -526,7 +551,7 @@ struct Demo {
     std::unique_ptr<glw::MenuBar> menus() {
         std::vector<glw::MenuItem> items;
         for (const auto& [id, title] : std::initializer_list<std::pair<const char*, const char*>>{
-                 {"dash", "&Dashboard"}, {"line", "&Measures"}, {"price", "&Price"}, {"donut", "Re&quests"}, {"race", "R&ace"}, {"bars", "&Events"}, {"heat", "&Latency"}, {"spread", "&Distributions"}, {"scatter", "&Scatter"}, {"profile", "Pr&ofile"}, {"traffic", "&Traffic"},
+                 {"dash", "&Dashboard"}, {"line", "&Measures"}, {"price", "&Price"}, {"donut", "Re&quests"}, {"race", "R&ace"}, {"bars", "&Events"}, {"heat", "&Latency"}, {"spread", "&Distributions"}, {"scatter", "&Scatter"}, {"profile", "Pr&ofile"}, {"flow", "Flo&w"}, {"traffic", "&Traffic"},
                  {"tree", "&Files"}}) {
             auto toggle = std::make_shared<glw::Action>(tr(title));
             toggle->setCheckable(true);
@@ -559,6 +584,7 @@ struct Demo {
             {"bars", {{"race", glw::DockSide::End}, {"tree", glw::DockSide::Start}, {"line", glw::DockSide::Bottom}}},
             {"tree", {{"donut", glw::DockSide::Bottom}, {"bars", glw::DockSide::End}}},
             {"dash", {}},
+            {"flow", {{"line", glw::DockSide::Center}, {"price", glw::DockSide::Center}, {"race", glw::DockSide::Top}}},
             {"profile", {{"line", glw::DockSide::Center}, {"price", glw::DockSide::Center}, {"race", glw::DockSide::Top}}},
             {"spread", {{"donut", glw::DockSide::Center}, {"tree", glw::DockSide::Top}}},
             {"scatter", {{"donut", glw::DockSide::Center}, {"tree", glw::DockSide::Top}}},
@@ -625,7 +651,7 @@ struct Demo {
 
     void animate(bool on) {
         for (glw::Chart* chart : std::initializer_list<glw::Chart*>{line, pie, race, bars, tree, gauges[0], gauges[1], gauges[2], latency, weekly,
-                                                                    traffic, candles, histogram, boxes, scatter, trace, flame})
+                                                                    traffic, candles, histogram, boxes, scatter, trace, flame, flow})
             chart->setAnimated(on);
         for (glw::Sparkline* spark : sparks)
             spark->setAnimated(on);
@@ -703,6 +729,11 @@ struct Demo {
         frames.start(scheduler, std::chrono::milliseconds(50), [this] {
             for (const double until = glw::chartNow(); traced + 1.0 / 60 <= until; traced += 1.0 / 60)
                 nextFrame(traced);
+        }, true);
+        // the flows: each a little more or less than usual, now and then
+        flowing.start(scheduler, std::chrono::milliseconds(1500), [this] {
+            for (const glw::SankeyLink& link : flowValues)
+                flow->setLink(link.source, link.target, std::max(1.0, std::round(link.value * (1 + normal(0.15)))));
         }, true);
         // the trades: twenty a second
         trades.start(scheduler, std::chrono::milliseconds(50), [this] { nextTrade(glw::chartNow()); }, true);

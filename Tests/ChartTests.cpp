@@ -17,6 +17,7 @@
 #include <GLWidgets/Charts/HistogramChart.hpp>
 #include <GLWidgets/Charts/LineChart.hpp>
 #include <GLWidgets/Charts/PieChart.hpp>
+#include <GLWidgets/Charts/SankeyChart.hpp>
 #include <GLWidgets/Charts/ScatterChart.hpp>
 #include <GLWidgets/Charts/SeriesBuffer.hpp>
 #include <GLWidgets/Charts/Sparkline.hpp>
@@ -1244,4 +1245,40 @@ TEST(aFlameGraphMergesStacksAndZoomsIntoAFrame) {
     const std::size_t drawn = c.paint();
     c.move({300, 375});
     CHECK(c.paint() > drawn);
+}
+
+// ---- sankey diagrams ----
+
+TEST(aSankeyPutsItsNodesInColumnsByHowFarTheyAreFromTheSources) {
+    Shown<SankeyChart> c;
+    const std::size_t a = c.chart->addNode("a"), b = c.chart->addNode("b"), d = c.chart->addNode("c"), e = c.chart->addNode("d");
+    c.chart->setLink(a, b, 6);
+    c.chart->setLink(b, d, 4);
+    c.chart->setLink(a, d, 3);
+    c.chart->setLink(a, e, 1);
+    // a, then b, then c (the longest way to it: through b); d, which nothing flows out of, in the last column too
+    CHECK(c.chart->columnCount() == 3 && c.chart->columnOf(a) == 0 && c.chart->columnOf(b) == 1 && c.chart->columnOf(d) == 2);
+    CHECK(c.chart->columnOf(e) == 2);
+    // what flows through a node: the more of what comes in and what goes out
+    CHECK(c.chart->nodeValue(a) == 10 && c.chart->nodeValue(b) == 6 && c.chart->nodeValue(d) == 7 && c.chart->nodeValue(e) == 1);
+    // a link back to a node before it: left out, the columns as they were
+    c.chart->setLink(d, a, 5);
+    CHECK(!c.chart->linkShown(d, a) && c.chart->linkShown(a, b) && c.chart->columnOf(a) == 0 && c.chart->nodeValue(a) == 10);
+    // a value changed, a link gone
+    c.chart->setLink(a, b, 8);
+    c.chart->setLink(a, e, 0);
+    CHECK(c.chart->linkValue(a, b) == 8 && c.chart->linkValue(a, e) == 0 && c.chart->nodeValue(a) == 11);
+    // drawn; the mouse over its first node (at the start side, its middle): its flows by it
+    const std::size_t drawn = c.paint();
+    CHECK(drawn > 0);
+    c.move({c.chart->bounds().x + 6, c.chart->bounds().height / 2});
+    CHECK(c.paint() > drawn);
+}
+
+TEST(aSankeyWithoutJustifyLeavesItsSinksWhereTheyAre) {
+    Shown<SankeyChart> c(SankeyChart::Props{.justify = false});
+    const std::size_t a = c.chart->addNode("a"), b = c.chart->addNode("b"), d = c.chart->addNode("c"), e = c.chart->addNode("d");
+    c.chart->setLinks({{a, b, 2}, {b, d, 2}, {a, e, 1}});
+    CHECK(c.chart->columnCount() == 3 && c.chart->columnOf(e) == 1 && c.chart->columnOf(d) == 2);
+    CHECK(c.paint() > 0);
 }

@@ -774,8 +774,8 @@ shape, the edges of a borderless window the resize shapes of its sides and corne
 ### Charts
 
 Charts (`Library/Include/GLWidgets/Charts`) are widgets made for data that changes as it comes: a feed of measures, of
-events, of shares. Fourteen for now: **lines** over values or time and stacked areas (`LineChart`), **candles** of a price
-(`CandleChart`), **histograms** (`HistogramChart`), **box plots** (`BoxChart`), **scatter** plots (`ScatterChart`), **timelines** (`TimelineChart`) and **flame graphs** (`FlameGraph`), **pies**, donuts and sunbursts
+events, of shares. Fifteen for now: **lines** over values or time and stacked areas (`LineChart`), **candles** of a price
+(`CandleChart`), **histograms** (`HistogramChart`), **box plots** (`BoxChart`), **scatter** plots (`ScatterChart`), **timelines** (`TimelineChart`), **flame graphs** (`FlameGraph`), **Sankey diagrams** (`SankeyChart`), **pies**, donuts and sunbursts
 (`PieChart`), **treemaps** (`TreeMap`), **bars**, stacked, grouped or in percent, standing or lying (`BarChart`), **bar
 races** (`BarRace`), **heat maps** (`HeatMap`), and for dashboards **sparklines** (`Sparkline`) and **gauges**
 (`Gauge`). What they share is in `Chart`:
@@ -969,6 +969,19 @@ too (a click on one zooms out to it; a double click shows all). A search (`setHi
 have it in their colors, the rest faint, and says how much of all of it they are (`highlighted`: a frame within one that
 matches counted once). The frame under the mouse: its samples, its share of all and of what shows, and its own.
 
+**Sankey diagrams** (`SankeyChart`): what flows where: nodes and links between them (`addNode`, `setLink`), each link a
+band as wide as its value from its source to its target, a curve of its source's color turning into its target's
+(`Painter::fillBand`, a piece at a time). A node's column is the longest way to it from a source (those nothing flows
+out of in the last column: `justify`); a link back to a node it came through (a cycle) is left out. A node is as high as
+what flows through it (the more of what comes in and what goes out), the scale what the fullest column has room for,
+raised as the style's bars are; its name and value after it, room kept past the last column for its nodes'. Within their
+columns the nodes are drawn toward the middle of what they are linked to, by the links' values (toward their targets
+from the last column back, then toward their sources from the first on, eight times over, pushed apart again each
+time), and a node's links leave and arrive in the order of where they go, so that bands cross little. A value changed
+(`setLink`) eases the bands and nodes to their new sizes and places. The mouse over a link: it stands out, the rest
+faint, its value, its ends and its share of its source by it; over a node: its links, and what comes in and goes out.
+Right to left, it flows from the right.
+
 **Candles** (`CandleChart`): a price over time, a candle for each period (`Candle`: its open, high, low and close, its
 volume): a wick from the low to the high, a body from the open to the close, of the style's rise color when it closed
 higher (`ChartStyle::rise`, `fall`: of each color scheme, as green and red read in it; a chart's own if given), its
@@ -1004,9 +1017,10 @@ incidents and spikes in it, by powers of ten) and of requests by hour and weekda
 requests as a histogram (reads' and writes', in percent, their quantiles and cumulative share) and boxes of eight
 services'; requests' sizes against their latencies (80000 of
 them: their density, dots when zoomed into; a line through the API calls'); a program profiled (its threads'
-work frame by frame as a timeline, where its time goes as a flame graph with a search); the style, the colors, the motion and the bars' layout chosen above them.
+work frame by frame as a timeline, where its time goes as a flame graph with a search); where requests
+flow, from their sources to the stores (a Sankey diagram, its values drifting); the style, the colors, the motion and the bars' layout chosen above them.
 
-Still to come: more kinds (Sankey diagrams, radar charts; calendars as heat maps),
+Still to come: more kinds (radar charts; calendars as heat maps),
 logarithmic axes, a second y axis, Persian digits and the Solar Hijri calendar on axes (with the `Locale` of
 [Localization](#localization-and-right-to-left)).
 
@@ -1260,7 +1274,7 @@ The `GLW_USE_SYSTEM_SDL3` option uses an installed SDL3 instead of the pinned re
 | M3 | Widget core: tree, events, focus, layout, a UI root independent of the platform, window chrome as widgets (with the native extras), live resize | Done, apart from the native extras of the chrome and what is listed in [Widgets](#widgets) |
 | M4 | Basic widgets (label, button, line edit, scroll area, splitter), styles, `LocalizedText` and catalogs, right-to-left layouts | Done, apart from plural rules and the formatting of numbers and dates (see [Localization](#localization-and-right-to-left)) |
 | M5 | Docking: major and panel tabs, windows merging and splitting by their tabs, both modes, layout persistence | Done: docking in a window, major tabs and saved layouts (M5a), across windows in the full mode (M5b), global panels, saved workspaces and Wayland's restricted mode (M5c). Wayland's drag-and-drop between windows, and keeping restored windows on the screens there are, later; the restricted mode not yet run on Wayland |
-| M6 | Validation: a node canvas and a code editor (FlowGraph), charts, an engine embedding example | In progress: the node canvas (`Canvas`, `node_editor`), menus, popups and dialogs, the code editor (`TextEdit`, `code_editor`), charts (lines, stacked areas, candles, histograms, box plots, scatter plots, timelines, flame graphs, pies, treemaps, bars, races, heat maps, sparklines, gauges: `chart_demo`) |
+| M6 | Validation: a node canvas and a code editor (FlowGraph), charts, an engine embedding example | In progress: the node canvas (`Canvas`, `node_editor`), menus, popups and dialogs, the code editor (`TextEdit`, `code_editor`), charts (lines, stacked areas, candles, histograms, box plots, scatter plots, timelines, flame graphs, Sankey diagrams, pies, treemaps, bars, races, heat maps, sparklines, gauges: `chart_demo`) |
 
 ## Open questions
 
