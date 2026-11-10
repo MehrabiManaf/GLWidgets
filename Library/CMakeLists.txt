@@ -19,6 +19,7 @@ add_library(GLWidgets ${GLW_LIB_TYPE}
     Source/Charts/CandleChart.cpp
     Source/Charts/Chart.cpp
     Source/Charts/ChartAxis.cpp
+    Source/Charts/FlameGraph.cpp
     Source/Charts/Gauge.cpp
     Source/Charts/HeatMap.cpp
     Source/Charts/HistogramChart.cpp
@@ -27,6 +28,7 @@ add_library(GLWidgets ${GLW_LIB_TYPE}
     Source/Charts/ScatterChart.cpp
     Source/Charts/SeriesBuffer.cpp
     Source/Charts/Sparkline.cpp
+    Source/Charts/TimelineChart.cpp
     Source/Charts/TreeMap.cpp
     Source/Core/Assert.cpp
     Source/Core/Error.cpp

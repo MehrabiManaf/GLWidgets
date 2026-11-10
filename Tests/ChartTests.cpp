@@ -11,6 +11,7 @@
 #include <GLWidgets/Charts/BoxChart.hpp>
 #include <GLWidgets/Charts/CandleChart.hpp>
 #include <GLWidgets/Charts/ChartAxis.hpp>
+#include <GLWidgets/Charts/FlameGraph.hpp>
 #include <GLWidgets/Charts/Gauge.hpp>
 #include <GLWidgets/Charts/HeatMap.hpp>
 #include <GLWidgets/Charts/HistogramChart.hpp>
@@ -19,6 +20,7 @@
 #include <GLWidgets/Charts/ScatterChart.hpp>
 #include <GLWidgets/Charts/SeriesBuffer.hpp>
 #include <GLWidgets/Charts/Sparkline.hpp>
+#include <GLWidgets/Charts/TimelineChart.hpp>
 #include <GLWidgets/Charts/TreeMap.hpp>
 #include <GLWidgets/Paint/DrawList.hpp>
 #include <GLWidgets/Paint/Painter.hpp>
@@ -1180,4 +1182,66 @@ TEST(aScatterChartOfAMillionPointsDrawsTheirDensity) {
     c.chart->setView({3.5, 4.5}, {3.5, 4.5});
     c.paint();
     CHECK(c.chart->drawn() == ScatterChart::Drawn::Markers);
+}
+
+// ---- timelines, flame graphs ----
+
+TEST(aTimelineLaysItsSpansInLanesAndRows) {
+    Shown<TimelineChart> c(TimelineChart::Props{.lanes = {"main", "worker"}, .capacity = 3});
+    c.chart->addSpan(0, {.start = 0, .end = 10, .name = "frame"});
+    c.chart->addSpan(0, {.start = 1, .end = 4, .name = "update", .depth = 1});
+    c.chart->addSpan(0, {.start = 5, .end = 9, .name = "render", .depth = 1});
+    c.chart->addSpan(1, {.start = 2, .end = 6, .name = "load"});
+    CHECK(c.chart->laneCount() == 2 && c.chart->spanCount(0) == 3 && c.chart->rowCount(0) == 2 && c.chart->rowCount(1) == 1);
+    // a lane's oldest dropped past its capacity; a span of a lane past the last: lanes made for it
+    c.chart->addSpan(0, {.start = 11, .end = 12, .name = "frame"});
+    CHECK(c.chart->spanCount(0) == 3);
+    c.chart->addSpan(3, {.start = 0, .end = 1, .name = "late"});
+    CHECK(c.chart->laneCount() == 4);
+    c.paint();
+    const ChartRange t = c.chart->timeView();
+    CHECK(t.low <= 0 && t.high >= 12);
+    // the mouse over a span: its name, start and length by it
+    const std::size_t drawn = c.paint();
+    c.move({320, 60});
+    CHECK(c.paint() >= drawn);
+}
+
+TEST(aTimelineOfAMillionSpansDrawsWhatItsPixelsShow) {
+    Shown<TimelineChart> c;
+    for (int i = 0; i < 1'000'000; ++i)
+        c.chart->addSpan(static_cast<std::size_t>(i % 4), {.start = i * 1.0, .end = i + 0.6, .name = "task"});
+    // spans under a pixel run together: about a bar a pixel a row, not a million
+    CHECK(c.paint() < 4 * 600 * 8);
+    // zoomed into a few of them: each one, its name in it
+    c.chart->setTimeView({1000, 1010});
+    CHECK(c.paint() > 0);
+}
+
+TEST(aFlameGraphMergesStacksAndZoomsIntoAFrame) {
+    Shown<FlameGraph> c;
+    const std::vector<std::string> ab{"main", "a", "b"}, ac{"main", "a", "c"}, d{"main", "d"};
+    c.chart->addStack(ab);
+    c.chart->addStack(ac, 2);
+    c.chart->addStack(d);
+    // its root, main, a, b, c, d; three deep
+    CHECK(c.chart->total() == 4 && c.chart->frameCount() == 6 && c.chart->depth() == 3);
+    // a search: the frames with it, how much of all they are
+    c.chart->setHighlight("c");
+    CHECK(near(c.chart->highlighted(), 0.5));
+    c.chart->setHighlight("");
+    // into a: it across the graph (its siblings in the order of their names: a, then d)
+    const std::vector<std::string> a{"main", "a"};
+    c.chart->zoomTo(a);
+    CHECK(near(c.chart->zoomRange().first, 0) && near(c.chart->zoomRange().second, 0.75));
+    c.chart->zoomOut();
+    CHECK(near(c.chart->zoomRange().second, 1));
+    // a click on a frame (d: the last quarter of the third row from the bottom) zooms into it; the mouse over one: its
+    // share by it
+    c.paint();
+    c.button(platform::MouseButton::Left, true, {500, 355});
+    CHECK(c.chart->zoomRange().first > 0.7);
+    const std::size_t drawn = c.paint();
+    c.move({300, 375});
+    CHECK(c.paint() > drawn);
 }

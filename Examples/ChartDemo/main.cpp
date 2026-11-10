@@ -13,7 +13,8 @@
 // it (its legend hides each); how requests' latencies fall, live: a histogram of reads' and writes' (their median, 90th
 // and 99th percentiles, the share under each value), and boxes of eight services'; requests' sizes against their
 // latencies, API calls' and static files', 40000 of each (their density; dots when zoomed into fewer), a line through
-// the calls'. Above them, the style and the
+// the calls'; a program profiled: a trace of its threads' work, frame after frame (the last quarter of a second,
+// following), and a flame graph of where its time goes (stacks sampled as it runs; a search finds a function). Above them, the style and the
 // colors of everything, whether the charts ease, how the bars are laid out, and whether the donut and the race show
 // only their top ones (the rest as one of others). Each chart is a docked panel: moved, split, floated, closed by its
 // tab; the View menu hides and shows each (one closed by its tab too), back beside a neighbour of where it was.
@@ -27,6 +28,7 @@
 #include <GLWidgets/Charts/BarChart.hpp>
 #include <GLWidgets/Charts/BarRace.hpp>
 #include <GLWidgets/Charts/BoxChart.hpp>
+#include <GLWidgets/Charts/FlameGraph.hpp>
 #include <GLWidgets/Charts/CandleChart.hpp>
 #include <GLWidgets/Charts/Gauge.hpp>
 #include <GLWidgets/Charts/HeatMap.hpp>
@@ -35,6 +37,7 @@
 #include <GLWidgets/Charts/PieChart.hpp>
 #include <GLWidgets/Charts/ScatterChart.hpp>
 #include <GLWidgets/Charts/Sparkline.hpp>
+#include <GLWidgets/Charts/TimelineChart.hpp>
 #include <GLWidgets/Charts/TreeMap.hpp>
 #include <GLWidgets/Widgets/Application.hpp>
 #include <GLWidgets/Widgets/Action.hpp>
@@ -98,7 +101,7 @@ struct Demo {
     std::vector<std::array<double, 3>> downloads;   // each package's, by system
     std::vector<double> momentum;                   // how fast each grows
     int month = 0;
-    glw::Timer feed, drift, second, disk, count, months, now, flows, trades, requests;
+    glw::Timer feed, drift, second, disk, count, months, now, flows, trades, requests, frames;
     // latencies: reads' and writes' in a histogram, each service's in a box
     glw::HistogramChart* histogram = nullptr;
     glw::HistogramSeries* reads = nullptr;
@@ -109,6 +112,11 @@ struct Demo {
     glw::ScatterChart* scatter = nullptr;
     glw::ScatterSeries* calls = nullptr;
     glw::ScatterSeries* statics = nullptr;
+    // a program profiled: its threads' work, frame after frame; its stacks, sampled
+    glw::TimelineChart* trace = nullptr;
+    glw::FlameGraph* flame = nullptr;
+    double traced = 0;                      // when its last frame began
+    std::array<double, 4> workerFree{};     // when each worker is done with its job
     // the price: a walk, its trades made into candles
     glw::CandleChart* candles = nullptr;
     double price = 250, trend = 0;
@@ -187,6 +195,7 @@ struct Demo {
         };
         glw::DockTabs& lineStack = area->addPanel(panel("line", tr("Measures"), std::move(made)));
         area->addPanel(panel("price", tr("Price"), makePrice()), &lineStack, glw::DockSide::Center, 0.5f);
+        area->addPanel(panel("profile", tr("Profile"), makeProfile()), &lineStack, glw::DockSide::Center, 0.5f);
         glw::DockTabs& donutStack = area->addPanel(panel("donut", tr("Requests"), std::move(donut)), &lineStack, glw::DockSide::End, 0.4f);
         area->addPanel(panel("spread", tr("Distributions"), makeDistributions()), &donutStack, glw::DockSide::Center, 0.5f);
         area->addPanel(panel("scatter", tr("Scatter"), makeScatter()), &donutStack, glw::DockSide::Center, 0.5f);
@@ -305,6 +314,81 @@ struct Demo {
         calls = &scatter->addSeries({.name = tr("API calls"), .capacity = 40000, .trend = true});
         statics = &scatter->addSeries({.name = tr("Static files"), .capacity = 40000});
         return made;
+    }
+
+    // A program profiled: its threads' spans of work, the last quarter of a second of them, following; where its time
+    // goes, a search above it.
+    std::unique_ptr<glw::Widget> makeProfile() {
+        auto timeline = std::make_unique<glw::TimelineChart>(glw::TimelineChart::Props{
+            .title = tr("Threads, frame by frame"), .xAxis = glw::ChartAxisKind::Time,
+            .lanes = {tr("Main"), tr("Render"), tr("Worker 1"), tr("Worker 2"), tr("Worker 3"), tr("Worker 4")}, .capacity = 20000,
+            .window = 0.25});
+        trace = timeline.get();
+        auto graph = std::make_unique<glw::FlameGraph>(glw::FlameGraph::Props{.title = tr("Where the time goes")});
+        flame = graph.get();
+        return glw::ui::VStack({.spacing = 10},
+                               glw::ui::Element<glw::TimelineChart>(std::move(timeline)).stretch(1),
+                               glw::ui::HStack({.spacing = 8},
+                                               glw::ui::Label({.text = tr("Find")}).alignment(glw::Alignment::Start, glw::Alignment::Center),
+                                               glw::ui::LineEdit({.placeholder = tr("a function's name"),
+                                                                  .onChanged = [this](const std::string& text) { flame->setHighlight(text); }})
+                                                   .stretch(1)),
+                               glw::ui::Element<glw::FlameGraph>(std::move(graph)).stretch(1))
+            .build();
+    }
+
+    // A frame of the program from `t0` (seconds): the main thread's frame and what it does in it, the render thread's
+    // after it, jobs on the workers that are free; its stacks sampled, a sample a tenth of a millisecond.
+    void nextFrame(double t0) {
+        const double ms = 0.001;
+        const auto span = [&](std::size_t lane, double from, double length, const char* name, std::uint32_t depth) {
+            trace->addSpan(lane, {.start = from, .end = from + length, .name = name, .depth = depth});
+            return from + length;
+        };
+        const auto sample = [&](std::initializer_list<const char*> stack, double length) {
+            std::vector<std::string> names(stack.begin(), stack.end());
+            flame->addStack(names, std::round(length / ms * 10));
+        };
+        // the main thread: input, update (physics, scripts, animation), layout, paint
+        const double input = uniform(0.2, 0.6) * ms, physics = uniform(0.8, 2.4) * ms, scripts = uniform(0.5, 2.0) * ms;
+        const double animation = uniform(0.3, 0.9) * ms, layout = uniform(0.6, 1.6) * ms, paint = uniform(1.5, 3.5) * ms;
+        const double hitch = uniform(0, 1) < 0.03 ? uniform(4, 9) * ms : 0;        // now and then, a slow script
+        double t = span(0, t0, input, "Input", 1);
+        const double update = t;
+        t = span(0, t, physics, "Physics", 2);
+        t = span(0, t, scripts + hitch, "Scripts", 2);
+        t = span(0, t, animation, "Animation", 2);
+        span(0, update, t - update, "Update", 1);
+        t = span(0, t, layout, "Layout", 1);
+        t = span(0, t, paint, "Paint", 1);
+        span(0, t0, t - t0, "Frame", 0);
+        sample({"main", "Frame", "Input"}, input);
+        sample({"main", "Frame", "Update", "Physics", "Broadphase"}, physics * 0.4);
+        sample({"main", "Frame", "Update", "Physics", "Solver"}, physics * 0.6);
+        sample({"main", "Frame", "Update", "Scripts", "Interpreter"}, scripts * 0.7 + hitch);
+        sample({"main", "Frame", "Update", "Scripts", "Garbage collector"}, scripts * 0.3);
+        sample({"main", "Frame", "Update", "Animation"}, animation);
+        sample({"main", "Frame", "Layout", "Measure text"}, layout * 0.55);
+        sample({"main", "Frame", "Layout", "Arrange"}, layout * 0.45);
+        sample({"main", "Frame", "Paint", "Draw text"}, paint * 0.5);
+        sample({"main", "Frame", "Paint", "Fill paths"}, paint * 0.5);
+        // the render thread: the frame's commands after it was painted
+        const double submit = uniform(1.0, 2.5) * ms, present = uniform(0.4, 1.2) * ms;
+        double r = span(1, t, submit, "Submit", 0);
+        span(1, r, present, "Present", 0);
+        sample({"render", "Submit", "Upload buffers"}, submit * 0.35);
+        sample({"render", "Submit", "Draw calls"}, submit * 0.65);
+        sample({"render", "Present"}, present);
+        // the workers: a job on each that is free, sometimes
+        static constexpr const char* jobs[] = {"Decode image", "Load texture", "Compress", "Find path", "Bake light"};
+        for (std::size_t w = 0; w < workerFree.size(); ++w) {
+            if (workerFree[w] > t0 || uniform(0, 1) > 0.45)
+                continue;
+            const char* job = jobs[std::uniform_int_distribution<std::size_t>(0, std::size(jobs) - 1)(random)];
+            const double from = t0 + uniform(0, 4) * ms, length = uniform(2, 22) * ms;
+            workerFree[w] = span(2 + w, from, length, job, 0);
+            sample({"workers", job}, length);
+        }
     }
 
     // A tenth of a second of requests: their sizes and latencies.
@@ -442,7 +526,7 @@ struct Demo {
     std::unique_ptr<glw::MenuBar> menus() {
         std::vector<glw::MenuItem> items;
         for (const auto& [id, title] : std::initializer_list<std::pair<const char*, const char*>>{
-                 {"dash", "&Dashboard"}, {"line", "&Measures"}, {"price", "&Price"}, {"donut", "Re&quests"}, {"race", "R&ace"}, {"bars", "&Events"}, {"heat", "&Latency"}, {"spread", "&Distributions"}, {"scatter", "&Scatter"}, {"traffic", "&Traffic"},
+                 {"dash", "&Dashboard"}, {"line", "&Measures"}, {"price", "&Price"}, {"donut", "Re&quests"}, {"race", "R&ace"}, {"bars", "&Events"}, {"heat", "&Latency"}, {"spread", "&Distributions"}, {"scatter", "&Scatter"}, {"profile", "Pr&ofile"}, {"traffic", "&Traffic"},
                  {"tree", "&Files"}}) {
             auto toggle = std::make_shared<glw::Action>(tr(title));
             toggle->setCheckable(true);
@@ -475,6 +559,7 @@ struct Demo {
             {"bars", {{"race", glw::DockSide::End}, {"tree", glw::DockSide::Start}, {"line", glw::DockSide::Bottom}}},
             {"tree", {{"donut", glw::DockSide::Bottom}, {"bars", glw::DockSide::End}}},
             {"dash", {}},
+            {"profile", {{"line", glw::DockSide::Center}, {"price", glw::DockSide::Center}, {"race", glw::DockSide::Top}}},
             {"spread", {{"donut", glw::DockSide::Center}, {"tree", glw::DockSide::Top}}},
             {"scatter", {{"donut", glw::DockSide::Center}, {"tree", glw::DockSide::Top}}},
             {"price", {{"line", glw::DockSide::Center}, {"race", glw::DockSide::Top}}},
@@ -540,7 +625,7 @@ struct Demo {
 
     void animate(bool on) {
         for (glw::Chart* chart : std::initializer_list<glw::Chart*>{line, pie, race, bars, tree, gauges[0], gauges[1], gauges[2], latency, weekly,
-                                                                    traffic, candles, histogram, boxes, scatter})
+                                                                    traffic, candles, histogram, boxes, scatter, trace, flame})
             chart->setAnimated(on);
         for (glw::Sparkline* spark : sparks)
             spark->setAnimated(on);
@@ -614,6 +699,11 @@ struct Demo {
             nextRequests();
             nextSizes();
         }, true);
+        // the program profiled: its frames, sixty a second, as they end
+        frames.start(scheduler, std::chrono::milliseconds(50), [this] {
+            for (const double until = glw::chartNow(); traced + 1.0 / 60 <= until; traced += 1.0 / 60)
+                nextFrame(traced);
+        }, true);
         // the trades: twenty a second
         trades.start(scheduler, std::chrono::milliseconds(50), [this] { nextTrade(glw::chartNow()); }, true);
         // the traffic: ten points a second
@@ -663,6 +753,8 @@ struct Demo {
             nextRequests();
         for (int i = 0; i < 700; ++i)
             nextSizes();
+        for (traced = fed - 5; traced + 1.0 / 60 <= fed; traced += 1.0 / 60)
+            nextFrame(traced);
         for (int i = 30; i > 0; --i) {
             const double values[] = {std::round(uniform(40, 120)), std::round(uniform(10, 60)), std::round(uniform(0, 1) < 0.2 ? uniform(1, 25) : 0)};
             bars->appendCategory("-" + std::to_string(i) + "s", values);

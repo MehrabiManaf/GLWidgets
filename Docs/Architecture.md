@@ -774,8 +774,8 @@ shape, the edges of a borderless window the resize shapes of its sides and corne
 ### Charts
 
 Charts (`Library/Include/GLWidgets/Charts`) are widgets made for data that changes as it comes: a feed of measures, of
-events, of shares. Twelve for now: **lines** over values or time and stacked areas (`LineChart`), **candles** of a price
-(`CandleChart`), **histograms** (`HistogramChart`), **box plots** (`BoxChart`), **scatter** plots (`ScatterChart`), **pies**, donuts and sunbursts
+events, of shares. Fourteen for now: **lines** over values or time and stacked areas (`LineChart`), **candles** of a price
+(`CandleChart`), **histograms** (`HistogramChart`), **box plots** (`BoxChart`), **scatter** plots (`ScatterChart`), **timelines** (`TimelineChart`) and **flame graphs** (`FlameGraph`), **pies**, donuts and sunbursts
 (`PieChart`), **treemaps** (`TreeMap`), **bars**, stacked, grouped or in percent, standing or lying (`BarChart`), **bar
 races** (`BarRace`), **heat maps** (`HeatMap`), and for dashboards **sparklines** (`Sparkline`) and **gauges**
 (`Gauge`). What they share is in `Chart`:
@@ -951,6 +951,24 @@ as points come and go, about its first point so that large values keep their pre
 the wheel zooms at it (Ctrl: the y axis only, Shift: the x axis only), a drag pans, the right button drags a rectangle to
 zoom into, a double click fits all again; the point nearest to it ringed, its values by it; a series's legend item hides it.
 
+**Timelines** (`TimelineChart`): what happened when, lane by lane (a profiler's trace, a scheduler's jobs): lanes
+(threads, machines) of spans of time, each a bar from its start to its end with its name in it when it fits, those within
+another a row under it (`TimelineSpan::depth`), of its category's color (a series color; by default its name's, the same
+name the same color). Spans come as they come (`addSpan`: a lane's oldest dropped past a capacity; a live one shows its
+last window, following). Each row's spans are kept in the order of their starts, so those that show are found by
+halves, and those narrower than a pixel are run together into one bar: a million spans draw as their pixels do. The
+wheel zooms the time at the mouse (Shift pans; Ctrl scrolls the lanes, as the style's scroll bar at the end side does when
+there are more than fit), a drag pans both ways, a double click on a span zooms to it; the span under the mouse is
+outlined, its name, start, length (in s, ms or µs) and lane by it.
+
+**Flame graphs** (`FlameGraph`): where the time goes (Brendan Gregg's): stacks of a sampling profiler (or anything
+nested), merged into a tree as they come (`addStack`, a weight each), each frame a bar as wide as its share of the
+samples, the frames it called on it (or under it: `icicle`), in the order of their names; of warm colors by their names
+(or the series colors). A click on a frame zooms into it, eased: it as wide as the graph, its callers under it as wide
+too (a click on one zooms out to it; a double click shows all). A search (`setHighlight`) leaves the frames whose names
+have it in their colors, the rest faint, and says how much of all of it they are (`highlighted`: a frame within one that
+matches counted once). The frame under the mouse: its samples, its share of all and of what shows, and its own.
+
 **Candles** (`CandleChart`): a price over time, a candle for each period (`Candle`: its open, high, low and close, its
 volume): a wick from the low to the high, a body from the open to the close, of the style's rise color when it closed
 higher (`ChartStyle::rise`, `fall`: of each color scheme, as green and red read in it; a chart's own if given), its
@@ -985,9 +1003,10 @@ incidents and spikes in it, by powers of ten) and of requests by hour and weekda
 (in shares, if asked), a price as candles made of its trades (of a second to five minutes, by its buttons; its volume, two moving averages); latencies of
 requests as a histogram (reads' and writes', in percent, their quantiles and cumulative share) and boxes of eight
 services'; requests' sizes against their latencies (80000 of
-them: their density, dots when zoomed into; a line through the API calls'); the style, the colors, the motion and the bars' layout chosen above them.
+them: their density, dots when zoomed into; a line through the API calls'); a program profiled (its threads'
+work frame by frame as a timeline, where its time goes as a flame graph with a search); the style, the colors, the motion and the bars' layout chosen above them.
 
-Still to come: more kinds (timelines and flame graphs, Sankey diagrams, radar charts; calendars as heat maps),
+Still to come: more kinds (Sankey diagrams, radar charts; calendars as heat maps),
 logarithmic axes, a second y axis, Persian digits and the Solar Hijri calendar on axes (with the `Locale` of
 [Localization](#localization-and-right-to-left)).
 
@@ -1241,7 +1260,7 @@ The `GLW_USE_SYSTEM_SDL3` option uses an installed SDL3 instead of the pinned re
 | M3 | Widget core: tree, events, focus, layout, a UI root independent of the platform, window chrome as widgets (with the native extras), live resize | Done, apart from the native extras of the chrome and what is listed in [Widgets](#widgets) |
 | M4 | Basic widgets (label, button, line edit, scroll area, splitter), styles, `LocalizedText` and catalogs, right-to-left layouts | Done, apart from plural rules and the formatting of numbers and dates (see [Localization](#localization-and-right-to-left)) |
 | M5 | Docking: major and panel tabs, windows merging and splitting by their tabs, both modes, layout persistence | Done: docking in a window, major tabs and saved layouts (M5a), across windows in the full mode (M5b), global panels, saved workspaces and Wayland's restricted mode (M5c). Wayland's drag-and-drop between windows, and keeping restored windows on the screens there are, later; the restricted mode not yet run on Wayland |
-| M6 | Validation: a node canvas and a code editor (FlowGraph), charts, an engine embedding example | In progress: the node canvas (`Canvas`, `node_editor`), menus, popups and dialogs, the code editor (`TextEdit`, `code_editor`), charts (lines, stacked areas, candles, histograms, box plots, scatter plots, pies, treemaps, bars, races, heat maps, sparklines, gauges: `chart_demo`) |
+| M6 | Validation: a node canvas and a code editor (FlowGraph), charts, an engine embedding example | In progress: the node canvas (`Canvas`, `node_editor`), menus, popups and dialogs, the code editor (`TextEdit`, `code_editor`), charts (lines, stacked areas, candles, histograms, box plots, scatter plots, timelines, flame graphs, pies, treemaps, bars, races, heat maps, sparklines, gauges: `chart_demo`) |
 
 ## Open questions
 
