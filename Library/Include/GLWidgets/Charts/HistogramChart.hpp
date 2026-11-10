@@ -104,6 +104,8 @@ public:
     std::size_t binCount() const;
     // Which bin a value is in; none: past them.
     std::optional<std::size_t> binOf(double value) const;
+    // Where its bins are drawn (its own coordinates), as it was last painted.
+    Rect plotArea() const { return plot_; }
 
 protected:
     void paint(PaintContext& context) override;

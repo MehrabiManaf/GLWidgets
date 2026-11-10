@@ -228,6 +228,64 @@ TEST(chartsShareACrosshair) {
     CHECK(cursor.use_count() == 1);
 }
 
+TEST(candlesHistogramsAndBarsShowAnnotations) {
+    // each: more drawn with a line, a band and a point marked than without
+    const auto marks = [](Chart& chart, double x, double y) {
+        chart.addAnnotation({.kind = ChartAnnotation::Kind::XLine, .from = x, .label = "x"});
+        chart.addAnnotation({.kind = ChartAnnotation::Kind::YBand, .from = y * 0.9, .to = y * 1.1, .label = "band"});
+        chart.addAnnotation({.kind = ChartAnnotation::Kind::Point, .from = x, .to = y, .label = "point"});
+    };
+    Shown<CandleChart> candles(CandleChart::Props{.period = 60});
+    for (int i = 0; i < 30; ++i)
+        candles.chart->trade(i * 60.0, 100 + i, 1);
+    const std::size_t c0 = candles.paint();
+    marks(*candles.chart, 15 * 60.0, 115);
+    CHECK(candles.paint() > c0);
+
+    Shown<HistogramChart> histogram(HistogramChart::Props{.bins = 10, .range = ChartRange{0, 100}});
+    HistogramSeries& h = histogram.chart->addSeries({.name = "a"});
+    for (int i = 0; i < 100; ++i)
+        h.add(i + 0.5);
+    const std::size_t h0 = histogram.paint();
+    marks(*histogram.chart, 50, 5);
+    CHECK(histogram.paint() > h0);
+
+    for (const Orientation o : {Orientation::Vertical, Orientation::Horizontal}) {
+        Shown<BarChart> bars(BarChart::Props{.orientation = o});
+        const std::size_t a = bars.chart->addSeries("a");
+        bars.chart->setCategories({"x", "y", "z"});
+        bars.chart->setValues(a, std::vector<double>{10, 20, 30});
+        const std::size_t b0 = bars.paint();
+        marks(*bars.chart, 1.5, 20);
+        CHECK(bars.paint() > b0);
+    }
+}
+
+TEST(aHistogramAndCandlesShareACrosshair) {
+    auto cursor = std::make_shared<ChartCursor>();
+    Shown<HistogramChart> histogram(HistogramChart::Props{.bins = 10, .range = ChartRange{0, 100}});
+    HistogramSeries& h = histogram.chart->addSeries({.name = "a"});
+    for (int i = 0; i < 100; ++i)
+        h.add(i + 0.5);
+    Shown<CandleChart> candles(CandleChart::Props{.period = 60});
+    for (int i = 0; i < 30; ++i)
+        candles.chart->trade(i * 60.0, 100 + i, 1);
+    histogram.chart->setCursor(cursor);
+    candles.chart->setCursor(cursor);
+    const std::size_t h0 = histogram.paint(), c0 = candles.paint();
+    // the mouse over the histogram: its value shared, a line in the candles' chart
+    histogram.move(histogram.chart->plotArea().center());
+    CHECK(cursor->from() == histogram.chart && cursor->x() && *cursor->x() > 30 && *cursor->x() < 70);
+    CHECK(candles.paint() > c0);
+    // over the candles: the histogram's bar there lit, its line
+    histogram.move({-10, -10});
+    candles.move(candles.chart->plotArea().center());
+    candles.paint();            // (its time found as it paints)
+    CHECK(cursor->from() == candles.chart);
+    cursor->set(candles.chart, 40.0);
+    CHECK(histogram.paint() > h0);
+}
+
 TEST(aScatterChartOnLogarithmicAxes) {
     Shown<ScatterChart> c(ScatterChart::Props{.logX = true, .logY = true});
     ScatterSeries& s = c.chart->addSeries({.name = "a", .trend = true});

@@ -727,6 +727,10 @@ void CandleChart::paint(PaintContext& context) {
     gather(xv, columns);
     const Color rise = riseColor(), fall = fallColor();
     const float slot = static_cast<float>(plot.width / xv.span());
+    // its annotations: times where they are among the candles, prices up the prices' part
+    const auto annotationX = [&](double t) { return px(indexOf(t)); };
+    const auto annotationY = [&](double v, bool) { return py(v); };
+    paintAnnotations(context, prices, annotationX, annotationY, false);
     p.pushClip(plot);
     // the volumes: bars along the bottom, faint, as high as the highest that shows
     if (volumes_.height > 1) {
@@ -812,6 +816,7 @@ void CandleChart::paint(PaintContext& context) {
             p.drawPolyline(points_, s.lineWidth, color);
     }
     p.popClip();
+    paintAnnotations(context, prices, annotationX, annotationY, true);
 
     // the last close: a line across, its value on the axis in its candle's color
     const auto tag = [&](double value, Color background, Color text) {
@@ -841,6 +846,8 @@ void CandleChart::paint(PaintContext& context) {
                 under = &c;
         const float cx = under ? px(under->index) : mouse_->x;
         p.fillRect({snap(cx, ppd), plot.y, hair, plot.height}, s.crosshair);
+        // its time, for the charts that share its crosshair
+        shareCursor(under ? under->candle.time : timeOf(at));
         if (prices.contains(*mouse_)) {
             p.fillRect({plot.x, snap(mouse_->y, ppd), plot.width, hair}, s.crosshair);
             const Palette& palette = context.ui.theme.palette;
@@ -865,7 +872,14 @@ void CandleChart::paint(PaintContext& context) {
             const std::string title = time ? formatTimeFully(k.time, unit, true) : formatNumber(k.time, 0);
             paintToolTip(context, *mouse_, title, rows);
         }
+    } else if (const std::optional<double> shared = sharedX(); shared && !dragging_) {
+        // another chart's mouse: a line at its time, through the middle of the candle it is in
+        const float cx = px(std::floor(indexOf(*shared)) + 0.5);
+        if (cx >= plot.x && cx <= plot.right())
+            p.fillRect({snap(cx, ppd), plot.y, hair, plot.height}, s.crosshair);
     }
+    if (mouse_ && (dragging_ || !plot.contains(*mouse_)))
+        shareCursor(std::nullopt);
 }
 
 std::vector<Chart::LegendItem> CandleChart::legendItems() const {
@@ -992,6 +1006,7 @@ void CandleChart::onMouse(MouseEvent& event) {
 void CandleChart::onHoverChanged(bool hovered) {
     if (!hovered) {
         mouse_.reset();
+        shareCursor(std::nullopt);
         invalidatePaint();
     }
 }

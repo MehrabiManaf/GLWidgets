@@ -319,6 +319,13 @@ void Chart::clearAnnotations() {
 }
 
 void Chart::paintAnnotations(PaintContext& context, const Rect& plot, const Axis& x, const Axis& y, bool above, const Axis* y2) const {
+    paintAnnotations(
+        context, plot, [&](double v) { return x.at(v, plot.x, plot.width); },
+        [&](double v, bool second) { return (second && y2 ? *y2 : y).at(v, plot.y, plot.height); }, above);
+}
+
+void Chart::paintAnnotations(PaintContext& context, const Rect& plot, const std::function<float(double)>& xAt,
+                             const std::function<float(double, bool)>& yAt, bool above, bool lying) const {
     if (annotations_.empty() || plot.width <= 0 || plot.height <= 0)
         return;
     paint::Painter& p = context.painter;
@@ -328,71 +335,69 @@ void Chart::paintAnnotations(PaintContext& context, const Rect& plot, const Axis
     const bool rtl = rightToLeft();
     const float small = std::max(9.0f, s.fontSize - 1);
     const float line = textSize("0", small).height;
-    // a line along x (across: at a y) or down (at an x), whole or in dashes
-    const auto rule = [&](bool across, float at, Color color, bool dashed) {
-        const float length = across ? plot.width : plot.height;
+    // a line down the plot (at a place across it) or across it, whole or in dashes
+    const auto rule = [&](bool down, float at, Color color, bool dashed) {
+        const float length = down ? plot.height : plot.width;
         const float step = dashed ? 9.0f : length;
         for (float t = 0; t < length; t += step) {
             const float run = std::min(dashed ? 5.0f : length, length - t);
-            if (across)
-                p.fillRect({plot.x + t, snap(at, ppd) - hair / 2, run, hair}, color);
-            else
+            if (down)
                 p.fillRect({snap(at, ppd) - hair / 2, plot.y + t, hair, run}, color);
+            else
+                p.fillRect({plot.x + t, snap(at, ppd) - hair / 2, run, hair}, color);
         }
     };
     p.pushClip(plot);
     for (const auto& [id, a] : annotations_) {
-        const Axis& ya = a.secondAxis && y2 ? *y2 : y;
-        const Color color = a.color ? *a.color : s.text;
-        const std::string label = translate(a.label);
-        const bool band = a.kind == ChartAnnotation::Kind::XBand || a.kind == ChartAnnotation::Kind::YBand;
+        using Kind = ChartAnnotation::Kind;
+        const bool band = a.kind == Kind::XBand || a.kind == Kind::YBand;
         if (band == above)
             continue;
+        const Color color = a.color ? *a.color : s.text;
+        const std::string label = translate(a.label);
+        // where its value is: an x's or a y's place; whether its line goes down the plot (across: along the other)
+        const bool ofX = a.kind == Kind::XLine || a.kind == Kind::XBand;
+        const auto place = [&](double v) { return ofX ? xAt(v) : yAt(v, a.secondAxis); };
+        const bool down = ofX != lying;
         switch (a.kind) {
-        case ChartAnnotation::Kind::XBand: {
-            const float x0 = x.at(a.from, plot.x, plot.width), x1 = x.at(a.to, plot.x, plot.width);
-            const Rect r{std::min(x0, x1), plot.y, std::abs(x1 - x0), plot.height};
+        case Kind::XBand:
+        case Kind::YBand: {
+            const float p0 = place(a.from), p1 = place(a.to);
+            const Rect r = down ? Rect{std::min(p0, p1), plot.y, std::abs(p1 - p0), plot.height}
+                                : Rect{plot.x, std::min(p0, p1), plot.width, std::abs(p1 - p0)};
             p.fillRect(r, withAlpha(color, color.a * 0.12f));
             if (!label.empty())
-                drawText(context, label, {rtl ? r.right() - 4 : r.x + 4, plot.y + 3}, withAlpha(color, color.a * 0.9f), small, {rtl ? 1.0f : 0.0f, 0});
+                drawText(context, label, {rtl ? r.right() - 4 : r.x + 4, r.y + 3}, withAlpha(color, color.a * 0.9f), small, {rtl ? 1.0f : 0.0f, 0});
             break;
         }
-        case ChartAnnotation::Kind::YBand: {
-            const float y0 = ya.at(a.from, plot.y, plot.height), y1 = ya.at(a.to, plot.y, plot.height);
-            const Rect r{plot.x, std::min(y0, y1), plot.width, std::abs(y1 - y0)};
-            p.fillRect(r, withAlpha(color, color.a * 0.12f));
-            if (!label.empty())
-                drawText(context, label, {rtl ? plot.right() - 4 : plot.x + 4, r.y + 3}, withAlpha(color, color.a * 0.9f), small, {rtl ? 1.0f : 0.0f, 0});
-            break;
-        }
-        case ChartAnnotation::Kind::XLine: {
-            const float at = x.at(a.from, plot.x, plot.width);
-            rule(false, at, withAlpha(color, color.a * 0.85f), a.dashed);
-            // its label at the top, at its end side (at its start side when there is no room there)
-            if (!label.empty()) {
+        case Kind::XLine:
+        case Kind::YLine: {
+            const float at = place(a.from);
+            rule(down, at, withAlpha(color, color.a * 0.85f), a.dashed);
+            if (label.empty())
+                break;
+            if (down) {
+                // its label at the top, at its end side (at its start side when there is no room there)
                 const float w = textSize(label, small).width;
                 const bool after = rtl ? at - w - 4 >= plot.x : at + w + 4 > plot.right();
                 drawText(context, label, {after == rtl ? at + 4 : at - 4, plot.y + 3}, color, small, {after == rtl ? 0.0f : 1.0f, 0});
-            }
-            break;
-        }
-        case ChartAnnotation::Kind::YLine: {
-            const float at = ya.at(a.from, plot.y, plot.height);
-            rule(true, at, withAlpha(color, color.a * 0.85f), a.dashed);
-            // its label above it at the end side (under it when it is at the top)
-            if (!label.empty()) {
+            } else {
+                // above it at the end side (under it when it is at the top)
                 const bool under = at - line - 2 < plot.y;
-                drawText(context, label, {rtl ? plot.x + 4 : plot.right() - 4, under ? at + 2 : at - 2}, color, small, {rtl ? 0.0f : 1.0f, under ? 0.0f : 1.0f});
+                drawText(context, label, {rtl ? plot.x + 4 : plot.right() - 4, under ? at + 2 : at - 2}, color, small,
+                         {rtl ? 0.0f : 1.0f, under ? 0.0f : 1.0f});
             }
             break;
         }
-        case ChartAnnotation::Kind::Point: {
-            const Point at{x.at(a.from, plot.x, plot.width), ya.at(a.to, plot.y, plot.height)};
+        case Kind::Point: {
+            const float px = xAt(a.from), py = yAt(a.to, a.secondAxis);
+            const Point at = lying ? Point{py, px} : Point{px, py};
             const Color ring = s.plot.a > 0.9f ? s.plot : context.ui.theme.palette.layer;
             p.fillCircle(at, 5, ring);
             p.fillCircle(at, 3.5f, color);
             if (!label.empty()) {
-                const bool before = rtl ? at.x - textSize(label, small).width - 8 >= plot.x : at.x + textSize(label, small).width + 8 > plot.right();
+                const float w = textSize(label, small).width;
+                const bool before = rtl ? at.x - w - 8 >= plot.x : at.x + w + 8 > plot.right();
                 drawText(context, label, {before == rtl ? at.x + 7 : at.x - 7, at.y - 4}, color, small, {before == rtl ? 0.0f : 1.0f, 1});
             }
             break;

@@ -376,7 +376,15 @@ void BarChart::paint(PaintContext& context) {
         const Rect strip = rectOf(static_cast<double>(begin + static_cast<long long>(hovered_->second)),
                                   static_cast<double>(begin + static_cast<long long>(hovered_->second)) + 1, vv.low, vv.high);
         p.fillRect(strip.intersected(plot), s.grid);
+    } else if (const std::optional<double> shared = sharedX(); shared && !dragging_) {
+        // another bar chart's mouse: its category's strip
+        const double c = std::floor(*shared);
+        p.fillRect(rectOf(c, c + 1, vv.low, vv.high).intersected(plot), s.grid);
     }
+    // its annotations: a category's place (from the first it holds), values across
+    const auto annotationX = [&](double c) { return along(static_cast<double>(begin) + c); };
+    const auto annotationY = [&](double v, bool) { return across(v); };
+    paintAnnotations(context, plot, annotationX, annotationY, false, !standing);
     bars_.clear();
     p.pushClip(plot);
     const auto bar = [&](Rect r, std::size_t si, std::size_t ci, float thickness) {
@@ -447,6 +455,7 @@ void BarChart::paint(PaintContext& context) {
         }
     }
     p.popClip();
+    paintAnnotations(context, plot, annotationX, annotationY, true, !standing);
 
     // the categories' names: every one, or every second, fifth... as they fit (steady as they scroll)
     const float need = standing ? widestName + 10 : line + 2;
@@ -558,6 +567,8 @@ void BarChart::onMouse(MouseEvent& event) {
         } else {
             hovered_ = barAt(at);
         }
+        // its category (absolute, a fraction), for the bar charts that share its crosshair
+        shareCursor(!dragging_ && plot_.contains(at) ? std::optional(categoryAt(at)) : std::nullopt);
         invalidatePaint();
         return;
     case MouseEventType::Release:
@@ -579,6 +590,7 @@ void BarChart::onHoverChanged(bool hovered) {
     if (!hovered) {
         hovered_.reset();
         mouse_.reset();
+        shareCursor(std::nullopt);
         invalidatePaint();
     }
 }

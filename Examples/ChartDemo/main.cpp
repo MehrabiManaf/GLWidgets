@@ -183,6 +183,7 @@ struct Demo {
         bars->addSeries(tr("Reads"));
         bars->addSeries(tr("Writes"));
         bars->addSeries(tr("Errors"));
+        bars->addAnnotation({.kind = glw::ChartAnnotation::Kind::YLine, .from = 150, .label = tr("Capacity"), .dashed = true});
 
         auto racing = std::make_unique<glw::BarRace>(glw::BarRace::Props{
             .title = tr("Downloads of {n} packages, by system").arg("n", racers), .shown = 10,
@@ -316,6 +317,7 @@ struct Demo {
         histogram = made.get();
         reads = &histogram->addSeries({.name = tr("Reads"), .capacity = 20000});
         writes = &histogram->addSeries({.name = tr("Writes"), .capacity = 20000});
+        histogram->addAnnotation({.kind = glw::ChartAnnotation::Kind::XLine, .from = 100, .label = tr("Objective"), .dashed = true});
         auto services = std::make_unique<glw::BoxChart>(glw::BoxChart::Props{
             .title = tr("Latency by service, ms"),
             .categories = {tr("Auth"), tr("Users"), tr("Orders"), tr("Payments"), tr("Search"), tr("Catalog"), tr("Cart"), tr("Stock")},
@@ -471,6 +473,7 @@ struct Demo {
         candles->setPeriod(5);
         candles->addAverage(20);
         candles->addAverage(50);
+        candles->addAnnotation({.kind = glw::ChartAnnotation::Kind::XLine, .from = glw::chartNow(), .label = tr("Opened")});
         return made;
     }
 
@@ -489,10 +492,11 @@ struct Demo {
         const glw::LocalizedText names[] = {tr("HTTP"), tr("gRPC"), tr("WebSocket"), tr("Other")};
         for (std::size_t k = 0; k < protocols.size(); ++k)
             protocols[k] = &traffic->addSeries({.name = names[k], .stacked = true, .capacity = 6000});
-        // one crosshair with the measures' chart: both are over the same time
+        // one crosshair with the measures' chart and the price's: all of them are over the same time
         auto cursor = std::make_shared<glw::ChartCursor>();
         line->setCursor(cursor);
         traffic->setCursor(cursor);
+        candles->setCursor(cursor);
         return made;
     }
 

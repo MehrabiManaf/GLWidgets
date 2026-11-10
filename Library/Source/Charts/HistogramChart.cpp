@@ -414,10 +414,16 @@ void HistogramChart::paint(PaintContext& context) {
     const auto px = [&](double v) { return static_cast<float>(plot.x + (v - xr.low) / xr.span() * plot.width); };
     const auto py = [&](double v) { return static_cast<float>(plot.bottom() - v / shownTop * plot.height); };
 
-    // the bar under the mouse
+    // the bar under the mouse; another chart's mouse: the bar at its value, a line there
     std::optional<std::size_t> hovered;
-    if (mouse_ && plot.contains(*mouse_))
+    const std::optional<double> shared = sharedX();
+    if (mouse_ && plot.contains(*mouse_)) {
         hovered = binOf(xr.low + (mouse_->x - plot.x) / plot.width * xr.span());
+    } else if (shared && xr.contains(*shared)) {
+        hovered = binOf(*shared);
+        p.fillRect({snap(px(*shared), ppd), plot.y, 1.0f / ppd, plot.height}, s.crosshair);
+    }
+    paintAnnotations(context, plot, xAxis_, yAxis_, false);
     // the bars: each series's (one: raised as the style's bars are; several: translucent, over one another)
     const float binWidth = plot.width / static_cast<float>(bins_);
     const float gap = binWidth >= 6 ? std::min(s.gap, binWidth * 0.15f) : 0.0f;
@@ -444,6 +450,7 @@ void HistogramChart::paint(PaintContext& context) {
         }
     }
     p.popClip();
+    paintAnnotations(context, plot, xAxis_, yAxis_, true);
 
     // the first series that shows: its share at or under each value, a line; lines at its quantiles and its mean
     const HistogramSeries* first = nullptr;
@@ -508,7 +515,7 @@ void HistogramChart::paint(PaintContext& context) {
     }
 
     // the bin under the mouse: its range, each series's count (and share)
-    if (hovered) {
+    if (hovered && mouse_ && plot.contains(*mouse_)) {
         const double a = start_ + static_cast<double>(*hovered) * width_, b = a + width_;
         const int decimals = decimalsFor(width_);
         const auto value = [&](double v) { return format_ ? format_(v, width_) : formatNumber(v, decimals); };
@@ -557,6 +564,11 @@ void HistogramChart::onMouse(MouseEvent& event) {
         return;
     if (event.type == MouseEventType::Move) {
         mouse_ = event.position;
+        // the value under it, for the charts that share its crosshair
+        if (bins_ > 0 && plot_.width > 0 && plot_.contains(event.position))
+            shareCursor(start_ + (event.position.x - plot_.x) / plot_.width * static_cast<double>(bins_) * width_);
+        else
+            shareCursor(std::nullopt);
         invalidatePaint();
     }
 }
@@ -564,6 +576,7 @@ void HistogramChart::onMouse(MouseEvent& event) {
 void HistogramChart::onHoverChanged(bool hovered) {
     if (!hovered) {
         mouse_.reset();
+        shareCursor(std::nullopt);
         invalidatePaint();
     }
 }

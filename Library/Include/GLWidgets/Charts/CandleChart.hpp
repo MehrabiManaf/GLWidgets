@@ -158,6 +158,8 @@ public:
     // The period that shows (made of Props::period's candles, merged; one that is not: left as it is), what it shows
     // following the newest again.
     void setPeriod(CandlePeriod period);
+    // Where its prices are drawn (its own coordinates), as it was last painted.
+    Rect plotArea() const { return plot_; }
     CandlePeriod period() const { return period_; }
     void setKind(Kind kind);
     Kind kind() const { return props_.kind; }

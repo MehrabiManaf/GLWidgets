@@ -36,7 +36,8 @@ class TextLayout;
 // Something marked on a chart's plot at values of its axes (Chart::addAnnotation): a line across it at an x (an event:
 // a deploy, a release) or at a y (a threshold, a target), a band between two of them (a maintenance window, a normal
 // range), or a point with a label. Bands lie under the data, lines and points over it; each has its label by it. They
-// move with the view (zoomed, panned, eased) as the data does. Line and scatter charts show them.
+// move with the view (zoomed, panned, eased) as the data does. Line, scatter, candle (x: times), histogram (x: values,
+// y: counts) and bar charts (x: a category's place among those it holds, 0 the first's start; y: values) show them.
 struct ChartAnnotation {
     enum class Kind : std::uint8_t { XLine, YLine, XBand, YBand, Point };
     Kind kind = Kind::YLine;
@@ -52,7 +53,8 @@ class Chart;
 
 // A crosshair shared by charts over the same x (a dashboard's panels over the same time): the mouse over one of them
 // shows a line at its x in the others too, a dot on each of their series there (its tooltip in the one under the mouse
-// only). Charts join one by Chart::setCursor; line charts show it.
+// only). Charts join one by Chart::setCursor; line, candle and histogram charts show it (a bar chart: by category,
+// shared with bar charts of the same categories only).
 //
 //   auto cursor = std::make_shared<glw::ChartCursor>();
 //   cpu->setCursor(cursor);
@@ -186,6 +188,10 @@ protected:
     // Its annotations over `plot` by its axes `x` and `y` (`y2`: the second y axis's, when it has one): the bands
     // (`above` false: under the data) or the lines and points (true: over it), with their labels; cut to the plot.
     void paintAnnotations(PaintContext& context, const Rect& plot, const Axis& x, const Axis& y, bool above, const Axis* y2 = nullptr) const;
+    // ... where a chart places values itself: `x` an x's place, `y` a y's (on the second axis when it says so); `lying`:
+    // its x down the plot and its y across it (a bar chart lying on its side).
+    void paintAnnotations(PaintContext& context, const Rect& plot, const std::function<float(double)>& x,
+                          const std::function<float(double, bool)>& y, bool above, bool lying = false) const;
 
     // A sector of a ring raised as the style's bars are (a pie's slice, a gauge's arc): a relief (Plastic, Metal, Fluid;
     // `lift` times as high: the slice under the mouse; its corners as round as the bars'), lit from above with a light

@@ -807,11 +807,14 @@ races** (`BarRace`), **heat maps** (`HeatMap`), and for dashboards **sparklines*
   zoom and pan the first.
 - **Annotations** (`ChartAnnotation`, `Chart::addAnnotation`): lines across the plot at an x (a deploy, a release) or a y
   (a threshold), whole or dashed; bands between two values (a maintenance window, a normal range), under the data; points
-  with a label; each with its label, drawn by the chart's axes so that they move with its view (`Chart::paintAnnotations`:
-  line and scatter charts).
+  with a label; each with its label, drawn where the chart places values so that they move with its view
+  (`Chart::paintAnnotations`, by its axes or by its own placing): line and scatter charts; candles (x: times, where they
+  are among the candles); histograms (x: values, y: counts or shares); bars (x: a category's place among those held, y:
+  values; lying, turned with it).
 - **A shared crosshair** (`ChartCursor`, `Chart::setCursor`): charts over the same x (a dashboard's panels over the same
-  time) show a line and their series's dots at the x the mouse is at over any of them; the tooltip is the one under the
-  mouse's only (line charts).
+  time) show a line at the x the mouse is at over any of them (a line chart its series's dots there, a histogram its bar
+  there lit, candles a line through the candle there); the tooltip is the one under the mouse's only. Bar charts share
+  their category (with bar charts of the same categories).
 - **A title, a legend** (a click on an item hides its series, slice or group, eased, and shows it again), **a tooltip** by
   the mouse (the values under it, with their colors).
 
@@ -1034,8 +1037,7 @@ them: their density, dots when zoomed into; a line through the API calls'); a pr
 work frame by frame as a timeline, where its time goes as a flame graph with a search); where requests
 flow, from their sources to the stores (a Sankey diagram, its values drifting); the style, the colors, the motion and the bars' layout chosen above them.
 
-Still to come: more kinds (radar charts; calendars as heat maps); annotations and the shared crosshair on more kinds
-(candles, histograms, bars).
+Still to come: more kinds (radar charts; calendars as heat maps).
 
 Still to come in the widget core: the native extras of the chrome (Windows 11 shadow, rounded corners and snap layouts).
 
