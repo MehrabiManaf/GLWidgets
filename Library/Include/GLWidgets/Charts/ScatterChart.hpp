@@ -13,6 +13,10 @@
 // chart: the wheel zooms at the mouse (with Ctrl the y axis only, with Shift the x axis only), a drag pans, the right
 // button drags a rectangle to zoom into, a double click fits all again; the point nearest to it ringed, its values by it.
 // A series's legend item hides it.
+//
+// Either axis may be logarithmic (Props::logX, logY: base 10, for values that span decades, as heavy-tailed sizes and
+// latencies do): its ticks at 1, 2, 5 of each decade or at powers of ten, its points at or below 0 off its plot, a trend
+// line (fitted to the values as they are) curved as it shows there.
 #include <GLWidgets/Charts/Chart.hpp>
 #include <GLWidgets/Charts/LineChart.hpp>
 #include <GLWidgets/Export.hpp>
@@ -93,6 +97,8 @@ public:
         std::optional<ChartRange> yRange;
         float opacity = 0.75f;              // of a dot
         std::size_t markers = 50000;        // more points in view: an image of their density
+        bool logX = false;                  // a logarithmic x axis (of values, not of times)
+        bool logY = false;                  // a logarithmic y axis
     };
 
     ScatterChart();
@@ -110,6 +116,8 @@ public:
     ChartRange yView() const;
     void setView(ChartRange x, ChartRange y);
     void resetView();
+    void setLogX(bool log);
+    void setLogY(bool log);
     Drawn drawn() const { return drawn_; }
 
 protected:
@@ -129,6 +137,18 @@ private:
     Color colorOf(std::size_t index) const;
     void paintDensity(PaintContext& context, ChartRange xv, ChartRange yv);
     void zoom(double fx, double fy, Point at);
+    // What shows in the view's terms (the logarithms along a logarithmic axis, in which the view is linear); values to
+    // them and back.
+    ChartRange shownX() const;
+    ChartRange shownY() const;
+    bool logX() const { return props_.logX && props_.xAxis == ChartAxisKind::Value; }
+    double toViewX(double x) const;
+    double toViewY(double y) const;
+    double fromViewX(double v) const { return logX() ? std::pow(10.0, v) : v; }
+    double fromViewY(double v) const { return props_.logY ? std::pow(10.0, v) : v; }
+    // A fitted range of values, in the view's terms: on a logarithmic axis from its lowest above 0 out to 1, 2 or 5 times
+    // a power of ten; on a linear one, a little room around it and out to round values.
+    ChartRange fitted(ChartRange values, bool log, int ticks, double pad) const;
 
     Props props_;
     std::vector<std::unique_ptr<ScatterSeries>> series_;

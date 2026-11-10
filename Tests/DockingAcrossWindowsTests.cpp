@@ -465,11 +465,24 @@ TEST(floatingPanelsGoHomeAndFollowTheirArea) {
     t.area->setVisible(true);
     CHECK(screen.all.front()->visible);
 
-    // the floating window closed: its panel goes back to the area
+    // the floating window closed, with no one to tell of its panels closed: its panel goes back to the area
     screen.all.front()->host.closeWindow();
     screen.closeWindows();
     CHECK(screen.all.size() == 1);
     CHECK(t.area->tabsOf("palette") && t.area->tabsOf("palette")->area() == t.area);
+
+    // ... with someone to tell: its panel closed, as by its tab, the application given it
+    std::string closed;
+    t.area->setOnPanelClosed([&](DockPanel p) { closed = p.id; });
+    screen.layout();
+    screen.drag(*t.window, panelTab(screen, *t.area, "palette"), {1200, 300});
+    CHECK(screen.all.size() == 2);
+    screen.all.front()->host.closeWindow();
+    screen.closeWindows();
+    CHECK(screen.all.size() == 1 && closed == "palette" && !t.area->tabsOf("palette"));
+    // (back, for what follows)
+    t.area->addPanel({.id = "palette", .title = LocalizedText("Palette"), .content = std::make_unique<Widget>()});
+    t.area->setOnPanelClosed({});
 
     // floated again, then the area goes: its floating windows close
     screen.layout();

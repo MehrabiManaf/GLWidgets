@@ -199,6 +199,36 @@ void LineChart::setYRange(std::optional<ChartRange> range) {
     invalidatePaint();
 }
 
+void LineChart::setLogY(bool log) {
+    if (props_.logY == log)
+        return;
+    props_.logY = log;
+    hasView_ = false;           // (its view in the other scale's terms)
+    invalidatePaint();
+}
+
+bool LineChart::logY() const {
+    return props_.logY && std::none_of(series_.begin(), series_.end(), [](const auto& s) { return s->props_.stacked; });
+}
+
+double LineChart::toView(double y) const {
+    if (!logY())
+        return y;
+    return y > 0 ? std::log10(y) : -1e3;        // at or below 0: far under the bottom
+}
+
+double LineChart::fromView(double v) const {
+    return logY() ? std::pow(10.0, v) : v;
+}
+
+ChartRange LineChart::toView(ChartRange y) const {
+    return {toView(y.low), toView(y.high)};
+}
+
+ChartRange LineChart::fromView(ChartRange v) const {
+    return {fromView(v.low), fromView(v.high)};
+}
+
 void LineChart::setIncludeZero(bool include) {
     props_.includeZero = include;
     invalidatePaint();
@@ -217,6 +247,20 @@ void LineChart::setXFormatter(std::function<std::string(double, double)> format)
 void LineChart::setYFormatter(std::function<std::string(double, double)> format) {
     yAxis_.format = std::move(format);
     invalidatePaint();
+}
+
+void LineChart::setY2Formatter(std::function<std::string(double, double)> format) {
+    y2Axis_.format = std::move(format);
+    invalidatePaint();
+}
+
+void LineChart::setY2Range(std::optional<ChartRange> range) {
+    props_.y2Range = range;
+    invalidatePaint();
+}
+
+bool LineChart::hasSecond() const {
+    return std::any_of(series_.begin(), series_.end(), [this](const auto& s) { return onSecond(*s); });
 }
 
 void LineChart::dataChanged() {
@@ -280,12 +324,15 @@ ChartRange LineChart::fitX() const {
     return opened({all->low, all->high}, time);
 }
 
-ChartRange LineChart::fitY(ChartRange x) const {
-    if (userY_)
-        return *userY_;
+ChartRange LineChart::fitY(ChartRange x, bool second) const {
+    if (!second && userY_)
+        return toView(*userY_);
+    if (second && props_.y2Range)
+        return *props_.y2Range;
+    const bool log = !second && logY();
     std::optional<ChartExtent> all;
     // the stack: from 0 to its highest sum (its shares: 0 to 100)
-    if (!stackMembers().empty()) {
+    if (!second && !stackMembers().empty()) {
         if (props_.percent)
             return {0, 100};
         sampleStack(x, std::max(64.0, static_cast<double>(plot_.width) * 2));
@@ -300,7 +347,7 @@ ChartRange LineChart::fitY(ChartRange x) const {
         all = ChartExtent{low, high};
     }
     for (const auto& s : series_) {
-        if (!s->visible_ || s->props_.stacked)
+        if (!s->visible_ || s->props_.stacked || onSecond(*s) != second)
             continue;
         const SeriesBuffer& d = s->data_;
         std::optional<ChartExtent> e;
@@ -317,15 +364,27 @@ ChartRange LineChart::fitY(ChartRange x) const {
     }
     if (!all)
         return {0, 1};
+    if (log) {
+        // logarithmic: from its lowest above 0 (none: three decades under its highest) to its highest, a little room
+        // around in decades, out to 1, 2 or 5 times a power of ten
+        const double high = all->high > 0 ? all->high : 1;
+        const double low = all->low > 0 ? all->low : high / 1000;
+        ChartRange r{std::log10(low), std::log10(high)};
+        if (!(r.span() > 0))
+            r = {r.low - 0.5, r.high + 0.5};
+        const double pad = r.span() * 0.04;
+        const ChartRange nice = niceLogRange({std::pow(10.0, r.low - pad), std::pow(10.0, r.high + pad)});
+        return {std::log10(nice.low), std::log10(nice.high)};
+    }
     ChartRange r{all->low, all->high};
-    if (props_.includeZero || !stacked_.empty()) {
+    if (props_.includeZero || (!second && !stacked_.empty())) {
         r.low = std::min(r.low, 0.0);
         r.high = std::max(r.high, 0.0);
     }
     r = opened(r, false);
     // a little room above and below its data (not below 0 when it starts there), then out to round values
     const double pad = r.span() * 0.04;
-    const bool zero = props_.includeZero || !stacked_.empty();
+    const bool zero = props_.includeZero || (!second && !stacked_.empty());
     if (!(zero && r.low == 0))
         r.low -= pad;
     if (!(zero && r.high == 0))
@@ -334,19 +393,19 @@ ChartRange LineChart::fitY(ChartRange x) const {
 }
 
 void LineChart::updateView() {
-    const ChartRange tx = fitX(), ty = fitY(tx);
+    const ChartRange tx = fitX(), ty = fitY(tx), ty2 = fitY(tx, true);
     const Duration duration = transition(quick_);
     if (!hasView_ || immediate_ || duration <= Duration::zero()) {
-        view_ = {tx, tx, ty, ty};
+        view_ = {tx, tx, ty, ty, ty2, ty2};
         hasView_ = true;
         progress_.set(1);
         immediate_ = quick_ = false;
         return;
     }
-    if (near(tx, view_.toX) && near(ty, view_.toY))
+    if (near(tx, view_.toX) && near(ty, view_.toY) && near(ty2, view_.toY2))
         return;
     // from where it shows now, on the way
-    view_ = {xView(), tx, yView(), ty};
+    view_ = {xView(), tx, shownY(), ty, shownY2(), ty2};
     progress_.set(0);
     progress_.animateTo(scheduler(), 1, duration, Easing::OutCubic);
     quick_ = false;
@@ -356,7 +415,7 @@ ChartRange LineChart::xView() const {
     return hasView_ ? between(view_.fromX, view_.toX, progress_.value()) : fitX();
 }
 
-ChartRange LineChart::yView() const {
+ChartRange LineChart::shownY() const {
     return hasView_ ? between(view_.fromY, view_.toY, progress_.value()) : fitY(xView());
 }
 
@@ -364,21 +423,45 @@ ChartRange LineChart::targetXView() const {
     return hasView_ ? view_.toX : fitX();
 }
 
-ChartRange LineChart::targetYView() const {
+ChartRange LineChart::shownY2() const {
+    return hasView_ ? between(view_.fromY2, view_.toY2, progress_.value()) : fitY(xView(), true);
+}
+
+ChartRange LineChart::y2View() const {
+    return shownY2();
+}
+
+Point LineChart::pointOn(ChartPoint value, bool second) const {
+    if (!second)
+        return pointOf(value);
+    const ChartRange x = xView(), y = shownY2();
+    return {static_cast<float>(plot_.x + (value.x - x.low) / x.span() * plot_.width),
+            static_cast<float>(plot_.bottom() - (value.y - y.low) / y.span() * plot_.height)};
+}
+
+ChartRange LineChart::targetShownY() const {
     return hasView_ ? view_.toY : fitY(targetXView());
 }
 
+ChartRange LineChart::yView() const {
+    return fromView(shownY());
+}
+
+ChartRange LineChart::targetYView() const {
+    return fromView(targetShownY());
+}
+
 ChartPoint LineChart::valueAt(Point at) const {
-    const ChartRange x = xView(), y = yView();
+    const ChartRange x = xView(), y = shownY();
     const double fx = plot_.width > 0 ? (at.x - plot_.x) / plot_.width : 0;
     const double fy = plot_.height > 0 ? (plot_.bottom() - at.y) / plot_.height : 0;
-    return {x.low + fx * x.span(), y.low + fy * y.span()};
+    return {x.low + fx * x.span(), fromView(y.low + fy * y.span())};
 }
 
 Point LineChart::pointOf(ChartPoint value) const {
-    const ChartRange x = xView(), y = yView();
+    const ChartRange x = xView(), y = shownY();
     return {static_cast<float>(plot_.x + (value.x - x.low) / x.span() * plot_.width),
-            static_cast<float>(plot_.bottom() - (value.y - y.low) / y.span() * plot_.height)};
+            static_cast<float>(plot_.bottom() - (toView(value.y) - y.low) / y.span() * plot_.height)};
 }
 
 // ---- painting ----
@@ -398,18 +481,26 @@ void LineChart::paint(PaintContext& context) {
     plot.height = std::max(0.0f, plot.height - line / 2 - line - 6);
     yTickCount_ = std::max(2, static_cast<int>(plot.height / 34));
     updateView();
-    const ChartRange xv = xView(), yv = yView();
+    const ChartRange xv = xView(), yv = shownY();
 
     // the y axis as wide as its labels (a stack in shares: in percent)
     yAxis_.orientation = Orientation::Vertical;
     yAxis_.suffix = props_.percent && !stackMembers().empty() ? "%" : "";
-    yAxis_.fit(*this, yv, plot.height);
+    yAxis_.log = logY();
+    yAxis_.fit(*this, fromView(yv), plot.height);
     const float axisWidth = yAxis_.labelWidth() + 8;
-    plot.width = std::max(0.0f, plot.width - axisWidth - 6);
+    const bool second = hasSecond();
+    float secondWidth = 6;
+    if (second) {
+        y2Axis_.orientation = Orientation::Vertical;
+        y2Axis_.fit(*this, shownY2(), plot.height);
+        secondWidth = y2Axis_.labelWidth() + 8;
+    }
+    plot.width = std::max(0.0f, plot.width - axisWidth - secondWidth);
     if (!rtl)
         plot.x += axisWidth;
     else
-        plot.x += 6;
+        plot.x += secondWidth;
     plot_ = plot;
     if (plot.width < 4 || plot.height < 4 || !(xv.span() > 0) || !(yv.span() > 0))
         return;
@@ -424,10 +515,25 @@ void LineChart::paint(PaintContext& context) {
     yAxis_.paintGrid(p, plot, s.grid);
     xAxis_.paintGrid(p, plot, s.grid);
     p.fillRect({plot.x, snap(plot.bottom(), ppd), plot.width, 1.0f / ppd}, s.axis);
-    yAxis_.paintLabels(context, *this, plot, rtl ? Axis::Side::Right : Axis::Side::Left, s.text, area);
+    // with two axes, each one's labels of its series's color when it has one series
+    const auto colorOfAxis = [&](bool onTheSecond) {
+        const LineSeries* only = nullptr;
+        for (const auto& series : series_) {
+            if (onSecond(*series) != onTheSecond || series->props_.stacked)
+                continue;
+            if (only)
+                return s.text;
+            only = series.get();
+        }
+        return second && only ? colorOf(*only) : s.text;
+    };
+    yAxis_.paintLabels(context, *this, plot, rtl ? Axis::Side::Right : Axis::Side::Left, colorOfAxis(false), area);
+    if (second)
+        y2Axis_.paintLabels(context, *this, plot, rtl ? Axis::Side::Left : Axis::Side::Right, colorOfAxis(true), area);
     xAxis_.paintLabels(context, *this, plot, Axis::Side::Bottom, s.text, area);
 
     // the series, cut to the plot (a little above and below it: a line along its edge)
+    paintAnnotations(context, plot, xAxis_, yAxis_, false, second ? &y2Axis_ : nullptr);
     p.pushClip({plot.x, plot.y - 2, plot.width, plot.height + 4});
     paintStack(context);
     for (const auto& a : areas_)
@@ -435,6 +541,7 @@ void LineChart::paint(PaintContext& context) {
     for (std::size_t i = 0; i < series_.size(); ++i)
         paintSeries(context, *series_[i], i);
     p.popClip();
+    paintAnnotations(context, plot, xAxis_, yAxis_, true, second ? &y2Axis_ : nullptr);
 
     if (drag_ == Drag::Box) {
         const Rect box = Rect{std::min(dragFrom_.x, dragTo_.x), std::min(dragFrom_.y, dragTo_.y), std::abs(dragTo_.x - dragFrom_.x),
@@ -444,6 +551,8 @@ void LineChart::paint(PaintContext& context) {
         p.strokeRoundedRect(box, 0, 1.0f / ppd, s.crosshair);
     } else if (mouse_ && drag_ == Drag::None && plot.contains(*mouse_)) {
         paintHover(context);
+    } else if (const std::optional<double> shared = sharedX(); shared && drag_ == Drag::None) {
+        paintHover(context, shared);
     }
 }
 
@@ -458,10 +567,13 @@ void LineChart::paintSeries(PaintContext& context, const LineSeries& series, std
     Color color = series.props_.color ? *series.props_.color : seriesColor(index);
     color.a *= alpha;
     const float width = series.props_.width > 0 ? series.props_.width : s.lineWidth;
-    const ChartRange xv = xView(), yv = yView();
+    const bool second = onSecond(series);
+    const ChartRange xv = xView(), yv = second ? shownY2() : shownY();
     const Rect plot = plot_;
     const auto px = [&](double x) { return static_cast<float>(plot.x + (x - xv.low) / xv.span() * plot.width); };
-    const auto py = [&](double y) { return static_cast<float>(plot.bottom() - (y - yv.low) / yv.span() * plot.height); };
+    const auto py = [&](double y) {
+        return static_cast<float>(plot.bottom() - ((second ? y : toView(y)) - yv.low) / yv.span() * plot.height);
+    };
 
     // what shows, and a point on each side
     std::size_t first = 0, last = n;
@@ -472,9 +584,9 @@ void LineChart::paintSeries(PaintContext& context, const LineSeries& series, std
     }
     if (last <= first)
         return;
-    // the area down to 0, or to the axis the data is all above (below)
+    // the area down to 0, or to the axis the data is all above (below); along a logarithmic one, to its bottom
     const double base = yv.contains(0) ? 0 : yv.low > 0 ? yv.low : yv.high;
-    const float baseline = py(base);
+    const float baseline = logY() && !second ? plot.bottom() : py(base);
     const bool area = series.props_.area;
     const Color areaTop = withAlpha(color, color.a * s.areaOpacity), areaBottom = withAlpha(color, 0);
     points_.clear();
@@ -639,14 +751,14 @@ void LineChart::sampleStack(ChartRange x, double columns) const {
 void LineChart::paintStack(PaintContext& context) {
     paint::Painter& p = context.painter;
     const ChartStyle& s = style();
-    const ChartRange xv = xView(), yv = yView();
+    const ChartRange xv = xView(), yv = shownY();
     sampleStack(xv, std::max(1.0, static_cast<double>(plot_.width) * p.pixelsPerDip()));
     const std::size_t n = stackX_.size(), members = stacked_.size();
     if (n < 2 || members == 0)
         return;
     const Rect plot = plot_;
     const auto px = [&](double x) { return static_cast<float>(plot.x + (x - xv.low) / xv.span() * plot.width); };
-    const auto py = [&](double y) { return static_cast<float>(plot.bottom() - (y - yv.low) / yv.span() * plot.height); };
+    const auto py = [&](double y) { return static_cast<float>(plot.bottom() - (toView(y) - yv.low) / yv.span() * plot.height); };
     // each one's area from the one under it (the first's from 0) to its top, fuller at its top; then their lines over all
     // of them
     std::vector<std::vector<Point>> tops(members);
@@ -682,10 +794,13 @@ void LineChart::project(const LineSeries& series, float pixelsPerDip, std::vecto
     const std::size_t n = d.size();
     if (n == 0)
         return;
-    const ChartRange xv = xView(), yv = yView();
+    const bool second = onSecond(series);
+    const ChartRange xv = xView(), yv = second ? shownY2() : shownY();
     const Rect plot = plot_;
     const auto px = [&](double x) { return static_cast<float>(plot.x + (x - xv.low) / xv.span() * plot.width); };
-    const auto py = [&](double y) { return static_cast<float>(plot.bottom() - (y - yv.low) / yv.span() * plot.height); };
+    const auto py = [&](double y) {
+        return static_cast<float>(plot.bottom() - ((second ? y : toView(y)) - yv.low) / yv.span() * plot.height);
+    };
     std::size_t first = 0, last = n;
     if (d.sorted()) {
         first = d.lowerBound(xv.low);
@@ -746,20 +861,22 @@ void LineChart::paintArea(PaintContext& context, const AreaSeries& area) {
         p.fillBand(points_, lower_, fill, a.gradient ? withAlpha(color, color.a * a.opacity * alpha * 0.25f) : fill);
     } else {
         // down to 0, or to the side of the plot its data is all past
-        const ChartRange yv = yView();
+        const bool second = onSecond(*a.upper);
+        const ChartRange yv = second ? shownY2() : shownY();
         const double base = yv.contains(0) ? 0 : yv.low > 0 ? yv.low : yv.high;
-        const float baseline = static_cast<float>(plot_.bottom() - (base - yv.low) / yv.span() * plot_.height);
+        const float baseline =
+            logY() && !second ? plot_.bottom() : static_cast<float>(plot_.bottom() - (base - yv.low) / yv.span() * plot_.height);
         p.fillArea(points_, baseline, fill, fading);
     }
     points_.clear();
 }
 
-void LineChart::paintHover(PaintContext& context) {
+void LineChart::paintHover(PaintContext& context, std::optional<double> shared) {
     paint::Painter& p = context.painter;
     const ChartStyle& s = style();
-    const Point mouse = *mouse_;
+    const Point mouse = shared ? Point{pointOf({*shared, 0}).x, plot_.y} : *mouse_;
     const ChartRange xv = xView();
-    const double at = valueAt(mouse).x;
+    const double at = shared ? *shared : valueAt(mouse).x;
     // a series's point nearest to an x (one that is a number), if its x is sorted
     const auto nearest = [](const SeriesBuffer& d, double x) -> std::optional<std::size_t> {
         if (d.empty() || !d.sorted())
@@ -829,12 +946,12 @@ void LineChart::paintHover(PaintContext& context) {
             continue;
         const double y = series.data_.y(*i);
         const Color color = series.props_.color ? *series.props_.color : seriesColor(index);
-        const Point dot = pointOf({series.data_.x(*i), y});
+        const Point dot = pointOn({series.data_.x(*i), y}, onSecond(series));
         if (plot_.inflated(2).contains(dot)) {
             p.fillCircle(dot, 4.5f, ring);
             p.fillCircle(dot, 3.2f, color);
         }
-        rows.push_back({color, translate(series.props_.name), yAxis_.precise(y)});
+        rows.push_back({color, translate(series.props_.name), (onSecond(series) ? y2Axis_ : yAxis_).precise(y)});
     }
     if (!stackRows.empty()) {
         if (stackRows.size() > 1) {
@@ -843,7 +960,7 @@ void LineChart::paintHover(PaintContext& context) {
         }
         rows.insert(rows.begin(), stackRows.begin(), stackRows.end());
     }
-    if (!rows.empty())
+    if (!rows.empty() && !shared)
         paintToolTip(context, {cross.x, mouse.y}, xAxis_.precise(*snapped), rows);
 }
 
@@ -866,11 +983,13 @@ void LineChart::zoomX(double factor, double anchor) {
 }
 
 void LineChart::zoomY(double factor, double anchor) {
-    const ChartRange t = targetYView();
+    // in the view's terms (decades along a logarithmic axis)
+    const ChartRange t = targetShownY();
+    anchor = toView(anchor);
     const ChartRange r{anchor - (anchor - t.low) * factor, anchor + (t.high - anchor) * factor};
     if (r.span() < finest(anchor))
         return;
-    userY_ = r;
+    userY_ = fromView(r);
     quick_ = true;
     invalidatePaint();
 }
@@ -916,7 +1035,7 @@ void LineChart::onMouse(MouseEvent& event) {
                 drag_ = Drag::Pan;
                 dragFrom_ = at;
                 dragX_ = xView();
-                dragY_ = yView();
+                dragY_ = shownY();
                 dragFollowing_ = xMode_ == XMode::Window;
             }
             event.handled = true;
@@ -928,6 +1047,8 @@ void LineChart::onMouse(MouseEvent& event) {
         return;
     case MouseEventType::Move:
         mouse_ = at;
+        // where it is along x, for the charts that share its crosshair
+        shareCursor(drag_ == Drag::None && plot_.contains(at) ? std::optional(valueAt(at).x) : std::nullopt);
         if (drag_ == Drag::Pan && plot_.width > 0 && plot_.height > 0) {
             const double dx = (at.x - dragFrom_.x) / plot_.width * dragX_.span();
             if (dx != 0 || xMode_ == XMode::Manual) {
@@ -937,7 +1058,7 @@ void LineChart::onMouse(MouseEvent& event) {
             if (userY_ && !props_.yRange) {
                 // y zoomed by the user: it pans too
                 const double dy = (at.y - dragFrom_.y) / plot_.height * dragY_.span();
-                userY_ = ChartRange{dragY_.low + dy, dragY_.high + dy};
+                userY_ = fromView(ChartRange{dragY_.low + dy, dragY_.high + dy});
             }
             immediate_ = true;
         } else if (drag_ == Drag::Box) {
@@ -972,6 +1093,7 @@ void LineChart::onMouse(MouseEvent& event) {
 void LineChart::onHoverChanged(bool hovered) {
     if (!hovered) {
         mouse_.reset();
+        shareCursor(std::nullopt);
         invalidatePaint();
     }
 }

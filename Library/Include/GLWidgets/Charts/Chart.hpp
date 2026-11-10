@@ -33,6 +33,49 @@ namespace text {
 class TextLayout;
 } // namespace text
 
+// Something marked on a chart's plot at values of its axes (Chart::addAnnotation): a line across it at an x (an event:
+// a deploy, a release) or at a y (a threshold, a target), a band between two of them (a maintenance window, a normal
+// range), or a point with a label. Bands lie under the data, lines and points over it; each has its label by it. They
+// move with the view (zoomed, panned, eased) as the data does. Line and scatter charts show them.
+struct ChartAnnotation {
+    enum class Kind : std::uint8_t { XLine, YLine, XBand, YBand, Point };
+    Kind kind = Kind::YLine;
+    double from = 0;                // a line's value; a band's first; a point's x
+    double to = 0;                  // a band's last; a point's y
+    LocalizedText label;
+    std::optional<Color> color;     // none: the style's text color (a band: faint)
+    bool dashed = false;            // a line's
+    bool secondAxis = false;        // its y on the second y axis (a line chart's)
+};
+
+class Chart;
+
+// A crosshair shared by charts over the same x (a dashboard's panels over the same time): the mouse over one of them
+// shows a line at its x in the others too, a dot on each of their series there (its tooltip in the one under the mouse
+// only). Charts join one by Chart::setCursor; line charts show it.
+//
+//   auto cursor = std::make_shared<glw::ChartCursor>();
+//   cpu->setCursor(cursor);
+//   traffic->setCursor(cursor);
+class GLW_EXPORT ChartCursor {
+public:
+    ChartCursor() = default;
+    ChartCursor(const ChartCursor&) = delete;
+    ChartCursor& operator=(const ChartCursor&) = delete;
+
+    // Where the mouse is along x over a chart of it, and that chart; none: over none of them.
+    std::optional<double> x() const { return x_; }
+    const Chart* from() const { return from_; }
+    // ... set by the chart the mouse is over (none: it left): the others painted again.
+    void set(const Chart* from, std::optional<double> x);
+
+private:
+    friend class Chart;
+    std::vector<Chart*> charts_;
+    const Chart* from_ = nullptr;
+    std::optional<double> x_;
+};
+
 class GLW_EXPORT Chart : public Widget {
 public:
     ~Chart() override;
@@ -49,6 +92,16 @@ public:
     const ChartStyle& style() const;
     // The color of the `index`th series (slice, group): the style's, in turn.
     Color seriesColor(std::size_t index) const;
+
+    // Marks on its plot (ChartAnnotation): added (its id, to take it off again), taken off, all of them.
+    std::size_t addAnnotation(ChartAnnotation annotation);
+    void removeAnnotation(std::size_t id);
+    void clearAnnotations();
+    std::size_t annotationCount() const { return annotations_.size(); }
+
+    // The crosshair it shares with other charts (ChartCursor); none: its own only.
+    void setCursor(std::shared_ptr<ChartCursor> cursor);
+    const std::shared_ptr<ChartCursor>& cursor() const { return cursor_; }
 
 protected:
     Chart();
@@ -93,6 +146,7 @@ protected:
 
         Orientation orientation = Orientation::Horizontal;  // along x (Horizontal), or along y
         bool time = false;                                  // seconds since 1970: round local times (TimeTicks)
+        bool log = false;           // logarithmic (base 10): its range above 0, its ticks at 1, 2, 5 of each decade
         bool reversed = false;      // a horizontal one growing to the left (right to left); a vertical one downward
         std::string suffix;                                 // after each label ("%")
         std::function<std::string(double value, double step)> format;     // none: formatNumber, formatTime
@@ -129,11 +183,20 @@ protected:
         float height_ = 0;
     };
 
+    // Its annotations over `plot` by its axes `x` and `y` (`y2`: the second y axis's, when it has one): the bands
+    // (`above` false: under the data) or the lines and points (true: over it), with their labels; cut to the plot.
+    void paintAnnotations(PaintContext& context, const Rect& plot, const Axis& x, const Axis& y, bool above, const Axis* y2 = nullptr) const;
+
     // A sector of a ring raised as the style's bars are (a pie's slice, a gauge's arc): a relief (Plastic, Metal, Fluid;
     // `lift` times as high: the slice under the mouse; its corners as round as the bars'), lit from above with a light
     // line along its top (Studio), flat (Plain). Painter::fillArc's angles and gap.
     void paintArc(paint::Painter& painter, Point center, float inner, float outer, float start, float sweep, float inset, Color color,
                   float lift = 1) const;
+
+    // The mouse along x over it (none: it left), for the charts that share its cursor; where the mouse is over another
+    // of them (none: over none, or over this one).
+    void shareCursor(std::optional<double> x) const;
+    std::optional<double> sharedX() const;
 
     // How numbers and times are written in it: its window's language's (Translator::locale), English's outside one.
     const Locale& locale() const;
@@ -167,6 +230,9 @@ private:
         std::size_t index;
     };
     std::vector<Item> legendRects_;                     // where its legend's items were painted
+    std::vector<std::pair<std::size_t, ChartAnnotation>> annotations_;      // by their ids
+    std::size_t nextAnnotation_ = 1;
+    std::shared_ptr<ChartCursor> cursor_;
     mutable std::unordered_map<std::string, std::unique_ptr<text::TextLayout>> texts_;
 };
 

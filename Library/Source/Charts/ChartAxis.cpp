@@ -146,6 +146,58 @@ ChartRange niceRange(ChartRange range, int count) {
     return out;
 }
 
+ChartTicks logTicks(ChartRange range, int count) {
+    ChartTicks ticks;
+    count = std::max(count, 2);
+    if (!(range.low > 0) || !(range.high > range.low) || !std::isfinite(range.high))
+        return niceTicks(range, count);
+    const double lo = std::log10(range.low), hi = std::log10(range.high);
+    const double decades = hi - lo;
+    const auto add = [&](double v) {
+        if (v >= range.low * (1 - 1e-9) && v <= range.high * (1 + 1e-9) && ticks.values.size() < mostTicks)
+            ticks.values.push_back(v);
+    };
+    if (decades * 3 <= count) {
+        for (int e = static_cast<int>(std::floor(lo)); e <= static_cast<int>(std::ceil(hi)); ++e)
+            for (const double m : {1.0, 2.0, 5.0})
+                add(m * std::pow(10.0, e));
+    } else {
+        // every so many decades, fewer as more fit, but two at least where two powers of ten are in it
+        for (int every = std::max(1, static_cast<int>(std::ceil(decades / (count - 1)))); every >= 1; --every) {
+            ticks.values.clear();
+            for (int e = static_cast<int>(std::ceil(lo - 1e-9)); e <= static_cast<int>(std::floor(hi + 1e-9)); ++e)
+                if (((e % every) + every) % every == 0)
+                    add(std::pow(10.0, e));
+            if (ticks.values.size() >= 2)
+                break;
+        }
+    }
+    if (ticks.values.size() < 2)
+        return niceTicks(range, count);         // within a decade: round values, as along a linear one
+    ticks.step = 0;
+    ticks.decimals = std::clamp(static_cast<int>(-std::floor(std::log10(ticks.values.front()) + 1e-9)), 0, 12);
+    return ticks;
+}
+
+ChartRange niceLogRange(ChartRange range) {
+    if (!(range.low > 0) || !(range.high >= range.low) || !std::isfinite(range.high))
+        return range;
+    const auto down = [](double v) {
+        const double magnitude = std::pow(10.0, std::floor(std::log10(v) + 1e-9));
+        const double f = v / magnitude;
+        return (f >= 5 - 1e-9 ? 5 : f >= 2 - 1e-9 ? 2 : 1) * magnitude;
+    };
+    const auto up = [](double v) {
+        const double magnitude = std::pow(10.0, std::floor(std::log10(v) - 1e-9));
+        const double f = v / magnitude;
+        return (f <= 1 + 1e-9 ? 1 : f <= 2 + 1e-9 ? 2 : f <= 5 + 1e-9 ? 5 : 10) * magnitude;
+    };
+    ChartRange out{down(range.low), up(range.high)};
+    if (out.high <= out.low)
+        out.high = up(out.low * 1.5);
+    return out;
+}
+
 std::string formatNumber(double value, int decimals, double step, const Locale& locale) {
     if (!std::isfinite(value))
         return std::isnan(value) ? "\xE2\x80\x93" : value > 0 ? "\xE2\x88\x9E" : locale.minus + "\xE2\x88\x9E";

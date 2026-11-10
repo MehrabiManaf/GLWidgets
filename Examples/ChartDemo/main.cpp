@@ -147,12 +147,15 @@ struct Demo {
         const auto capacity = static_cast<std::size_t>(rate * 600);     // ten minutes of each
         cpu = &line->addSeries({.name = tr("CPU %"), .capacity = capacity});
         memory = &line->addSeries({.name = tr("Memory %"), .capacity = capacity});
-        network = &line->addSeries({.name = tr("Network MB/s"), .capacity = capacity});
+        network = &line->addSeries({.name = tr("Network MB/s"), .secondAxis = true, .capacity = capacity});      // (another unit)
         memoryHigh = &line->addSeries({.line = false, .capacity = capacity});
         memoryLow = &line->addSeries({.line = false, .capacity = capacity});
         // an area under CPU, fading down; a band of memory's range around it
         line->addArea({.upper = cpu, .opacity = 0.32f, .gradient = true});
         line->addArea({.name = tr("Memory range"), .upper = memoryHigh, .lower = memoryLow, .color = memory->color(), .opacity = 0.22f});
+        // marks: a limit across it, when it started down it (scrolling away with the minute)
+        line->addAnnotation({.kind = glw::ChartAnnotation::Kind::YLine, .from = 80, .label = tr("CPU limit"), .dashed = true});
+        line->addAnnotation({.kind = glw::ChartAnnotation::Kind::XLine, .from = glw::chartNow(), .label = tr("Started")});
 
         auto donut = std::make_unique<glw::PieChart>(
             glw::PieChart::Props{.title = tr("Requests by region, country and city"), .hole = 0.38f, .totalLabel = tr("requests")});
@@ -239,6 +242,14 @@ struct Demo {
                                             .onChanged = [this](std::size_t i) { bars->setLayout(static_cast<glw::BarLayout>(i)); }}),
                               ui::CheckBox({.text = tr("Shares"), .onToggled = [this](bool on) { traffic->setPercent(on); }})
                                   .alignment(glw::Alignment::Start, glw::Alignment::Center),
+                              // the scatter's sizes and latencies, which span decades, on logarithmic axes
+                              ui::CheckBox({.text = tr("Log"),
+                                            .onToggled = [this](bool on) {
+                                                scatter->setLogX(on);
+                                                scatter->setLogY(on);
+                                            }})
+                                  .alignment(glw::Alignment::Start, glw::Alignment::Center)
+                                  .toolTip(tr("The scatter chart's axes logarithmic")),
                               ui::CheckBox({.text = tr("Lying"),
                                             .onToggled = [this](bool on) {
                                                 bars->setOrientation(on ? glw::Orientation::Horizontal : glw::Orientation::Vertical);
@@ -322,6 +333,8 @@ struct Demo {
         scatter = made.get();
         calls = &scatter->addSeries({.name = tr("API calls"), .capacity = 40000, .trend = true});
         statics = &scatter->addSeries({.name = tr("Static files"), .capacity = 40000});
+        // the latency promised: what is above it is late
+        scatter->addAnnotation({.kind = glw::ChartAnnotation::Kind::YLine, .from = 60, .label = tr("Objective, 60 ms"), .dashed = true});
         return made;
     }
 
@@ -476,6 +489,10 @@ struct Demo {
         const glw::LocalizedText names[] = {tr("HTTP"), tr("gRPC"), tr("WebSocket"), tr("Other")};
         for (std::size_t k = 0; k < protocols.size(); ++k)
             protocols[k] = &traffic->addSeries({.name = names[k], .stacked = true, .capacity = 6000});
+        // one crosshair with the measures' chart: both are over the same time
+        auto cursor = std::make_shared<glw::ChartCursor>();
+        line->setCursor(cursor);
+        traffic->setCursor(cursor);
         return made;
     }
 

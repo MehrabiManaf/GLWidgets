@@ -174,11 +174,56 @@ Color ScatterChart::colorOf(std::size_t index) const {
 
 // ---- the view ----
 
+double ScatterChart::toViewX(double x) const {
+    return logX() ? (x > 0 ? std::log10(x) : -1e3) : x;
+}
+
+double ScatterChart::toViewY(double y) const {
+    return props_.logY ? (y > 0 ? std::log10(y) : -1e3) : y;
+}
+
+ChartRange ScatterChart::fitted(ChartRange r, bool log, int ticks, double pad) const {
+    if (log) {
+        const double high = r.high > 0 ? r.high : 1;
+        const double low = r.low > 0 ? r.low : high / 1000;
+        ChartRange l{std::log10(low), std::log10(high)};
+        if (!(l.span() > 0))
+            l = {l.low - 0.5, l.high + 0.5};
+        const double room = l.span() * pad;
+        const ChartRange nice = niceLogRange({std::pow(10.0, l.low - room), std::pow(10.0, l.high + room)});
+        return {std::log10(nice.low), std::log10(nice.high)};
+    }
+    if (!(r.span() > 0))
+        r = {r.low - 1, r.high + 1};
+    // a little room around them, not past 0 when they are all on one side of it
+    const double room = r.span() * pad;
+    const ChartRange padded{r.low >= 0 ? std::max(0.0, r.low - room) : r.low - room, r.high <= 0 ? std::min(0.0, r.high + room) : r.high + room};
+    return niceRange(padded, ticks);
+}
+
+void ScatterChart::setLogX(bool log) {
+    if (props_.logX == log)
+        return;
+    props_.logX = log;
+    userX_.reset();
+    hasView_ = false;           // (its view in the other scale's terms)
+    invalidatePaint();
+}
+
+void ScatterChart::setLogY(bool log) {
+    if (props_.logY == log)
+        return;
+    props_.logY = log;
+    userY_.reset();
+    hasView_ = false;
+    invalidatePaint();
+}
+
 ChartRange ScatterChart::fitX() const {
     if (userX_)
         return *userX_;
     if (props_.xRange)
-        return *props_.xRange;
+        return {toViewX(props_.xRange->low), toViewX(props_.xRange->high)};
     std::optional<ChartRange> all;
     for (const auto& s : series_) {
         if (!s->visible_ || s->xs_.empty())
@@ -195,20 +240,14 @@ ChartRange ScatterChart::fitX() const {
     }
     if (!all)
         return {0, 1};
-    ChartRange r = *all;
-    if (!(r.span() > 0))
-        r = {r.low - 1, r.high + 1};
-    // a little room around them, not past 0 when they are all on one side of it
-    const double pad = r.span() * 0.04;
-    const ChartRange padded{r.low >= 0 ? std::max(0.0, r.low - pad) : r.low - pad, r.high <= 0 ? std::min(0.0, r.high + pad) : r.high + pad};
-    return niceRange(padded, std::max(2, static_cast<int>(plot_.width / 70)));
+    return fitted(*all, logX(), std::max(2, static_cast<int>(plot_.width / 70)), 0.04);
 }
 
 ChartRange ScatterChart::fitY() const {
     if (userY_)
         return *userY_;
     if (props_.yRange)
-        return *props_.yRange;
+        return {toViewY(props_.yRange->low), toViewY(props_.yRange->high)};
     fitX();         // (the extents found again)
     std::optional<ChartRange> all;
     for (const auto& s : series_)
@@ -216,12 +255,7 @@ ChartRange ScatterChart::fitY() const {
             all = all ? ChartRange{std::min(all->low, s->lowY_), std::max(all->high, s->highY_)} : ChartRange{s->lowY_, s->highY_};
     if (!all)
         return {0, 1};
-    ChartRange r = *all;
-    if (!(r.span() > 0))
-        r = {r.low - 1, r.high + 1};
-    const double pad = r.span() * 0.05;
-    const ChartRange padded{r.low >= 0 ? std::max(0.0, r.low - pad) : r.low - pad, r.high <= 0 ? std::min(0.0, r.high + pad) : r.high + pad};
-    return niceRange(padded, std::max(2, static_cast<int>(plot_.height / 34)));
+    return fitted(*all, props_.logY, std::max(2, static_cast<int>(plot_.height / 34)), 0.05);
 }
 
 void ScatterChart::updateView() {
@@ -236,23 +270,33 @@ void ScatterChart::updateView() {
     }
     if (near(tx, view_.toX) && near(ty, view_.toY))
         return;
-    view_ = {xView(), tx, yView(), ty};
+    view_ = {shownX(), tx, shownY(), ty};
     progress_.set(0);
     progress_.animateTo(scheduler(), 1, duration, Easing::OutCubic);
     quick_ = false;
 }
 
-ChartRange ScatterChart::xView() const {
+ChartRange ScatterChart::shownX() const {
     return hasView_ ? between(view_.fromX, view_.toX, progress_.value()) : fitX();
 }
 
-ChartRange ScatterChart::yView() const {
+ChartRange ScatterChart::shownY() const {
     return hasView_ ? between(view_.fromY, view_.toY, progress_.value()) : fitY();
 }
 
+ChartRange ScatterChart::xView() const {
+    const ChartRange v = shownX();
+    return {fromViewX(v.low), fromViewX(v.high)};
+}
+
+ChartRange ScatterChart::yView() const {
+    const ChartRange v = shownY();
+    return {fromViewY(v.low), fromViewY(v.high)};
+}
+
 void ScatterChart::setView(ChartRange x, ChartRange y) {
-    userX_ = x;
-    userY_ = y;
+    userX_ = ChartRange{toViewX(x.low), toViewX(x.high)};
+    userY_ = ChartRange{toViewY(y.low), toViewY(y.high)};
     invalidatePaint();
 }
 
@@ -279,9 +323,10 @@ void ScatterChart::paint(PaintContext& context) {
     if (plot_.width <= 0)
         plot_ = plot;
     updateView();
-    const ChartRange xv = xView(), yv = yView();
+    const ChartRange xv = shownX(), yv = shownY();
     yAxis_.orientation = Orientation::Vertical;
-    yAxis_.fit(*this, yv, plot.height);
+    yAxis_.log = props_.logY;
+    yAxis_.fit(*this, {fromViewY(yv.low), fromViewY(yv.high)}, plot.height);
     const float axisWidth = yAxis_.labelWidth() + 8;
     plot.width = std::max(0.0f, plot.width - axisWidth - 6);
     plot.x += rtl ? 6 : axisWidth;
@@ -292,14 +337,15 @@ void ScatterChart::paint(PaintContext& context) {
         p.fillRect(plot, s.plot);
     xAxis_.orientation = Orientation::Horizontal;
     xAxis_.time = props_.xAxis == ChartAxisKind::Time;
-    xAxis_.fit(*this, xv, plot.width);
+    xAxis_.log = logX();
+    xAxis_.fit(*this, {fromViewX(xv.low), fromViewX(xv.high)}, plot.width);
     yAxis_.paintGrid(p, plot, s.grid);
     xAxis_.paintGrid(p, plot, s.grid);
     p.fillRect({plot.x, snap(plot.bottom(), ppd), plot.width, 1.0f / ppd}, s.axis);
     yAxis_.paintLabels(context, *this, plot, rtl ? Axis::Side::Right : Axis::Side::Left, s.text, area);
     xAxis_.paintLabels(context, *this, plot, Axis::Side::Bottom, s.text, area);
-    const auto px = [&](double x) { return static_cast<float>(plot.x + (x - xv.low) / xv.span() * plot.width); };
-    const auto py = [&](double y) { return static_cast<float>(plot.bottom() - (y - yv.low) / yv.span() * plot.height); };
+    const auto px = [&](double x) { return static_cast<float>(plot.x + (toViewX(x) - xv.low) / xv.span() * plot.width); };
+    const auto py = [&](double y) { return static_cast<float>(plot.bottom() - (toViewY(y) - yv.low) / yv.span() * plot.height); };
 
     // how many show: dots for each, or (more than it draws as dots) an image of where they are
     std::size_t total = 0;
@@ -313,9 +359,10 @@ void ScatterChart::paint(PaintContext& context) {
             if (series->shown_.value() <= 0.002f)
                 continue;
             for (std::size_t i = 0; i < series->xs_.size(); ++i)
-                inView += xv.contains(series->xs_[i]) && yv.contains(series->ys_[i]) ? 1 : 0;
+                inView += xv.contains(toViewX(series->xs_[i])) && yv.contains(toViewY(series->ys_[i])) ? 1 : 0;
         }
     }
+    paintAnnotations(context, plot, xAxis_, yAxis_, false);
     p.pushClip(plot);
     if (inView > props_.markers && context.ui.images) {
         paintDensity(context, xv, yv);
@@ -351,12 +398,25 @@ void ScatterChart::paint(PaintContext& context) {
             continue;
         Color color = lit(colorOf(k), context.ui.theme.isDark() ? 0.25f : -0.25f);
         color.a *= series.shown_.value();
-        const Point a{px(xv.low), py(f->intercept + f->slope * xv.low)}, b{px(xv.high), py(f->intercept + f->slope * xv.high)};
-        p.drawLine(a, b, s.lineWidth + 0.5f, color);
+        // straight; on a logarithmic axis a curve, drawn as a line through points along it
+        const auto along = [&](double t) {
+            const double x = fromViewX(xv.low + t * xv.span());
+            return Point{px(x), py(f->intercept + f->slope * x)};
+        };
+        const Point a = along(0), b = along(1);
+        if (logX() || props_.logY) {
+            std::vector<Point> curve;
+            for (int i = 0; i <= 64; ++i)
+                curve.push_back(along(i / 64.0));
+            p.drawPolyline(curve, s.lineWidth + 0.5f, color);
+        } else {
+            p.drawLine(a, b, s.lineWidth + 0.5f, color);
+        }
         const float y = std::clamp(b.y - 4, plot.y + line, plot.bottom() - 2);
         drawText(context, "r² " + formatNumber(f->r2, 2), {plot.right() - 6, y}, color, 0, {1, 1});
     }
     p.popClip();
+    paintAnnotations(context, plot, xAxis_, yAxis_, true);
 
     if (drag_ == Drag::Box) {
         const Rect box = Rect{std::min(dragFrom_.x, dragTo_.x), std::min(dragFrom_.y, dragTo_.y), std::abs(dragTo_.x - dragFrom_.x),
@@ -432,7 +492,7 @@ void ScatterChart::paintDensity(PaintContext& context, ChartRange xv, ChartRange
             std::uint32_t most = 0;
             const double sx = w / xv.span(), sy = h / yv.span();
             for (std::size_t i = 0; i < series.xs_.size(); ++i) {
-                const double fx = (series.xs_[i] - xv.low) * sx, fy = (yv.high - series.ys_[i]) * sy;
+                const double fx = (toViewX(series.xs_[i]) - xv.low) * sx, fy = (yv.high - toViewY(series.ys_[i])) * sy;
                 if (fx < 0 || fy < 0 || fx >= w || fy >= h)
                     continue;
                 std::uint32_t& n = counts_[static_cast<std::size_t>(fy) * static_cast<std::size_t>(w) + static_cast<std::size_t>(fx)];
@@ -527,8 +587,8 @@ void ScatterChart::onMouse(MouseEvent& event) {
             } else {
                 drag_ = Drag::Pan;
                 dragFrom_ = at;
-                dragX_ = xView();
-                dragY_ = yView();
+                dragX_ = shownX();
+                dragY_ = shownY();
             }
             event.handled = true;
         } else if (event.button == platform::MouseButton::Right) {
@@ -553,7 +613,7 @@ void ScatterChart::onMouse(MouseEvent& event) {
     case MouseEventType::Release:
         if (drag_ == Drag::Box) {
             const auto valueAt = [&](Point point) {
-                const ChartRange xv = xView(), yv = yView();
+                const ChartRange xv = shownX(), yv = shownY();
                 return ChartPoint{xv.low + (point.x - plot_.x) / plot_.width * xv.span(), yv.low + (plot_.bottom() - point.y) / plot_.height * yv.span()};
             };
             const ChartPoint a = valueAt(dragFrom_), b = valueAt(dragTo_);

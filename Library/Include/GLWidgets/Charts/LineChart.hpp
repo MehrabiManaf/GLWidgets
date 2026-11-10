@@ -30,7 +30,14 @@
 // and their values by it.
 //
 // The y axis is at the start side (on the right in right to left); x grows to the right in either direction, as time
-// does on a clock's chart.
+// does on a clock's chart. Its crosshair may be shared with charts over the same x (Chart::setCursor, ChartCursor). Its
+// y axis may be logarithmic (Props::logY: base 10, for values that span decades: its ticks at 1, 2, 5 of each decade or
+// at powers of ten; what is at or below 0 falls off its bottom), but for a stack.
+//
+// A second y axis, at the end side (LineSeries::Props::secondAxis): series of another unit or size (a price and a
+// volume, a temperature and a pressure) fitted to their own range there; its labels, and the first's, of their series's
+// color when each has one. The wheel and drags zoom and pan the first; the second stays fitted to what shows (or to a
+// range of its own: Props::y2Range).
 #include <GLWidgets/Charts/Chart.hpp>
 #include <GLWidgets/Charts/ChartAxis.hpp>
 #include <GLWidgets/Charts/SeriesBuffer.hpp>
@@ -64,6 +71,7 @@ public:
         bool markers = false;           // a dot at each point, when they are far enough apart to be told apart
         bool line = true;               // its line drawn (false: an area's edge only, its area if it has one)
         bool stacked = false;           // on the chart's stack: on the series stacked before it, its area down to them
+        bool secondAxis = false;        // on the second y axis, at the end side (not stacked)
         std::size_t capacity = 0;       // the newest kept, the oldest dropped as more come; 0: all
     };
 
@@ -141,7 +149,9 @@ public:
         double window = 0;
         // A y range of its own; none: fitted to what shows.
         std::optional<ChartRange> yRange;
+        std::optional<ChartRange> y2Range;  // ... the second y axis's
         bool includeZero = false;           // a fitted y axis shows 0 too
+        bool logY = false;                  // a logarithmic y axis (not with stacked series)
         bool percent = false;               // its stacked series as their shares of their sum at each x (0 to 100 %)
     };
 
@@ -164,11 +174,17 @@ public:
     double window() const { return props_.window; }
     void setYRange(std::optional<ChartRange> range);
     void setIncludeZero(bool include);
+    void setLogY(bool log);
+    bool logY() const;
     void setPercent(bool percent);
     bool percent() const { return props_.percent; }
     // How a tick's label and a tooltip show a value (a step apart from the next tick); none: formatNumber, formatTime.
     void setXFormatter(std::function<std::string(double value, double step)> format);
     void setYFormatter(std::function<std::string(double value, double step)> format);
+    void setY2Formatter(std::function<std::string(double value, double step)> format);
+    void setY2Range(std::optional<ChartRange> range);
+    // What shows on its second y axis now.
+    ChartRange y2View() const;
 
     // ---- the view ----
 
@@ -204,7 +220,7 @@ private:
     void dataChanged();
     // The x and y it goes to; the view eased there when it changed (at once when `immediate_`).
     ChartRange fitX() const;
-    ChartRange fitY(ChartRange x) const;
+    ChartRange fitY(ChartRange x, bool second = false) const;
     void updateView();
     double newestX() const;
     void paintSeries(PaintContext& context, const LineSeries& series, std::size_t index);
@@ -220,9 +236,23 @@ private:
     double stackAt(double x, std::span<double> tops) const;
     void sampleStack(ChartRange x, double columns) const;
     void paintStack(PaintContext& context);
-    void paintHover(PaintContext& context);
+    // The crosshair at the mouse (with its tooltip), or at `shared` (another chart's mouse: its line and dots only).
+    void paintHover(PaintContext& context, std::optional<double> shared = std::nullopt);
     void zoomX(double factor, double anchor);
     void zoomY(double factor, double anchor);
+    // What shows of y in the view's terms (its logarithms along a logarithmic axis), and what it goes to.
+    ChartRange shownY() const;
+    ChartRange targetShownY() const;
+    ChartRange shownY2() const;
+    // Whether a series is on the second y axis, whether any is; a value of one on its axis, in the plot.
+    bool onSecond(const LineSeries& series) const { return series.props_.secondAxis && !series.props_.stacked; }
+    bool hasSecond() const;
+    Point pointOn(ChartPoint value, bool second) const;
+    // y as the view holds it (its logarithm along a logarithmic axis: the view is linear in it), and back; ranges too
+    double toView(double y) const;
+    double fromView(double v) const;
+    ChartRange toView(ChartRange y) const;
+    ChartRange fromView(ChartRange v) const;
 
     Props props_;
     std::vector<std::unique_ptr<LineSeries>> series_;
@@ -233,7 +263,7 @@ private:
     ChartRange userX_;
     std::optional<ChartRange> userY_;
     struct View {
-        ChartRange fromX, toX, fromY, toY;
+        ChartRange fromX, toX, fromY, toY, fromY2, toY2;
     };
     View view_;
     bool hasView_ = false;
@@ -243,7 +273,7 @@ private:
     int yTickCount_ = 6;                // what fitY rounds to: as many as the plot is high for
 
     Rect plot_;
-    Axis xAxis_, yAxis_;                // as they were last painted
+    Axis xAxis_, yAxis_, y2Axis_;       // as they were last painted
     std::optional<Point> mouse_;
     enum class Drag : std::uint8_t { None, Pan, Box };
     Drag drag_ = Drag::None;

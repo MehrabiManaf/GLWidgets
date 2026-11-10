@@ -18,7 +18,8 @@
 // Dragged by them, the window moves the same way and docks all its panels where it is let go on a guide; dragged by its
 // only tab, too. A stack's tab bar where it has no tab is the title of its group of panels: dragged, the whole group floats
 // and docks as one tab does (keeping the tab it shows). Panels move between the areas of a group as within one; a floating window goes when its last panel
-// leaves, and its panels go back to the area they came from when it is closed. The floating windows show while their area
+// leaves; closed by the user, its panels are closed as by their tabs (onPanelClosed), those that cannot be closed going
+// back to the area they came from. The floating windows show while their area
 // does (they hide with its major tab), and close with it.
 //
 // Where the system places windows itself (Wayland: DockingHost::placesWindows), a tab is dragged in its window only, with

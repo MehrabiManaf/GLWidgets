@@ -23,7 +23,47 @@ constexpr float legendGap = 6;          // between a swatch and its text
 } // namespace
 
 Chart::Chart() = default;
-Chart::~Chart() = default;
+
+Chart::~Chart() {
+    setCursor(nullptr);
+}
+
+// ---- a shared crosshair ----
+
+void ChartCursor::set(const Chart* from, std::optional<double> x) {
+    if (from_ == from && x_ == x)
+        return;
+    if (!x && from_ != from)
+        return;         // (one left that was not the one it was over)
+    from_ = x ? from : nullptr;
+    x_ = x;
+    for (Chart* chart : charts_)
+        if (chart != from)
+            chart->invalidatePaint();
+}
+
+void Chart::setCursor(std::shared_ptr<ChartCursor> cursor) {
+    if (cursor_) {
+        std::erase(cursor_->charts_, this);
+        if (cursor_->from_ == this)
+            cursor_->set(this, std::nullopt);
+    }
+    cursor_ = std::move(cursor);
+    if (cursor_)
+        cursor_->charts_.push_back(this);
+    invalidatePaint();
+}
+
+void Chart::shareCursor(std::optional<double> x) const {
+    if (cursor_)
+        cursor_->set(this, x);
+}
+
+std::optional<double> Chart::sharedX() const {
+    if (!cursor_ || cursor_->from_ == this)
+        return std::nullopt;
+    return cursor_->x_;
+}
 
 void Chart::setTitle(LocalizedText title) {
     if (title != title_) {
@@ -259,6 +299,109 @@ Color Chart::textOn(Color background) {
 
 namespace glw {
 
+// ---- annotations ----
+
+std::size_t Chart::addAnnotation(ChartAnnotation annotation) {
+    const std::size_t id = nextAnnotation_++;
+    annotations_.emplace_back(id, std::move(annotation));
+    invalidatePaint();
+    return id;
+}
+
+void Chart::removeAnnotation(std::size_t id) {
+    std::erase_if(annotations_, [&](const auto& a) { return a.first == id; });
+    invalidatePaint();
+}
+
+void Chart::clearAnnotations() {
+    annotations_.clear();
+    invalidatePaint();
+}
+
+void Chart::paintAnnotations(PaintContext& context, const Rect& plot, const Axis& x, const Axis& y, bool above, const Axis* y2) const {
+    if (annotations_.empty() || plot.width <= 0 || plot.height <= 0)
+        return;
+    paint::Painter& p = context.painter;
+    const ChartStyle& s = style();
+    const float ppd = p.pixelsPerDip();
+    const float hair = std::max(1.0f, 1.25f * ppd) / ppd;
+    const bool rtl = rightToLeft();
+    const float small = std::max(9.0f, s.fontSize - 1);
+    const float line = textSize("0", small).height;
+    // a line along x (across: at a y) or down (at an x), whole or in dashes
+    const auto rule = [&](bool across, float at, Color color, bool dashed) {
+        const float length = across ? plot.width : plot.height;
+        const float step = dashed ? 9.0f : length;
+        for (float t = 0; t < length; t += step) {
+            const float run = std::min(dashed ? 5.0f : length, length - t);
+            if (across)
+                p.fillRect({plot.x + t, snap(at, ppd) - hair / 2, run, hair}, color);
+            else
+                p.fillRect({snap(at, ppd) - hair / 2, plot.y + t, hair, run}, color);
+        }
+    };
+    p.pushClip(plot);
+    for (const auto& [id, a] : annotations_) {
+        const Axis& ya = a.secondAxis && y2 ? *y2 : y;
+        const Color color = a.color ? *a.color : s.text;
+        const std::string label = translate(a.label);
+        const bool band = a.kind == ChartAnnotation::Kind::XBand || a.kind == ChartAnnotation::Kind::YBand;
+        if (band == above)
+            continue;
+        switch (a.kind) {
+        case ChartAnnotation::Kind::XBand: {
+            const float x0 = x.at(a.from, plot.x, plot.width), x1 = x.at(a.to, plot.x, plot.width);
+            const Rect r{std::min(x0, x1), plot.y, std::abs(x1 - x0), plot.height};
+            p.fillRect(r, withAlpha(color, color.a * 0.12f));
+            if (!label.empty())
+                drawText(context, label, {rtl ? r.right() - 4 : r.x + 4, plot.y + 3}, withAlpha(color, color.a * 0.9f), small, {rtl ? 1.0f : 0.0f, 0});
+            break;
+        }
+        case ChartAnnotation::Kind::YBand: {
+            const float y0 = ya.at(a.from, plot.y, plot.height), y1 = ya.at(a.to, plot.y, plot.height);
+            const Rect r{plot.x, std::min(y0, y1), plot.width, std::abs(y1 - y0)};
+            p.fillRect(r, withAlpha(color, color.a * 0.12f));
+            if (!label.empty())
+                drawText(context, label, {rtl ? plot.right() - 4 : plot.x + 4, r.y + 3}, withAlpha(color, color.a * 0.9f), small, {rtl ? 1.0f : 0.0f, 0});
+            break;
+        }
+        case ChartAnnotation::Kind::XLine: {
+            const float at = x.at(a.from, plot.x, plot.width);
+            rule(false, at, withAlpha(color, color.a * 0.85f), a.dashed);
+            // its label at the top, at its end side (at its start side when there is no room there)
+            if (!label.empty()) {
+                const float w = textSize(label, small).width;
+                const bool after = rtl ? at - w - 4 >= plot.x : at + w + 4 > plot.right();
+                drawText(context, label, {after == rtl ? at + 4 : at - 4, plot.y + 3}, color, small, {after == rtl ? 0.0f : 1.0f, 0});
+            }
+            break;
+        }
+        case ChartAnnotation::Kind::YLine: {
+            const float at = ya.at(a.from, plot.y, plot.height);
+            rule(true, at, withAlpha(color, color.a * 0.85f), a.dashed);
+            // its label above it at the end side (under it when it is at the top)
+            if (!label.empty()) {
+                const bool under = at - line - 2 < plot.y;
+                drawText(context, label, {rtl ? plot.x + 4 : plot.right() - 4, under ? at + 2 : at - 2}, color, small, {rtl ? 0.0f : 1.0f, under ? 0.0f : 1.0f});
+            }
+            break;
+        }
+        case ChartAnnotation::Kind::Point: {
+            const Point at{x.at(a.from, plot.x, plot.width), ya.at(a.to, plot.y, plot.height)};
+            const Color ring = s.plot.a > 0.9f ? s.plot : context.ui.theme.palette.layer;
+            p.fillCircle(at, 5, ring);
+            p.fillCircle(at, 3.5f, color);
+            if (!label.empty()) {
+                const bool before = rtl ? at.x - textSize(label, small).width - 8 >= plot.x : at.x + textSize(label, small).width + 8 > plot.right();
+                drawText(context, label, {before == rtl ? at.x + 7 : at.x - 7, at.y - 4}, color, small, {before == rtl ? 0.0f : 1.0f, 1});
+            }
+            break;
+        }
+        }
+    }
+    p.popClip();
+}
+
 const Locale& Chart::locale() const {
     if (const UiContext* ui = context())
         return ui->translator.locale();
@@ -269,6 +412,11 @@ std::string Chart::Axis::label(double value) const {
     const double step = time ? timeTicks_.step : step_;
     if (format)
         return format(value, step);
+    if (log && !time && step_ == 0) {
+        // each tick to its own decimals (0.01, 0.1, 1), shortened as its size is (10k, 1M)
+        const int decimals = value > 0 ? std::clamp(static_cast<int>(-std::floor(std::log10(value) + 1e-9)), 0, 12) : 0;
+        return glw::formatNumber(value, decimals, value >= 1000 ? value : 0, *locale_) + suffix;
+    }
     return (time ? glw::formatTime(value, timeTicks_, *locale_) : glw::formatNumber(value, decimals_, step_, *locale_)) + suffix;
 }
 
@@ -285,7 +433,7 @@ void Chart::Axis::fit(const Chart& chart, ChartRange range, float length) {
             timeTicks_ = glw::timeTicks(range, count, *locale_);
             values_ = timeTicks_.values;
         } else {
-            const ChartTicks ticks = niceTicks(range, count);
+            const ChartTicks ticks = log ? logTicks(range, count) : niceTicks(range, count);
             values_ = ticks.values;
             step_ = ticks.step;
             decimals_ = ticks.decimals;
@@ -305,8 +453,16 @@ void Chart::Axis::fit(const Chart& chart, ChartRange range, float length) {
 }
 
 float Chart::Axis::at(double value, float start, float length) const {
-    const double span = range_.span();
-    const auto f = static_cast<float>(span > 0 ? (value - range_.low) / span : 0.0);
+    double f64 = 0;
+    if (log && range_.low > 0 && range_.high > range_.low) {
+        // what is at or below 0: far past its low end
+        const double lo = std::log10(range_.low), span = std::log10(range_.high) - lo;
+        f64 = value > 0 ? (std::log10(value) - lo) / span : -1e3;
+    } else {
+        const double span = range_.span();
+        f64 = span > 0 ? (value - range_.low) / span : 0.0;
+    }
+    const auto f = static_cast<float>(f64);
     const bool fromEnd = orientation == Orientation::Horizontal ? reversed : !reversed;
     return fromEnd ? start + length - f * length : start + f * length;
 }
@@ -360,6 +516,11 @@ std::string Chart::Axis::precise(double value) const {
         const TimeUnit tick = timeTicks_.unit;
         const TimeUnit unit = tick == TimeUnit::Millisecond ? TimeUnit::Millisecond : tick <= TimeUnit::Hour ? TimeUnit::Second : tick;
         return glw::formatTimeFully(value, unit, range_.span() > 86400, *locale_);
+    }
+    if (log && value > 0) {
+        // three figures, however small or large
+        const int decimals = std::clamp(2 - static_cast<int>(std::floor(std::log10(value) + 1e-9)), 0, 12);
+        return glw::formatNumber(value, decimals, 0, *locale_) + suffix;
     }
     return glw::formatNumber(value, decimals_ + 1, 0, *locale_) + suffix;
 }

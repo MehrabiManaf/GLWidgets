@@ -1364,8 +1364,10 @@ void DockArea::onVisibleChanged(bool visible) {
 }
 
 void DockArea::onWindowClosing() {
-    // a floating window closed by the user: its panels go back to the area they came from; a window closed (with a
-    // Global area): its panels go to another window's
+    // a floating window closed by the user (its home stays): its panels closed, as by their tabs' close buttons (the
+    // application told: onPanelClosed), those that cannot be (or with no one to tell) back to the area they came from;
+    // a window closed (with a Global area): its panels go to another window's; all of them closing (quitting): they go
+    // with them
     if (!floating_ && group_->home == this) {
         // the floating windows go above another window, when there is one; otherwise they go with this area
         if (DockArea* other = homeFor()) {
@@ -1376,9 +1378,15 @@ void DockArea::onWindowClosing() {
     DockArea* to = homeFor();
     if (!to || to == this || (!floating_ && scope_ != DockScope::Global))
         return;
+    DockArea* handling = group_->home ? group_->home : to;
     while (DockTabs* tabs = firstTabs()) {
-        while (tabs->count() > 0)
-            to->addPanel(tabs->take(0));
+        while (tabs->count() > 0) {
+            DockPanel panel = tabs->take(0);
+            if (floating_ && panel.closable && handling->onPanelClosed_)
+                handling->onPanelClosed_(std::move(panel));
+            else
+                to->addPanel(std::move(panel));
+        }
         prune(*tabs);
     }
 }

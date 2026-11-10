@@ -41,6 +41,12 @@ struct ChartTicks {
 GLW_EXPORT ChartTicks niceTicks(ChartRange range, int count);
 // The range widened to the round values just around it, for `count` ticks: an axis fitted to data ends on its ticks.
 GLW_EXPORT ChartRange niceRange(ChartRange range, int count);
+// Ticks of a logarithmic axis (base 10) over a range above 0: at 1, 2 and 5 of each decade when that many fit `count`,
+// otherwise at powers of ten (every decade, or every so many); within a decade, round values as niceTicks's. Its
+// decimals: those of its smallest tick.
+GLW_EXPORT ChartTicks logTicks(ChartRange range, int count);
+// A range above 0 widened to 1, 2 or 5 times a power of ten at each end (a logarithmic axis fitted to data).
+GLW_EXPORT ChartRange niceLogRange(ChartRange range);
 // A value as a tick shows it: `decimals` after the point, digits grouped by thousands; past a million (and when the
 // step is a thousand or more) shortened: 12.5k, 3M, 1.2G.
 GLW_EXPORT std::string formatNumber(double value, int decimals, double step = 0, const Locale& locale = Locale::english());

@@ -106,6 +106,144 @@ TEST(ticksFallOnRoundValues) {
     CHECK(niceTicks({0, 4.1}, 2).values.size() >= 2 && niceTicks({0, 4.1}, 3).values.size() >= 2);
 }
 
+TEST(aLogarithmicAxisHasItsTicksAtRoundValuesOfDecades) {
+    // three decades, room for ten: 1, 2, 5 of each
+    const ChartTicks few = logTicks({1, 1000}, 10);
+    CHECK(few.values.size() == 10 && few.values.front() == 1 && near(few.values[1], 2) && near(few.values[2], 5) && near(few.values.back(), 1000));
+    // nine decades, room for five: every other power of ten (or every third)
+    const ChartTicks many = logTicks({1, 1e9}, 5);
+    CHECK(many.values.size() >= 3 && many.values.size() <= 5 && many.values.front() == 1);
+    for (const double v : many.values)
+        CHECK(near(std::log10(v), std::round(std::log10(v)), 1e-9));
+    // room for two only: still two powers of ten, not one
+    const ChartTicks two = logTicks({5, 1000}, 2);
+    CHECK(two.values.size() >= 2 && near(two.values.front(), 10));
+    // within a decade: round values, as along a linear axis
+    CHECK(logTicks({20, 80}, 6).values.size() >= 2);
+    // small values: their decimals
+    CHECK(logTicks({0.001, 1}, 4).decimals == 3);
+    // fitted: out to 1, 2 or 5 times a power of ten
+    CHECK((niceLogRange({3, 700}) == ChartRange{2, 1000}));
+    CHECK((niceLogRange({0.012, 0.9}) == ChartRange{0.01, 1}));
+}
+
+TEST(aLineChartOnALogarithmicAxisSpacesDecadesAlike) {
+    Shown<LineChart> c(LineChart::Props{.logY = true});
+    LineSeries& s = c.chart->addSeries({.name = "a"});
+    for (int i = 0; i <= 6; ++i)
+        s.append(i, std::pow(10.0, i));
+    c.paint();
+    // fitted to its decades, in its values
+    const ChartRange y = c.chart->yView();
+    CHECK(y.low <= 1 && y.low > 0 && y.high >= 1e6);
+    // 1 to 10 as far as 10 to 100; a value back from where it is drawn
+    const float a = c.chart->pointOf({0, 1}).y, b = c.chart->pointOf({0, 10}).y, d = c.chart->pointOf({0, 100}).y;
+    CHECK(near(a - b, b - d, 0.01));
+    CHECK(near(c.chart->valueAt(c.chart->pointOf({0, 3000})).y, 3000, 1e-6 * 3000));
+    // stacked: linear again
+    c.chart->addSeries({.name = "s", .stacked = true}).append(0, 1);
+    CHECK(!c.chart->logY());
+}
+
+TEST(aLineChartsSecondAxisFitsItsOwnSeries) {
+    Shown<LineChart> c;
+    LineSeries& small = c.chart->addSeries({.name = "percent"});
+    LineSeries& large = c.chart->addSeries({.name = "volume", .secondAxis = true});
+    for (int i = 0; i <= 10; ++i) {
+        small.append(i, 10 + i);
+        large.append(i, 10000 + i * 1000);
+    }
+    c.paint();
+    // each axis its own series's range
+    const ChartRange y = c.chart->yView(), y2 = c.chart->y2View();
+    CHECK(y.high < 100 && y2.low >= 5000 && y2.high >= 20000);
+    // room for its labels at the end side: a plot narrower than one's without it
+    const Rect plot = c.chart->plotArea();
+    Shown<LineChart> one;
+    one.chart->addSeries({.name = "percent"}).append(0, 10);
+    one.paint();
+    CHECK(plot.right() < one.chart->plotArea().right() - 10);
+    // zoomed in y with the wheel (Ctrl): the first only
+    c.root.dispatch(platform::KeyChanged{1, platform::Key::Control, platform::KeyModifiers::Control, true});
+    c.root.dispatch(platform::MouseWheelScrolled{1, {0, 2}, plot.center()});
+    c.paint();
+    CHECK(c.chart->yView().span() < y.span() && near(c.chart->y2View().low, y2.low) && near(c.chart->y2View().high, y2.high));
+}
+
+TEST(annotationsAreDrawnWhereTheirValuesAre) {
+    Shown<LineChart> c;
+    LineSeries& s = c.chart->addSeries({.name = "a"});
+    for (int i = 0; i <= 10; ++i)
+        s.append(i, i * 10);
+    const std::size_t before = c.paint();
+    // a band under the data, a line and a point over it: more drawn
+    const std::size_t band = c.chart->addAnnotation({.kind = ChartAnnotation::Kind::YBand, .from = 20, .to = 40, .label = "normal"});
+    c.chart->addAnnotation({.kind = ChartAnnotation::Kind::XLine, .from = 5, .label = "deploy", .dashed = true});
+    c.chart->addAnnotation({.kind = ChartAnnotation::Kind::Point, .from = 7, .to = 70, .label = "peak"});
+    CHECK(c.chart->annotationCount() == 3);
+    const std::size_t with = c.paint();
+    CHECK(with > before);
+    // taken off, all of them
+    c.chart->removeAnnotation(band);
+    CHECK(c.chart->annotationCount() == 2);
+    c.chart->clearAnnotations();
+    CHECK(c.chart->annotationCount() == 0 && c.paint() == before);
+}
+
+TEST(chartsShareACrosshair) {
+    // two charts over the same x, one of them shown
+    auto first = std::make_unique<LineChart>(), second = std::make_unique<LineChart>();
+    LineChart* a = first.get();
+    LineChart* b = second.get();
+    for (LineChart* c : {a, b}) {
+        LineSeries& s = c->addSeries({.name = "s"});
+        for (int i = 0; i <= 10; ++i)
+            s.append(i, i);
+    }
+    auto cursor = std::make_shared<ChartCursor>();
+    a->setCursor(cursor);
+    b->setCursor(cursor);
+    CHECK(cursor.use_count() == 3);
+    paint::DrawList list;
+    {
+        UiRoot one{tests::testContext()};
+        one.setSize({300, 400});
+        one.setContent(std::move(first));
+        one.paint(list);
+        const std::size_t alone = list.vertices.size();
+        // the mouse over the other at x 4: a line and dots here at 4
+        cursor->set(b, 4.0);
+        CHECK(cursor->from() == b && cursor->x() == 4.0);
+        one.paint(list);
+        CHECK(list.vertices.size() > alone);
+        // it left: none
+        cursor->set(b, std::nullopt);
+        one.paint(list);
+        CHECK(list.vertices.size() == alone && !cursor->x());
+        // a chart gone leaves it
+        one.setContent(nullptr);
+    }
+    CHECK(cursor.use_count() == 2);         // (this one, and the other's)
+    b->setCursor(nullptr);
+    CHECK(cursor.use_count() == 1);
+}
+
+TEST(aScatterChartOnLogarithmicAxes) {
+    Shown<ScatterChart> c(ScatterChart::Props{.logX = true, .logY = true});
+    ScatterSeries& s = c.chart->addSeries({.name = "a", .trend = true});
+    for (int i = 1; i <= 1000; ++i)
+        s.append(i, i * 0.5);
+    s.append(-3, 0);           // (off its plot)
+    c.paint();
+    const ChartRange x = c.chart->xView(), y = c.chart->yView();
+    CHECK(x.low > 0 && x.low <= 1 && x.high >= 1000 && y.low > 0 && y.low <= 0.5 && y.high >= 500);
+    // zoomed by the wheel at its middle: still above 0, narrower in decades
+    c.wheel({300, 200}, 2);
+    c.paint();
+    const ChartRange z = c.chart->xView();
+    CHECK(z.low > 0 && std::log10(z.high / z.low) < std::log10(x.high / x.low));
+}
+
 TEST(numbersShowAsTicksDo) {
     CHECK(formatNumber(1234567.0, 0) == "1.2M" || formatNumber(1234567.0, 0) == "1M");
     CHECK(formatNumber(12345, 0) == "12,345");

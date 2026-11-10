@@ -797,7 +797,21 @@ races** (`BarRace`), **heat maps** (`HeatMap`), and for dashboards **sparklines*
   midnight, on the first of a month: `niceTicks`, `timeTicks`), its legend in as many rows as it needs, a pie as large as
   its square, tiles squarified. The axes of values and of times are one (`Chart::Axis`: a line chart's x and y, a bar
   chart's values, a race's): their ticks for a range and a length, their labels, the room those take, the grid across
-  the plot, the labels beside it, a value as a tooltip shows it; so that every chart's axes look and fit alike.
+  the plot, the labels beside it, a value as a tooltip shows it; so that every chart's axes look and fit alike. An axis
+  may be logarithmic (`Axis::log`, base 10: ticks at 1, 2 and 5 of each decade, or at powers of ten when fewer fit,
+  `logTicks`; fitted out to 1, 2 or 5 times a power of ten, `niceLogRange`): a line chart's y (`LineChart::Props::logY`,
+  but for a stack), a scatter chart's x and y (`logX`, `logY`: heavy-tailed sizes and latencies). Such a chart keeps its
+  view in decades, so that it zooms and pans alike there; what is at or below 0 falls off the plot. A line chart has a
+  second y axis at the end side for series of another unit (`LineSeries::Props::secondAxis`), fitted to its own series
+  (or `Props::y2Range`); with two, each axis's labels are of its series's color when it has one. The wheel and drags
+  zoom and pan the first.
+- **Annotations** (`ChartAnnotation`, `Chart::addAnnotation`): lines across the plot at an x (a deploy, a release) or a y
+  (a threshold), whole or dashed; bands between two values (a maintenance window, a normal range), under the data; points
+  with a label; each with its label, drawn by the chart's axes so that they move with its view (`Chart::paintAnnotations`:
+  line and scatter charts).
+- **A shared crosshair** (`ChartCursor`, `Chart::setCursor`): charts over the same x (a dashboard's panels over the same
+  time) show a line and their series's dots at the x the mouse is at over any of them; the tooltip is the one under the
+  mouse's only (line charts).
 - **A title, a legend** (a click on an item hides its series, slice or group, eased, and shows it again), **a tooltip** by
   the mouse (the values under it, with their colors).
 
@@ -1020,9 +1034,8 @@ them: their density, dots when zoomed into; a line through the API calls'); a pr
 work frame by frame as a timeline, where its time goes as a flame graph with a search); where requests
 flow, from their sources to the stores (a Sankey diagram, its values drifting); the style, the colors, the motion and the bars' layout chosen above them.
 
-Still to come: more kinds (radar charts; calendars as heat maps),
-logarithmic axes, a second y axis, Persian digits and the Solar Hijri calendar on axes (with the `Locale` of
-[Localization](#localization-and-right-to-left)).
+Still to come: more kinds (radar charts; calendars as heat maps); annotations and the shared crosshair on more kinds
+(candles, histograms, bars).
 
 Still to come in the widget core: the native extras of the chrome (Windows 11 shadow, rounded corners and snap layouts).
 
@@ -1132,7 +1145,9 @@ The tests use a host of their own, with windows that are only roots at places of
   top where they have no tab): it docks where it is let go on a guide, all its panels with it. Its title is ours, not
   the system's, so that it docks as it moves; a double click on it maximizes it. A floating window goes when its last
   panel leaves.
-  Closed by the user, its panels go back to their area. The floating windows hide while their area does (another major
+  Closed by the user, its panels are closed as by their tabs' close buttons (the application told: `onPanelClosed`, so
+  that a View menu can show them again); those that cannot be closed (or with no handler to tell) go back to their area.
+  Closed with their area's window (quitting), they go with it, as they were. The floating windows hide while their area does (another major
   tab is shown), follow their area to another window, and close when it is destroyed.
 
 **A workspace is saved and restored** as JSON (`saveWorkspace`, `restoreWorkspace`): the windows (where they are, how
