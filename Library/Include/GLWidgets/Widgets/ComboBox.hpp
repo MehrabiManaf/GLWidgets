@@ -15,6 +15,7 @@
 
 #include <cstddef>
 #include <functional>
+#include <memory>
 #include <optional>
 #include <string>
 #include <vector>
@@ -70,6 +71,9 @@ private:
     Label* label_ = nullptr;
     bool open_ = false;
     bool pressed_ = false;
+    // Its list's: what it calls once it has closed (after the events) may come after it is gone (a choice that makes what
+    // holds it again).
+    std::shared_ptr<ComboBox*> self_ = std::make_shared<ComboBox*>(this);
     ColorTransition background_{[this] { invalidatePaint(); }};
     ColorTransition glow_{[this] { invalidatePaint(); }};
 };

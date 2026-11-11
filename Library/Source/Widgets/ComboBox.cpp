@@ -82,6 +82,18 @@ void ComboBox::setSearchable(bool searchable, LocalizedText placeholder) {
 void ComboBox::open(std::string typed) {
     if (open_ || items_.empty())
         return;
+    // the list calls it while it is there only
+    const std::weak_ptr<ComboBox*> self = self_;
+    const auto chosen = [self](std::size_t i) {
+        if (const auto alive = self.lock())
+            (*alive)->choose(i);
+    };
+    const auto closed = [self] {
+        if (const auto alive = self.lock()) {
+            (*alive)->open_ = false;
+            (*alive)->invalidatePaint();
+        }
+    };
     if (searchable_) {
         std::vector<SearchItem> items;
         items.reserve(items_.size());
@@ -92,12 +104,8 @@ void ComboBox::open(std::string typed) {
                                 {.items = std::move(items),
                                  .placeholder = placeholder_,
                                  .text = std::move(typed),
-                                 .onChosen = [this](std::size_t i) { choose(i); },
-                                 .onClosed =
-                                     [this] {
-                                         open_ = false;
-                                         invalidatePaint();
-                                     },
+                                 .onChosen = chosen,
+                                 .onClosed = closed,
                                  .size = room,
                                  .current = current_ < items_.size() ? std::optional<std::size_t>(current_) : std::nullopt});
         invalidatePaint();
@@ -105,11 +113,8 @@ void ComboBox::open(std::string typed) {
     }
     std::vector<MenuItem> menu;
     for (std::size_t i = 0; i < items_.size(); ++i)
-        menu.push_back({.text = items_[i], .onTriggered = [this, i] { choose(i); }, .checked = i == current_});
-    open_ = showMenu(*this, {0, 0, size().width, size().height}, std::move(menu), [this] {
-        open_ = false;
-        invalidatePaint();
-    }) != nullptr;
+        menu.push_back({.text = items_[i], .onTriggered = [chosen, i] { chosen(i); }, .checked = i == current_});
+    open_ = showMenu(*this, {0, 0, size().width, size().height}, std::move(menu), closed) != nullptr;
     invalidatePaint();
 }
 

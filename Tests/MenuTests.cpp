@@ -190,6 +190,24 @@ TEST(aComboBoxChoosesFromItsMenu) {
     CHECK(box.isOpen());
 }
 
+// A combo box made again by what its choice changed (a form built anew), its list still open: the list, closing later, is
+// not told to a combo box that is gone.
+TEST(aComboBoxGoneWhileItsListIsOpenIsNotToldItClosed) {
+    for (const bool searchable : {false, true}) {
+        Menued m;
+        auto combo = std::make_unique<ComboBox>(ComboBox::Props{.items = {"One", "Two"}, .searchable = searchable});
+        combo->setAlignment(Alignment::Start, Alignment::Start);
+        m.root.setContent(std::move(combo));
+        m.root.layout();
+        Menued::click(m.root, {10, 10});
+        CHECK(m.popups().size() == 1);
+        m.root.setContent(std::make_unique<Widget>());      // the combo box gone
+        if (!m.popups().empty())
+            Menued::key(m.popup(0), platform::Key::Escape);   // its list closed: nothing to tell
+        CHECK(m.popups().empty());
+    }
+}
+
 TEST(aDialogIsClosedByItsButtonsEnterAndEscape) {
     Menued m;
     std::vector<std::optional<std::size_t>> closed;
