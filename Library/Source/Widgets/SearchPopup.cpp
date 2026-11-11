@@ -151,11 +151,17 @@ protected:
 
 private:
     void filter() {
-        std::vector<std::pair<std::string, std::string>> entries;
-        entries.reserve(options_.items.size());
-        for (const SearchItem& item : options_.items)
-            entries.emplace_back(translate(item.text), translate(item.detail));
-        shown_->indices = searchTexts(entries, field_->text());
+        if (options_.search) {
+            // the application's: what is not an item of it left out
+            shown_->indices = options_.search(field_->text());
+            std::erase_if(shown_->indices, [this](std::size_t i) { return i >= options_.items.size(); });
+        } else {
+            std::vector<std::pair<std::string, std::string>> entries;
+            entries.reserve(options_.items.size());
+            for (const SearchItem& item : options_.items)
+                entries.emplace_back(translate(item.text), translate(item.detail));
+            shown_->indices = searchTexts(entries, field_->text());
+        }
         shown_->notifyReset();
         list_->setCurrent(shown_->indices.empty() ? std::nullopt : std::optional<std::size_t>(0));
     }

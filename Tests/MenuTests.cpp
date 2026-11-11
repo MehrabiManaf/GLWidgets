@@ -309,3 +309,33 @@ TEST(aSearchableComboBoxChoosesBySearching) {
     Menued::key(m.popup(0), platform::Key::Escape);
     CHECK(box.current() == 2 && changed.size() == 2 && !box.isOpen());
 }
+
+// An application that finds its items itself: by words they do not show ("+" for Add), in its order.
+TEST(aSearchPopupFindsAsTheApplicationSays) {
+    Menued m;
+    std::vector<std::size_t> chosen;
+    const std::vector<std::string> keywords{"+ plus sum", "- minus", "branch if"};
+    CHECK(showSearchPopup(*m.content, {40, 50, 0, 0},
+                          {.items = {{"Add", "Math"}, {"Subtract", "Math"}, {"Branch", "Flow"}},
+                           .onChosen = [&](std::size_t i) { chosen.push_back(i); },
+                           .search = [&](const std::string& query) {
+                               std::vector<std::size_t> found;
+                               for (std::size_t i = 0; i < keywords.size(); ++i) {
+                                   if (query.empty() || keywords[i].find(query) != std::string::npos)
+                                       found.push_back(i);
+                               }
+                               found.push_back(99);        // not an item: left out
+                               return found;
+                           }}));
+    UiRoot& popup = m.popup(0);
+    popup.dispatch(platform::TextInput{1, "+"});
+    Menued::key(popup, platform::Key::Enter);
+    CHECK(chosen == std::vector<std::size_t>{0});
+    // nothing found but what is not an item: nothing chosen
+    showSearchPopup(*m.content, {40, 50, 0, 0},
+                    {.items = {{"Add", "Math"}}, .onChosen = [&](std::size_t i) { chosen.push_back(i); }, .search = [](const std::string&) {
+                         return std::vector<std::size_t>{5};
+                     }});
+    Menued::key(m.popup(0), platform::Key::Enter);
+    CHECK(chosen.size() == 1);
+}

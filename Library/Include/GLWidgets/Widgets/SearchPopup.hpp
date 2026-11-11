@@ -7,7 +7,8 @@
 // The focus is in the field. Every word typed must be in an item's text or detail (case aside); those whose text starts
 // with what is typed come first, then those with a word that does, then the others, each in their order. Up and Down
 // (Page Up, Page Down) choose in the list while the field keeps the focus; Enter or a click on an item takes it and closes
-// the popup; Escape closes it without one.
+// the popup; Escape closes it without one. An application with words of its own for its items (a node's keywords: "+"
+// for Add, its English name in Persian) finds and orders them itself (SearchOptions::search).
 //
 //   glw::showSearchPopup(*this, {mouse.x, mouse.y, 0, 0},
 //                        {.items = {{"Add", "Math"}, {"Branch", "Flow"}}, .onChosen = [this](std::size_t i) { ... }});
@@ -38,6 +39,9 @@ struct SearchOptions {
     Size size{300, 340};
     // The item chosen now (a combo box's): selected, and scrolled to, while the field is empty. None: the first.
     std::optional<std::size_t> current;
+    // The items `query` (what the field has) finds, best first: their indices in `items`. None: those with every word of
+    // it in their text or detail (searchTexts).
+    std::function<std::vector<std::size_t>(const std::string& query)> search;
 };
 
 // Opens it under `anchor` (the widget's coordinates). False where the widget's window has no popups.
