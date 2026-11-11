@@ -3,7 +3,8 @@
 #pragma once
 // Pages in tabs, in one place: the graphs of a script, the files of a code editor. A click on a tab shows its page; its ×,
 // or the middle button, asks to close it; dragged along the bar, it moves there. Tabs that do not fit scroll (the wheel),
-// the one shown kept in view. It looks as a dock's stack (the theme's DockStyle), but stays where it is: its tabs go to no
+// the one shown kept in view. Ctrl+Tab and Ctrl+Page Down show the next tab, with Shift or Page Up the one before; the
+// bar, with the focus, takes the arrows, Home and End. It looks as a dock's stack (the theme's DockStyle), but stays where it is: its tabs go to no
 // other place (Docking.hpp does that).
 //
 //   auto view = std::make_unique<glw::TabView>(glw::TabView::Props{.onCloseRequested = [&](std::size_t i) { ... }});
@@ -68,6 +69,7 @@ protected:
     Size measureContent(Size available) override;
     void arrangeContent(const Rect& content) override;
     void paint(PaintContext& context) override;
+    void onPreviewKey(KeyEvent& event) override;
     void onRootChanged() override { onStyleChanged(); }
     void onStyleChanged() override;
 
@@ -82,6 +84,8 @@ private:
     // The bar's tabs made again: their titles, which is shown.
     void rebuild();
     void current(std::optional<std::size_t> index, bool tell);
+    // The tab `by` after the one shown, round from the last to the first.
+    void step(int by);
     // A tab's close asked for (after the event).
     void requestClose(std::size_t index);
 

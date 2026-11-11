@@ -132,3 +132,51 @@ TEST(aTabViewKeepsWhatItShowsAsTabsComeAndGo) {
     CHECK((t.currents == std::vector<std::optional<std::size_t>>{0, 0, std::nullopt}));
     t.view->setTitle(0, "nothing there");                            // no tab: nothing
 }
+
+TEST(aTabViewShowsItsTabsByTheKeyboard) {
+    Tabbed t;
+    using platform::Key;
+    using platform::KeyModifiers;
+    const auto key = [&](Key k, KeyModifiers m = KeyModifiers::None) {
+        t.root.dispatch(platform::KeyChanged{1, k, m, true, false});
+        t.root.layout();
+    };
+    t.view->setCurrent(0);
+    t.root.setFocus(nullptr);           // (to the view, then)
+    key(Key::Tab, KeyModifiers::Control);
+    CHECK(t.view->current() == std::optional<std::size_t>(1));
+    key(Key::PageDown, KeyModifiers::Control);
+    key(Key::PageDown, KeyModifiers::Control);  // from the last, the first
+    CHECK(t.view->current() == std::optional<std::size_t>(0));
+    key(Key::Tab, KeyModifiers::Control | KeyModifiers::Shift);
+    CHECK(t.view->current() == std::optional<std::size_t>(2));
+
+    // the bar with the focus: the arrows, Home and End
+    t.press(t.middleOf(0));
+    t.release(t.middleOf(0));
+    CHECK(t.view->current() == std::optional<std::size_t>(0));
+    t.root.setFocus(nullptr);
+    t.root.dispatch(platform::KeyChanged{1, Key::Tab, KeyModifiers::None, true, false});    // the focus to the bar
+    key(Key::Right);
+    CHECK(t.view->current() == std::optional<std::size_t>(1));
+    key(Key::End);
+    CHECK(t.view->current() == std::optional<std::size_t>(2));
+    key(Key::Home);
+    CHECK(t.view->current() == std::optional<std::size_t>(0));
+}
+
+TEST(aTabViewIsAsBigAsItsBiggestPage) {
+    TabView view;
+    auto small = std::make_unique<Widget>();
+    small->setMinimumSize({50, 40});
+    auto big = std::make_unique<Widget>();
+    big->setMinimumSize({300, 200});
+    view.addTab(LocalizedText("small"), std::move(small));
+    view.addTab(LocalizedText("big"), std::move(big));
+    view.setCurrent(1);
+    const Size withBig = view.measure({unbounded, unbounded});
+    view.setCurrent(0);
+    const Size withSmall = view.measure({unbounded, unbounded});
+    CHECK(withBig == withSmall);
+    CHECK(withSmall.width >= 300 && withSmall.height >= 200);
+}

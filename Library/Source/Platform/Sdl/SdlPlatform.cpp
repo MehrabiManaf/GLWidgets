@@ -202,11 +202,11 @@ namespace {
 struct PendingDialog {
     std::vector<std::string> names, patterns;
     std::vector<SDL_DialogFileFilter> filters;
-    std::function<void(std::vector<std::string>)> done;
+    std::function<void(FileDialogResult)> done;
 };
 } // namespace
 
-void SdlPlatform::showFileDialog(const FileDialogRequest& request, std::function<void(std::vector<std::string>)> done) {
+void SdlPlatform::showFileDialog(const FileDialogRequest& request, std::function<void(FileDialogResult)> done) {
     auto* pending = new PendingDialog;
     pending->done = std::move(done);
     for (const FileFilter& f : request.filters) {
@@ -236,11 +236,16 @@ void SdlPlatform::showFileDialog(const FileDialogRequest& request, std::function
         type,
         [](void* data, const char* const* files, int) {
             std::unique_ptr<PendingDialog> p(static_cast<PendingDialog*>(data));
-            std::vector<std::string> chosen;
+            FileDialogResult result;
+            if (!files) {
+                // (none at all, not an empty list: it failed)
+                const char* why = SDL_GetError();
+                result.error = why && *why ? why : "the file dialog failed";
+            }
             for (const char* const* f = files; f && *f; ++f)
-                chosen.emplace_back(*f);
+                result.files.emplace_back(*f);
             if (p->done)
-                p->done(std::move(chosen));
+                p->done(std::move(result));
         },
         pending, props);
     SDL_DestroyProperties(props);

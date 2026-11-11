@@ -7,6 +7,8 @@
 // What is typed is taken on Enter, or when the focus leaves it: kept between the minimum and the maximum, and rounded to
 // its decimals; text that is no number gives the value back. Only what a number may be on its way can be typed.
 //
+// It shows its number in the digits and marks of the language (Locale), and takes what is typed in them or in Latin ones.
+//
 // onChanged is called when the user changes the value (not by setValue). A double holds whole numbers exactly up to 2^53.
 #include <GLWidgets/Export.hpp>
 #include <GLWidgets/Widgets/Animation.hpp>
@@ -22,6 +24,7 @@
 namespace glw {
 
 class LineEdit;
+struct Locale;
 
 class GLW_EXPORT SpinBox : public Widget {
 public:
@@ -54,7 +57,10 @@ public:
 
     // `value` as it shows it, and what of a text it may take on the way to a number.
     static std::string format(double value, int decimals);
+    // (A language's digits and marks are taken as Latin ones: toAscii.)
     static bool acceptsTyping(std::string_view text, int decimals, bool negative);
+    // A number written in a language's digits and marks (۱۲٫۵, −۳) in ASCII (12.5, -3); other text as it is.
+    static std::string toAscii(std::string_view text);
 
 protected:
     void paintOver(PaintContext& context) override;
@@ -63,6 +69,8 @@ protected:
     void onKey(KeyEvent& event) override;
     void onHoverChanged(bool hovered) override;
     void onFocusWithinChanged(bool within) override;
+    void onRootChanged() override;
+    void onLanguageChanged() override;
 
 private:
     enum class Arrow : std::uint8_t { None, Up, Down };
@@ -74,7 +82,8 @@ private:
     void stepBy(double steps);
     // What was typed, taken (or the value shown again when it is no number).
     void commit();
-    void show();                            // the value, in the field
+    void show();                            // the value, in the field, in the language's digits
+    const Locale& locale() const;
 
     double value_ = 0;
     double minimum_ = std::numeric_limits<double>::lowest();

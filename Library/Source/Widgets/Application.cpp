@@ -18,6 +18,8 @@
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
+#include <memory>
+#include <mutex>
 #include <string_view>
 #include <variant>
 #include <vector>
@@ -99,6 +101,13 @@ struct Application::Impl final : DockingHost {
     std::unique_ptr<Translator> translator;
     std::unique_ptr<UiContext> context;
     Scheduler scheduler;                                // before the windows: their timers go first
+    // Where the answers of the system's dialogs go (from any thread, maybe after the application is gone): to the
+    // scheduler while there is one.
+    struct Answers {
+        std::mutex mutex;
+        Scheduler* scheduler = nullptr;
+    };
+    std::shared_ptr<Answers> answers = std::make_shared<Answers>();
     // a theme eased to: the themes of the palettes between the one shown and its own, then it
     std::optional<Theme> themeTarget;
     Theme themeFrom;                                    // fading from it
@@ -998,6 +1007,11 @@ Application::Application() : impl_(std::make_unique<Impl>(*this)) {
 
 Application::~Application() {
     Impl& d = *impl_;
+    {
+        // a dialog's answer from now on: dropped
+        const std::lock_guard lock(d.answers->mutex);
+        d.answers->scheduler = nullptr;
+    }
     d.platform->setExposeHandler(nullptr);
     d.platform->setMoveHandler(nullptr);
     d.preview.reset();
@@ -1091,15 +1105,21 @@ void Application::post(std::function<void()> fn) {
     impl_->scheduler.post(std::move(fn));
 }
 
-void Application::showFileDialog(platform::FileDialogRequest request, std::function<void(std::vector<std::string>)> done,
+void Application::showFileDialog(platform::FileDialogRequest request, std::function<void(platform::FileDialogResult)> done,
                                  Window* parent) {
     if (parent)
         request.parent = parent->window_.get();
-    Scheduler& scheduler = impl_->scheduler;
-    impl_->platform->showFileDialog(request, [&scheduler, done = std::move(done)](std::vector<std::string> chosen) {
-        scheduler.post([done, chosen = std::move(chosen)] {
+    {
+        const std::lock_guard lock(impl_->answers->mutex);
+        impl_->answers->scheduler = &impl_->scheduler;
+    }
+    impl_->platform->showFileDialog(request, [answers = impl_->answers, done = std::move(done)](platform::FileDialogResult result) {
+        const std::lock_guard lock(answers->mutex);
+        if (!answers->scheduler)
+            return;
+        answers->scheduler->post([done, result = std::move(result)] {
             if (done)
-                done(chosen);
+                done(result);
         });
     });
 }

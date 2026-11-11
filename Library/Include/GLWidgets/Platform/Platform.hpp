@@ -36,6 +36,15 @@ struct FileDialogRequest {
     std::vector<FileFilter> filters;        // none: every file
 };
 
+// What a file dialog answered: the paths chosen (UTF-8), none when it was cancelled; or, when it could not be shown or
+// failed, why (the files then none).
+struct FileDialogResult {
+    std::vector<std::string> files;
+    std::string error;
+
+    bool failed() const { return !error.empty(); }
+};
+
 class GLW_EXPORT Platform {
 public:
     virtual ~Platform();
@@ -82,9 +91,9 @@ public:
     // edges a window resizes by, the system shows its own).
     virtual void setCursor(Cursor cursor) = 0;
 
-    // The system's dialog for choosing files or a folder. `done` gets what was chosen (UTF-8 paths; none: cancelled or failed),
-    // later, on any thread (Application::showFileDialog brings it to the thread of the user interface).
-    virtual void showFileDialog(const FileDialogRequest& request, std::function<void(std::vector<std::string>)> done) = 0;
+    // The system's dialog for choosing files or a folder. `done` gets what was chosen, or why it failed, later, on any
+    // thread (Application::showFileDialog brings it to the thread of the user interface).
+    virtual void showFileDialog(const FileDialogRequest& request, std::function<void(FileDialogResult)> done) = 0;
     // The folder the user's preferences of `application` (of `organization`) go into, made if it was not there: UTF-8,
     // ending with a separator; empty when there is none to be had.
     virtual std::string preferencesFolder(std::string_view organization, std::string_view application) const = 0;

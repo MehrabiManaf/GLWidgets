@@ -4,6 +4,7 @@
 
 #include <GLWidgets/Paint/Painter.hpp>
 #include <GLWidgets/Widgets/LineEdit.hpp>
+#include <GLWidgets/Widgets/Localization.hpp>
 #include <GLWidgets/Widgets/UiRoot.hpp>
 
 #include <algorithm>
@@ -19,7 +20,9 @@ constexpr float arrowRoom = 18;         // its arrows', at the end side of the f
 constexpr auto firstRepeat = std::chrono::milliseconds(400);
 constexpr auto nextRepeat = std::chrono::milliseconds(50);
 
-std::optional<double> parse(std::string_view text) {
+std::optional<double> parse(std::string_view written) {
+    const std::string ascii = SpinBox::toAscii(written);
+    std::string_view text = ascii;
     while (!text.empty() && text.front() == ' ')
         text.remove_prefix(1);
     while (!text.empty() && text.back() == ' ')
@@ -54,19 +57,50 @@ SpinBox::SpinBox(Props props)
 }
 
 std::string SpinBox::format(double value, int decimals) {
-    char buffer[64];
+    // room for the largest double's 309 digits and a hundred decimals
+    char buffer[512];
     std::to_chars_result r{};
     if (decimals < 0)
         r = std::to_chars(buffer, buffer + sizeof buffer, value);
     else
-        r = std::to_chars(buffer, buffer + sizeof buffer, value, std::chars_format::fixed, decimals);
+        r = std::to_chars(buffer, buffer + sizeof buffer, value, std::chars_format::fixed, std::min(decimals, 100));
     std::string text(buffer, r.ec == std::errc{} ? r.ptr : buffer);
     if (text == "-0" || (text.starts_with("-0.") && text.find_first_not_of("-0.") == std::string::npos))
         text.erase(0, 1);       // no minus zero
     return text;
 }
 
-bool SpinBox::acceptsTyping(std::string_view text, int decimals, bool negative) {
+std::string SpinBox::toAscii(std::string_view text) {
+    std::string out;
+    out.reserve(text.size());
+    for (std::size_t i = 0; i < text.size(); ++i) {
+        const auto b = [&](std::size_t k) { return i + k < text.size() ? static_cast<unsigned char>(text[i + k]) : 0u; };
+        if (b(0) == 0xDB && b(1) >= 0xB0 && b(1) <= 0xB9) {            // ۰-۹ (U+06F0)
+            out += static_cast<char>('0' + (b(1) - 0xB0));
+            ++i;
+        } else if (b(0) == 0xD9 && b(1) >= 0xA0 && b(1) <= 0xA9) {     // ٠-٩ (U+0660)
+            out += static_cast<char>('0' + (b(1) - 0xA0));
+            ++i;
+        } else if (b(0) == 0xD9 && b(1) == 0xAB) {                       // ٫ the decimal mark
+            out += '.';
+            ++i;
+        } else if ((b(0) == 0xD9 && b(1) == 0xAC) || (b(0) == 0xD8 && b(1) == 0x9C)) {   // ٬ grouping; an Arabic letter mark
+            ++i;
+        } else if (b(0) == 0xE2 && b(1) == 0x88 && b(2) == 0x92) {       // − the minus sign
+            out += '-';
+            i += 2;
+        } else if (b(0) == 0xE2 && b(1) == 0x80 && (b(2) == 0x8E || b(2) == 0x8F)) {   // left-to-right and right-to-left marks
+            i += 2;
+        } else {
+            out += text[i];
+        }
+    }
+    return out;
+}
+
+bool SpinBox::acceptsTyping(std::string_view written, int decimals, bool negative) {
+    const std::string ascii = toAscii(written);
+    const std::string_view text = ascii;
     bool point = false, digits = false, exponent = false;
     for (std::size_t i = 0; i < text.size(); ++i) {
         const char c = text[i];
@@ -128,8 +162,22 @@ void SpinBox::setDecimals(int decimals) {
     setValue(value_);
 }
 
+const Locale& SpinBox::locale() const {
+    if (const UiContext* ui = context())
+        return ui->translator.locale();
+    return Locale::english();
+}
+
 void SpinBox::show() {
-    field_->setText(format(value_, decimals_));
+    field_->setText(locale().localized(format(value_, decimals_)));
+}
+
+void SpinBox::onRootChanged() {
+    show();
+}
+
+void SpinBox::onLanguageChanged() {
+    show();
 }
 
 void SpinBox::change(double value) {

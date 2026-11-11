@@ -140,8 +140,9 @@ public:
     // From any thread: `fn` runs on the thread of the user interface, soon, in the order posted (Scheduler::post).
     void post(std::function<void()> fn);
     // The system's dialog for choosing files or a folder (the request's parent: the window it belongs to, if any); `done`
-    // gets what was chosen (UTF-8 paths; none: cancelled) on the thread of the user interface.
-    void showFileDialog(platform::FileDialogRequest request, std::function<void(std::vector<std::string>)> done,
+    // gets what was chosen (UTF-8 paths; none: cancelled) or why it failed, on the thread of the user interface. An answer
+    // that comes after the application is gone is dropped.
+    void showFileDialog(platform::FileDialogRequest request, std::function<void(platform::FileDialogResult)> done,
                         Window* parent = nullptr);
     // What docking across the windows asks of them, to save and restore them (Workspace.hpp).
     DockingHost& docking();

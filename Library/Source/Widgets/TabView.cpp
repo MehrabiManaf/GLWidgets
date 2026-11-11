@@ -36,6 +36,14 @@ public:
     }
 
     bool active = false, hot = false, pressed = false, closeHot = false;
+    bool focused = false;       // the bar has the focus, and this is the tab shown
+
+    // Its title's color, as it is now.
+    void showState() {
+        const DockStyle& s = view_.style();
+        label_->setColor(active || hot ? s.text : s.mutedText);
+        invalidatePaint();
+    }
 
     // Its × at the end side.
     Rect closeRect() const {
@@ -53,9 +61,13 @@ protected:
     void paint(PaintContext& context) override {
         const DockStyle& s = view_.style();
         tabs::paintTab(context, s, size(), active, {.hovered = hot, .pressed = pressed && hot});
-        label_->setColor(active || hot ? s.text : s.mutedText);
         if (closable_ && (hot || active))
             tabs::paintClose(context, s, closeRect(), closeHot);
+        if (focused) {
+            const float top = tabs::selectedTabTop;
+            context.painter.strokeRoundedRect(Rect{2, top + 2, size().width - 4, size().height - top - 4}, 3, 1.5f,
+                                              context.ui.theme.button.focusRing);
+        }
     }
 
 private:
@@ -67,10 +79,14 @@ private:
 } // namespace
 
 // The tabs side by side, scrolled when they do not fit. It has the mouse for them: a press shows a tab (or on its ×, asks
-// to close it), a drag moves it along.
+// to close it), a drag moves it along. With the focus, the arrows show the tab before or after, Home and End the first and
+// the last.
 class TabView::Bar final : public Widget {
 public:
-    explicit Bar(TabView& view) : view_(view) { setClipsChildren(true); }
+    explicit Bar(TabView& view) : view_(view) {
+        setClipsChildren(true);
+        setFocusable(true);
+    }
 
     TabFace& face(std::size_t i) const { return static_cast<TabFace&>(*children()[i]); }
     void reveal() {
@@ -84,6 +100,8 @@ public:
             f.active = view_.current_ == i;
             f.hot = hot_ == i;
             f.pressed = pressed_ == i;
+            f.focused = f.active && hasFocus();
+            f.showState();
         }
         invalidatePaint();
     }
@@ -206,6 +224,28 @@ protected:
             hover({-1e9f, -1e9f});
     }
 
+    void onFocusChanged(bool) override { restore(); }
+
+    void onKey(KeyEvent& event) override {
+        if (!event.pressed || event.modifiers != platform::KeyModifiers::None || view_.tabs_.empty())
+            return;
+        using platform::Key;
+        const std::size_t last = view_.tabs_.size() - 1;
+        const std::size_t at = view_.current_.value_or(0);
+        // the arrows as the tabs go: mirrored right to left
+        const bool rtl = rightToLeft();
+        std::optional<std::size_t> to;
+        switch (event.key) {
+        case Key::Left: to = rtl ? std::min(at + 1, last) : (at > 0 ? at - 1 : 0); break;
+        case Key::Right: to = rtl ? (at > 0 ? at - 1 : 0) : std::min(at + 1, last); break;
+        case Key::Home: to = 0; break;
+        case Key::End: to = last; break;
+        default: return;
+        }
+        event.handled = true;
+        view_.setCurrent(*to);
+    }
+
 private:
     std::optional<std::size_t> tabAt(Point point) const {
         for (std::size_t i = 0; i < children().size(); ++i) {
@@ -230,6 +270,7 @@ private:
             changed = changed || closeHot != f.closeHot;
             f.closeHot = closeHot;
             f.hot = hot_ == k;
+            f.showState();
         }
         if (changed)
             invalidatePaint();
@@ -328,6 +369,30 @@ void TabView::moveTab(std::size_t from, std::size_t to) {
         props_.onCurrentChanged(current_);
 }
 
+void TabView::step(int by) {
+    if (tabs_.empty())
+        return;
+    const auto n = static_cast<std::ptrdiff_t>(tabs_.size());
+    const auto at = static_cast<std::ptrdiff_t>(current_.value_or(0));
+    setCurrent(static_cast<std::size_t>(((at + by) % n + n) % n));
+}
+
+void TabView::onPreviewKey(KeyEvent& event) {
+    // Ctrl+Tab and Ctrl+Page Down: the next tab (from the last, the first); with Shift, or Page Up, the one before
+    using platform::Key;
+    using platform::KeyModifiers;
+    if (!event.pressed)
+        return;
+    const KeyModifiers m = event.modifiers;
+    if (event.key == Key::Tab && (m == KeyModifiers::Control || m == (KeyModifiers::Control | KeyModifiers::Shift)))
+        step(m == KeyModifiers::Control ? 1 : -1);
+    else if (m == KeyModifiers::Control && (event.key == Key::PageDown || event.key == Key::PageUp))
+        step(event.key == Key::PageDown ? 1 : -1);
+    else
+        return;
+    event.handled = true;
+}
+
 void TabView::setCurrent(std::size_t index) {
     if (index < tabs_.size() && current_ != index)
         current(index, true);
@@ -407,9 +472,15 @@ void TabView::onStyleChanged() {
 Size TabView::measureContent(Size available) {
     const float bar = style().tabHeight;
     bar_->measure({available.width, bar});
+    // as big as its biggest page: the same whichever is shown
     Size page;
-    if (current_)
-        page = tabs_[*current_].content->measure({available.width, std::max(0.0f, available.height - bar)});
+    const Size room{std::max(0.0f, available.width - 2 * edge), std::max(0.0f, available.height - bar - edge)};
+    for (const Tab& tab : tabs_) {
+        const Insets m = tab.content->margin();
+        const Size s = tab.content->measureEvenHidden(room);
+        page.width = std::max(page.width, s.width + m.horizontal());
+        page.height = std::max(page.height, s.height + m.vertical());
+    }
     return {page.width + 2 * edge, bar + page.height + edge};
 }
 

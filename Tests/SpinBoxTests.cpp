@@ -118,3 +118,28 @@ TEST(aSpinBoxsArrowsStepAndRepeatWhileHeld) {
     s.release({20, 15});
     CHECK(s.spin->value() == 2 && (s.changes == std::vector<double>{1, 2, 3, 2}));
 }
+
+TEST(aSpinBoxShowsAndTakesTheDigitsOfItsLanguage) {
+    // Persian's digits and marks taken as Latin ones; other text as it is
+    CHECK(SpinBox::toAscii("\u06f1\u06f2\u066b\u06f5") == "12.5");
+    CHECK(SpinBox::toAscii("\u200e\u2212\u06f3") == "-3");
+    CHECK(SpinBox::toAscii("\u0664\u0662") == "42");
+    CHECK(SpinBox::toAscii("7a") == "7a");
+    CHECK(SpinBox::acceptsTyping("\u06f1\u066b\u06f5", 2, false) && !SpinBox::acceptsTyping("\u06f1\u066b\u06f5", 0, false));
+    // a very large number with fixed decimals: written whole, not lost
+    CHECK(SpinBox::format(1e300, 2).size() > 300);
+
+    tests::testTranslator().setLocale(Locale::of("fa"));
+    {
+        Spin s({.value = 12.5, .minimum = -100, .maximum = 100, .decimals = 1});
+        CHECK(s.text() == "\u06f1\u06f2\u066b\u06f5");
+        s.retype("\u06f4\u06f2");
+        s.key(Key::Enter);
+        CHECK(s.spin->value() == 42);
+        CHECK(s.text() == "\u06f4\u06f2\u066b\u06f0");
+        s.retype("7");          // Latin digits too
+        s.key(Key::Enter);
+        CHECK(s.spin->value() == 7);
+    }
+    tests::testTranslator().setLocale(std::nullopt);
+}

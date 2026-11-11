@@ -205,6 +205,9 @@ public:
     // The size it wants within `available` (unbounded is infinity): padding included, margin not; between its minimum and
     // maximum sizes. Kept as desiredSize(), and not measured again for the same space until the layout is invalidated.
     Size measure(Size available);
+    // The size it would want shown, though it is hidden now (measure gives a hidden one none): a page not shown that still
+    // sizes what holds it, as a tab view's.
+    Size measureEvenHidden(Size available);
     Size desiredSize() const { return desiredSize_; }
     // Gives it `rect` (in the parent's coordinates) and arranges its content: only moved, when it is the size it was and
     // nothing in it changed.

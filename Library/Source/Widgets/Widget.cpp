@@ -195,8 +195,14 @@ bool Widget::rightToLeft() const {
 }
 
 Size Widget::measure(Size available) {
-    if (!visible_)
+    if (!visible_) {
+        measureDirty_ = true;       // (none kept: measureEvenHidden measures it again)
         return desiredSize_ = {};
+    }
+    return measureEvenHidden(available);
+}
+
+Size Widget::measureEvenHidden(Size available) {
     const UiRoot* r = root();
     if (r && !measureDirty_ && measuredGeneration_ == r->layoutGeneration() && measuredFor_ == available)
         return desiredSize_;

@@ -64,8 +64,19 @@ void ComboBox::choose(std::size_t index) {
 }
 
 void ComboBox::setSearchable(bool searchable, LocalizedText placeholder) {
-    searchable_ = searchable;
     placeholder_ = std::move(placeholder);
+    if (searchable == searchable_)
+        return;
+    searchable_ = searchable;
+    // with the focus now: the system's text input on or off as it takes typed text or not
+    if (hasFocus()) {
+        if (UiHost* host = root() ? root()->host() : nullptr) {
+            if (searchable)
+                host->startTextInput();
+            else
+                host->stopTextInput();
+        }
+    }
 }
 
 void ComboBox::open(std::string typed) {
