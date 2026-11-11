@@ -4,6 +4,7 @@
 #include "Check.hpp"
 
 #include <GLWidgets/Text/Font.hpp>
+#include <GLWidgets/Text/GlyphAtlas.hpp>
 #include <GLWidgets/Text/TextLayout.hpp>
 
 #include <cmath>
@@ -40,6 +41,55 @@ void checkCaretsRoundTrip(const TextLayout& t) {
 }
 
 } // namespace
+
+TEST(whatNoFontOfATextHasIsShownInTheSystemsFont) {
+    FontLibrary fonts;
+    // Chinese: not in the default font; the system's (when it has one with it) does, looked for once
+    const char32_t zhong = U'中';
+    CHECK(!fonts.defaultFont().hasCharacter(zhong));
+    const Font* system = fonts.fallbackFor(zhong, "zh");
+#ifdef _WIN32
+    CHECK(system != nullptr);           // (Windows has Chinese fonts: Microsoft YaHei, SimSun)
+#endif
+    if (system) {
+        CHECK(system->hasCharacter(zhong) && fonts.fallbackFor(zhong) == system);
+        // a layout of it: its glyph of that font, not the default's empty box
+        const TextLayout layout("a\xE4\xB8\xAD", TextStyle{{&fonts.defaultFont()}, 14});
+        bool fromSystem = false;
+        for (const PositionedGlyph& g : layout.glyphs())
+            fromSystem = fromSystem || (g.font == system && g.glyph != 0);
+        CHECK(fromSystem);
+    }
+    // a character no font has (a private use one): none
+    CHECK(fonts.fallbackFor(U'\U000F0000') == nullptr);
+    // off: the system is not asked (a font already loaded may still have it)
+    fonts.setSystemFallback(false);
+    const Font* off = fonts.fallbackFor(U'क');         // Devanagari's ka
+    CHECK(!off || off->hasCharacter(U'क'));
+}
+
+TEST(aGlyphsDistanceFieldIsInsideWhereItIs) {
+    FontLibrary fonts;
+    GlyphAtlas atlas(1, 256, 2, 256);
+    CHECK(atlas.hasFields());
+    // the letter l: a bar; the middle of its field inside it (the median of its channels past half), its corners out
+    const TextLayout l("l", TextStyle{{&fonts.defaultFont()}, 14});
+    const GlyphAtlas::FieldGlyph& field = atlas.fieldGlyph(fonts.defaultFont(), l.glyphs().front().glyph);
+    CHECK(!field.rect.empty() && field.rect.width > 2 * GlyphAtlas::fieldRange && field.rect.height > 30);
+    const auto median = [&](int x, int y) {
+        const std::span<const std::byte> pixels = atlas.fieldPixels();
+        const std::byte* p = &pixels[(static_cast<std::size_t>(field.rect.y + y) * atlas.fieldAtlasSize().width + field.rect.x + x) * 4];
+        const int r = static_cast<int>(p[0]), g = static_cast<int>(p[1]), b = static_cast<int>(p[2]);
+        return std::max(std::min(r, g), std::min(std::max(r, g), b));
+    };
+    CHECK(median(field.rect.width / 2, field.rect.height / 2) > 160);
+    CHECK(median(0, 0) < 64 && median(field.rect.width - 1, field.rect.height - 1) < 64);
+    // made once
+    CHECK(&atlas.fieldGlyph(fonts.defaultFont(), l.glyphs().front().glyph) == &field);
+    // a space: nothing to draw
+    const TextLayout space(" ", TextStyle{{&fonts.defaultFont()}, 14});
+    CHECK(atlas.fieldGlyph(fonts.defaultFont(), space.glyphs().front().glyph).rect.empty());
+}
 
 TEST(latinLine) {
     const TextLayout t = layout("Hello world");

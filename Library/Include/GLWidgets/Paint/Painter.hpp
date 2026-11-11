@@ -86,6 +86,9 @@ public:
     // A coverage mask (the red channel of `texture`, as the glyph atlas has it) in `color`. `rect` is in the target's dips
     // and not transformed: what is drawn with it was placed on the target's pixels already (drawText does).
     void drawMask(const Rect& targetRect, TextureId texture, Color color, const Rect& uv);
+    // A glyph's multi-channel distance field (GlyphAtlas::fieldGlyph) in `color`, sharp at any size: `range` how far its
+    // distances reach, in `uv`'s units (across, down). `rect` as drawMask's.
+    void drawFieldMask(const Rect& targetRect, TextureId texture, Color color, const Rect& uv, Point range);
 
     // ---- state ----
 

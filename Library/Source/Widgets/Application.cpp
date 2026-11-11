@@ -897,7 +897,8 @@ Application::Application() : impl_(std::make_unique<Impl>(*this)) {
 #endif
     d.renderer = std::make_unique<paint::Renderer>(*d.device);
     d.fonts = std::make_unique<text::FontLibrary>();
-    d.atlas = std::make_unique<text::GlyphAtlas>(d.renderer->addTexture());
+    // (its distance fields: the text of what zooms, sharp at any size)
+    d.atlas = std::make_unique<text::GlyphAtlas>(d.renderer->addTexture(), 2048, d.renderer->addTexture(), 1024);
     d.icons = std::make_unique<IconAtlas>(d.renderer->addTexture());
     d.images = std::make_unique<ImageStore>([renderer = d.renderer.get()](rhi::Filter filter) { return renderer->addTexture(nullptr, filter); });
     d.translator = std::make_unique<Translator>();

@@ -42,7 +42,9 @@ add_library(GLWidgets ${GLW_LIB_TYPE}
     Source/Rhi/Device.cpp
     Source/Rhi/SdlGpu/SdlGpuDevice.cpp
     Source/Text/DrawText.cpp
+    Source/Text/DistanceField.cpp
     Source/Text/Font.cpp
+    Source/Text/SystemFonts.cpp
     Source/Text/GlyphAtlas.cpp
     Source/Text/TextLayout.cpp
     Source/Widgets/Action.cpp
@@ -113,4 +115,16 @@ target_compile_features(GLWidgets PUBLIC cxx_std_20)
 target_link_libraries(GLWidgets PRIVATE ${GLW_SDL3_TARGET} glw_freetype glw_harfbuzz glw_sheenbidi glw_unibreak glw_thorvg)
 if(WIN32)
     target_link_libraries(GLWidgets PRIVATE dwmapi)     # rounded windows (Windows 11)
+    target_link_libraries(GLWidgets PRIVATE dwrite)     # the system's fonts for what the text's do not have
+elseif(APPLE)
+    target_link_libraries(GLWidgets PRIVATE "-framework CoreText" "-framework CoreFoundation")
+else()
+    # the system's fonts for what the text's do not have: fontconfig, when it is there (none: no fallback)
+    find_package(Fontconfig)
+    if(Fontconfig_FOUND)
+        target_link_libraries(GLWidgets PRIVATE Fontconfig::Fontconfig)
+        target_compile_definitions(GLWidgets PRIVATE GLW_HAVE_FONTCONFIG)
+    else()
+        message(STATUS "GLWidgets: fontconfig not found: no fallback to the system's fonts")
+    endif()
 endif()

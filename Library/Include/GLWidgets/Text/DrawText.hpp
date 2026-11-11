@@ -2,8 +2,9 @@
 // SPDX-License-Identifier: MIT
 #pragma once
 // Text through a painter: each glyph of a layout as a quad of the atlas, placed on the target's pixels (to a quarter of a
-// pixel horizontally, whole pixels vertically) and rasterized at the size it has there, so text is sharp at any scale and
-// zoom.
+// pixel horizontally, whole pixels vertically) and rasterized at the size it has there; under a zoom (the transform's
+// scale not 1), from its distance field when the atlas has fields (GlyphAtlas::fieldGlyph), sharp at any size without a
+// bitmap for each.
 #include <GLWidgets/Core/Color.hpp>
 #include <GLWidgets/Core/Geometry.hpp>
 #include <GLWidgets/Export.hpp>

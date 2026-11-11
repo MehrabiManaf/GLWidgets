@@ -368,6 +368,9 @@ const Font* TextLayout::Data::fontFor(char32_t c, const Font* current) const {
         if (font->hasCharacter(c))
             return font;
     }
+    // none of them: a font of the system's (a symbol, an emoji, another script)
+    if (const Font* system = style.fonts.front()->library().fallbackFor(c, options.language))
+        return system;
     return current ? current : style.fonts.front();
 }
 

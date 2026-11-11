@@ -23,6 +23,12 @@ void drawText(paint::Painter& painter, GlyphAtlas& atlas, const TextLayout& layo
     if (pixelSize < 1 || color.a <= 0)
         return;
     const PixelSize atlasSize = atlas.size();
+    // zoomed (a canvas's text): distance fields, made once and sharp at any scale, instead of a bitmap for each size
+    const bool fields = atlas.hasFields() && std::abs(transform.scale - 1.0f) > 1e-3f && pixelSize >= 5;
+    const PixelSize fieldSize = fields ? atlas.fieldAtlasSize() : PixelSize{1, 1};
+    const float fieldScale = pixelSize / GlyphAtlas::fieldEm;       // the field's pixels to the target's
+    const Point fieldRange{GlyphAtlas::fieldRange / static_cast<float>(fieldSize.width),
+                           GlyphAtlas::fieldRange / static_cast<float>(fieldSize.height)};
     // the clip on the target, in pixels: a long line's glyphs out of it are not even looked up
     const Rect clip = painter.clip();
     const float clipLeft = clip.x * pixelsPerDip, clipRight = clip.right() * pixelsPerDip;
@@ -39,6 +45,18 @@ void drawText(paint::Painter& painter, GlyphAtlas& atlas, const TextLayout& layo
         const Point pen = transform.map(origin + g.position) * pixelsPerDip;
         if (pen.x + reach < clipLeft || pen.x - reach > clipRight)
             continue;
+        if (fields) {
+            // where it is, not moved to the pixels: a field is as sharp anywhere
+            const GlyphAtlas::FieldGlyph& field = atlas.fieldGlyph(*g.font, g.glyph);
+            if (field.rect.empty())
+                continue;
+            const Rect target{(pen.x + field.left * fieldScale) / pixelsPerDip, (pen.y - field.top * fieldScale) / pixelsPerDip,
+                              field.rect.width * fieldScale / pixelsPerDip, field.rect.height * fieldScale / pixelsPerDip};
+            const Rect uv{static_cast<float>(field.rect.x) / fieldSize.width, static_cast<float>(field.rect.y) / fieldSize.height,
+                          static_cast<float>(field.rect.width) / fieldSize.width, static_cast<float>(field.rect.height) / fieldSize.height};
+            painter.drawFieldMask(target, atlas.fieldTexture(), shown, uv, fieldRange);
+            continue;
+        }
         const float column = std::floor(pen.x);
         const int subpixel = std::min(3, static_cast<int>((pen.x - column) * 4));
         const GlyphAtlas::Glyph& image = atlas.glyph(*g.font, g.glyph, pixelSize, subpixel);

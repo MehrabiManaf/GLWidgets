@@ -3,13 +3,16 @@
 // The shader of draw lists (GLWidgets/Paint/DrawList.hpp): everything a Painter records is drawn by this one pair, with
 // premultiplied alpha blending. An engine drawing GLWidgets' draw lists itself uses it as it is.
 //
-// Five kinds of vertices, by shape.z:
+// Six kinds of vertices, by shape.z:
 //   0  textured: the color times the texture at uv (a white texel for tessellated lines and polygons, an image). The
 //      anti-aliasing of lines and polygons is in their geometry (a fringe whose color fades to 0).
 //   1  box: a rounded rectangle as a signed distance field. uv is the point relative to the box's center and halfSize its
 //      half size, in dips; shape.x is the corner radius, shape.y the border width (0: filled), shape.w the blur (0: a
 //      one-pixel anti-aliased edge).
 //   2  mask: the color times the red channel of the texture at uv, a coverage (the glyph atlas, one channel).
+//   5  field: a glyph's multi-channel signed distance field (the glyph atlas's fields): the median of its red, green and
+//      blue at uv is 0.5 on the outline; halfSize is how far its distances reach in uv's units, so that its edge is one
+//      pixel wide on the screen at any size.
 //   3  relief: a rounded rectangle as box is, raised shape.w dips above what it is on (below it when negative: sunk),
 //      its edge rounding down to it over shape.y dips (a quarter circle's profile), lit by the light of Lighting: its
 //      normal from the slope of that height, a diffuse and a specular term, scaled so that its flat top shows its color
@@ -183,5 +186,11 @@ float4 fragmentMain(VertexOutput input) : SV_Target {
     float3 shaded = relief(input.uv, slope, bevel, input.shape.w, d, hidden, sector ? length(input.uv) : input.uv.y, input.color);
     float4 raised = float4(shaded, input.color.a) * inside;
 
-    return lit ? raised : input.shape.z > 1.5 ? mask : input.shape.z > 0.5 ? box : textured;
+    // a distance field: its edge a pixel wide however large it shows
+    float distance = max(min(texel.r, texel.g), min(max(texel.r, texel.g), texel.b)) - 0.5;
+    float2 perPixel = fwidth(input.uv);
+    float onScreen = max(0.5 * dot(input.halfSize, 1.0 / max(perPixel, 1e-6)), 1.0);
+    float4 field = input.color * saturate(distance * onScreen + 0.5);
+
+    return input.shape.z > 4.5 ? field : lit ? raised : input.shape.z > 1.5 ? mask : input.shape.z > 0.5 ? box : textured;
 }

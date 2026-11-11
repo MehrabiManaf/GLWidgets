@@ -3,8 +3,8 @@
 #pragma once
 // A surface without edges, zoomed and panned, with widgets on it: the ground of a node editor, a diagram, a level map. Its
 // items are any widgets, placed at points of the canvas, as big as they measure; they are painted, under the mouse and
-// mapped through the zoom and the pan (Widget::childrenTransform), and text in them is rasterized at the size it shows, so
-// it stays sharp at any zoom. Zooming and panning lay nothing out: only what shows is painted.
+// mapped through the zoom and the pan (Widget::childrenTransform), and text in them is drawn from its glyphs' distance
+// fields (drawText under a zoom), so it stays sharp at any zoom and eases from zoom to zoom without bitmaps made for each. Zooming and panning lay nothing out: only what shows is painted.
 //
 // The wheel zooms at the mouse; the middle or the right button drags the view (the right one, pressed and let go without
 // moving, asks for a context menu: setOnContextRequested). Behind its items it draws a grid; a subclass draws what goes

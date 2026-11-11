@@ -222,7 +222,7 @@ has its own text stack instead of SDL_ttf (`glw::text`, `Library/Include/GLWidge
 | Shaping | HarfBuzz | MIT |
 | Rasterization | FreeType | FTL (BSD-like, credit in the documentation: [ThirdPartyNotices.md](ThirdPartyNotices.md)) |
 | Default font, Persian and Latin | Vazirmatn, compiled into the library | OFL |
-| Font discovery and fallback *(planned)* | DirectWrite / CoreText / fontconfig | system / MIT |
+| Font fallback | DirectWrite / Core Text / fontconfig | system / MIT |
 
 **`FontLibrary` and `Font`.** A library owns its fonts, loaded from memory or files. It starts with the default font.
 
@@ -252,8 +252,17 @@ so: what was painted that frame is painted again. The atlas is in memory; an eng
 itself.
 
 **`drawText`** draws a layout through a painter: each glyph as a mask quad, rasterized at the size it has on the target's
-pixels (scale and zoom included). Text on the zoomable node canvas therefore stays sharp, at the cost of more atlas entries
-while zooming. Whether MSDF glyphs are needed for the canvas is measured in M5.
+pixels, hinted and placed to a quarter of a pixel. Text under a zoom (the transform's scale not 1: the node canvas, eased
+from zoom to zoom) is drawn from **distance fields** instead (`Painter::drawFieldMask`, kind 5 of the painter's
+shader): each glyph's multi-channel signed distance field (Chlumsky's MSDF), made once at 48 pixels an em into a second
+texture of the atlas (RGBA, `GlyphAtlas::fieldGlyph`) and sharp at any size, so that zooming makes no bitmaps. The fields
+are GLWidgets' own (`Text/DistanceField.cpp`, no library): the outline from FreeType, its curves flattened into lines of
+three quarters of a field pixel; its edges split at its corners (where two of its segments meet at more than eight
+degrees) and colored three ways so that a corner's two sides share one channel; each channel the pseudo-distance to the
+nearest edge of its color (past an edge's end, the distance to its line there, which keeps corners sharp in the median);
+a pixel whose median is on the wrong side of the outline (by the non-zero rule) takes the true distance in all three.
+The shader takes the median, its edge one screen pixel wide whatever the size (from the derivatives of the field's
+coordinates).
 
 **A line placed alone in a box is centered by its letters** (`TextLayout::opticalOffset`, what labels and fields add to
 its origin). The default font is made for Persian: its height has room for marks above and for deep descenders below
@@ -261,8 +270,16 @@ its origin). The default font is made for Persian: its height has room for marks
 that the middle of its letters (between their x-height and cap height, from the font's OS/2 table) is the middle of its
 height; a line with Arabic script stays as the font centers it, and a text of several lines is not moved.
 
-Still to come: system fonts and fallback through the system, visual cursor movement (arrow keys across direction
-changes), the composition of input methods in text fields, and tab stops.
+**The system's fonts** show what none of a text's fonts has (Chinese, Devanagari, Greek where the font has none,
+symbols, emoji): `FontLibrary::fallbackFor` asks the system which font it would use for the character (DirectWrite's
+font fallback on Windows, `CTFontCreateForString` on macOS, fontconfig's sorted match by character set on Linux; a build
+without fontconfig has none), loads that file once (a collection's face by its index, or by its PostScript name on
+macOS) and remembers the answer for each character; a font already loaded that has it is taken first. `TextLayout` asks
+it for each character none of its style's fonts has. Emoji show as outlines in the text's color: their colored layers
+(COLR) are not drawn yet.
+
+Still to come: color emoji, visual cursor movement (arrow keys across direction changes), the composition of input
+methods in text fields, and tab stops.
 
 ## Widgets
 
@@ -1299,7 +1316,7 @@ The `GLW_USE_SYSTEM_SDL3` option uses an installed SDL3 instead of the pinned re
 |---|---|---|
 | M0 | CMake, SDL3, the Platform and Rhi interfaces, windows in dips, events, several windows on one GPU device, CI on the three systems | Done |
 | M1 | RHI resources and passes into textures, the shader pipeline, `Painter` / `DrawList` / `Renderer` (boxes, shadows, polylines, polygons, images, clipping, transforms), borderless windows with hit testing | Done: run on Direct3D 12 and Vulkan (Windows); Metal built, not yet run |
-| M2 | Text: HarfBuzz and FreeType, glyph atlas, bidi, line breaking, text layout with cursor and selection | Done, apart from system fonts and visual cursor movement (see [Text](#text)) |
+| M2 | Text: HarfBuzz and FreeType, glyph atlas, bidi, line breaking, text layout with cursor and selection | Done, apart from visual cursor movement (see [Text](#text)); the system's fonts for what a text's fonts have not |
 | M3 | Widget core: tree, events, focus, layout, a UI root independent of the platform, window chrome as widgets (with the native extras), live resize | Done, apart from the native extras of the chrome and what is listed in [Widgets](#widgets) |
 | M4 | Basic widgets (label, button, line edit, scroll area, splitter), styles, `LocalizedText` and catalogs, right-to-left layouts | Done: plural rules and the formatting of numbers and dates (`Locale`: Persian digits, the Solar Hijri calendar) too (see [Localization](#localization-and-right-to-left)) |
 | M5 | Docking: major and panel tabs, windows merging and splitting by their tabs, both modes, layout persistence | Done: docking in a window, major tabs and saved layouts (M5a), across windows in the full mode (M5b), global panels, saved workspaces and Wayland's restricted mode (M5c). Wayland's drag-and-drop between windows, and keeping restored windows on the screens there are, later; the restricted mode not yet run on Wayland |
@@ -1308,7 +1325,4 @@ The `GLW_USE_SYSTEM_SDL3` option uses an installed SDL3 instead of the pinned re
 ## Open questions
 
 - Where GPU support for older machines would be needed (no Vulkan 1.0 / Direct3D 12): if it ever is, an OpenGL backend.
-- Text on the node canvas: glyphs rasterized at each zoom level (as now) or MSDF. Measured with the canvas (M6): the wheel
-  zooms by steps, so a few sizes are rasterized and kept, and painting stays well under a millisecond; MSDF would matter
-  for zoom animated without steps, which would fill the atlas with sizes.
 - Whether ICU is needed at all, or the small `Locale` implementation is enough.

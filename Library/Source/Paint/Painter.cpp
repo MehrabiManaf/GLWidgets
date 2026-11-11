@@ -557,6 +557,15 @@ void Painter::drawMask(const Rect& targetRect, TextureId texture, Color color, c
     quad(targetRect, texture, color, uv, VertexKind::Mask);
 }
 
+void Painter::drawFieldMask(const Rect& targetRect, TextureId texture, Color color, const Rect& uv, Point range) {
+    if (targetRect.empty() || color.a <= 0 || culled(targetRect))
+        return;
+    const std::size_t first = list_.vertices.size();
+    quad(targetRect, texture, color, uv, VertexKind::Field);
+    for (std::size_t i = first; i < list_.vertices.size(); ++i)
+        list_.vertices[i].halfSize = range;
+}
+
 void Painter::quad(const Rect& r, TextureId texture, Color color, const Rect& uv, VertexKind kind) {
     if (r.empty() || color.a <= 0 || culled(r))
         return;

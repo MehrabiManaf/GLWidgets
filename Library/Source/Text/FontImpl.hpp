@@ -22,6 +22,7 @@ struct Font::Impl {
     hb_font_t* hbFont = nullptr;    // at the font's units per em: positions are scaled by size / unitsPerEm
     float unitsPerEm = 1000;
     std::string family;
+    const FontLibrary* library = nullptr;
 
     Impl() = default;
     Impl(const Impl&) = delete;
