@@ -192,6 +192,12 @@ public:
     // it docks on one of its sides only.
     void setCenter(std::unique_ptr<Widget> center);
     Widget* center() const { return center_; }
+    // Its center a stack of panels: the documents of an editor (a script's graphs), in tabs as any stack's - closed, moved,
+    // floated, docked into it and out of it - that stays when its last panel goes, its room kept, empty. Panels docked
+    // around it go beside it; addPanel(panel, center, DockSide::Center) puts one in it. Saved layouts keep what it has.
+    DockTabs& setCenterStack();
+    // Its center, when it is a stack (setCenterStack).
+    DockTabs* centerStack() const;
     // An area of the same group around `center`, for another window: panels move between them as between an area and its
     // floating windows (a window opened by a major tab torn off gets one, around its major tabs).
     std::unique_ptr<DockArea> makeSibling(std::unique_ptr<Widget> center);
@@ -213,6 +219,8 @@ public:
     std::vector<DockArea*> floatingAreas() const;
     // A panel's × was pressed: `handler` gets it (out of the area); without one it is destroyed.
     void setOnPanelClosed(std::function<void(DockPanel)> handler) { onPanelClosed_ = std::move(handler); }
+    // A stack of the area (or of its floating windows) shows another panel: its id (the document the user went to).
+    void setOnPanelShown(std::function<void(DockTabs&, const std::string&)> handler) { onPanelShown_ = std::move(handler); }
 
     // The arrangement as JSON: nodes, their shares, the panels of each stack by id, the tab shown. Not the floating windows'.
     std::string saveLayout() const;
@@ -341,6 +349,10 @@ private:
     std::optional<Guides> guides_;
     Widget* buttons_ = nullptr;             // a floating area's window buttons, over its node
     std::function<void(DockPanel)> onPanelClosed_;
+    std::function<void(DockTabs&, const std::string&)> onPanelShown_;
+    friend class DockTabs;
+    // A stack of the group, but its center stack: where a panel goes by default.
+    DockTabs* firstSideTabs() const;
 };
 
 } // namespace glw

@@ -14,6 +14,7 @@
 #include <cmath>
 #include <memory>
 #include <string>
+#include <vector>
 
 using namespace glw;
 
@@ -433,4 +434,47 @@ TEST(aTabBarSlidesAwayAndBack) {
     tests::advance(std::chrono::milliseconds(200));
     CHECK(near(palette.barHeight(), full) && !tests::testScheduler().animating());
     tests::testScheduler().setAnimationsEnabled(false);
+}
+
+// A center that is a stack of documents: its tabs as any stack's, panels beside it by default, kept when its last tab goes,
+// what it has kept in a saved layout, the stack shown told.
+TEST(aCenterStackHoldsDocumentsAndStaysEmpty) {
+    tests::FakeHost host;
+    UiRoot root(tests::testContext(), &host);
+    root.setSize({800, 600});
+    auto made = std::make_unique<DockArea>();
+    DockArea& area = *made;
+    DockTabs& documents = area.setCenterStack();
+    CHECK(area.centerStack() == &documents && area.center() == &documents);
+    std::vector<std::string> shown;
+    area.setOnPanelShown([&](DockTabs&, const std::string& id) { shown.push_back(id); });
+    // documents into it; a panel without a place: beside it, not in it
+    area.addPanel(panel("EventGraph"), &documents, DockSide::Center);
+    area.addPanel(panel("Jump"), &documents, DockSide::Center);
+    DockTabs& details = area.addPanel(panel("details"));
+    CHECK(documents.count() == 2 && &details != &documents && details.count() == 1);
+    CHECK(!shown.empty() && shown.back() == "Jump");
+    root.setContent(std::move(made));
+    root.layout();
+    // closed by their x: the stack stays, its room kept
+    std::vector<std::string> closed;
+    area.setOnPanelClosed([&](DockPanel p) { closed.push_back(p.id); });
+    area.closePanel("Jump");
+    area.closePanel("EventGraph");
+    root.layout();
+    CHECK(closed.size() == 2 && documents.count() == 0 && area.centerStack() == &documents);
+    CHECK(documents.size().width >= 160 && documents.size().height >= 100);
+    // what it has, in a saved layout and back
+    area.addPanel(panel("EventGraph"), &documents, DockSide::Center);
+    area.addPanel(panel("Jump"), &documents, DockSide::Center);
+    documents.setActive(0);
+    const std::string saved = area.saveLayout();
+    area.removePanel("Jump");
+    area.addPanel(panel("Jump"));       // elsewhere now
+    CHECK(area.tabsOf("Jump") != area.centerStack());
+    CHECK(area.restoreLayout(saved));
+    root.layout();
+    DockTabs* back = area.centerStack();
+    CHECK(back && back->count() == 2 && back->panelId(back->active()) == "EventGraph");
+    CHECK(area.tabsOf("Jump") == back && area.tabsOf("details") != back);
 }

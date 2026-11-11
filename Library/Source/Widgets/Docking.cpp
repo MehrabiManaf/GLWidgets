@@ -434,7 +434,19 @@ void writeNode(std::string& out, const Widget& node, const Widget* center) {
     out += "{\"share\":";
     appendNumber(out, node.stretch() > 0 ? node.stretch() : 1.0f);
     if (&node == center) {
-        out += ",\"center\":true}";
+        out += ",\"center\":true";
+        if (const auto* tabs = dynamic_cast<const DockTabs*>(&node)) {
+            // a stack: its panels too
+            out += ",\"tabs\":[";
+            for (std::size_t i = 0; i < tabs->count(); ++i) {
+                if (i > 0)
+                    out += ',';
+                json::appendString(out, tabs->panelId(i));
+            }
+            out += "],\"active\":";
+            appendNumber(out, static_cast<float>(tabs->active()));
+        }
+        out += '}';
     } else if (const auto* split = dynamic_cast<const DockSplit*>(&node)) {
         out += split->orientation() == Orientation::Horizontal ? ",\"split\":\"horizontal\",\"panes\":[" : ",\"split\":\"vertical\",\"panes\":[";
         bool first = true;
@@ -496,8 +508,22 @@ std::unique_ptr<Widget> buildNode(const json::Value& saved, std::map<std::string
                                   bool barsHide) {
     const float share = std::max(0.01f, numberOf(saved.member("share"), 1));
     if (saved.member("center")) {
-        if (center)
+        if (center) {
             center->setStretch(share);
+            // a center stack: the panels it names back in it
+            const json::Value* tabs = saved.member("tabs");
+            if (auto* stack = dynamic_cast<DockTabs*>(center.get()); stack && tabs && tabs->array()) {
+                for (const json::Value& id : *tabs->array()) {
+                    const auto panel = id.string() ? panels.find(*id.string()) : panels.end();
+                    if (panel == panels.end())
+                        continue;
+                    stack->add(std::move(panel->second));
+                    panels.erase(panel);
+                }
+                if (stack->count() > 0)
+                    stack->setActive(std::min(static_cast<std::size_t>(std::max(0.0f, numberOf(saved.member("active"), 0))), stack->count() - 1));
+            }
+        }
         return std::move(center);
     }
     if (const json::Value* split = saved.member("split")) {
@@ -671,6 +697,12 @@ void DockTabs::setActive(std::size_t index) {
     static_cast<TabRow&>(*bar_).reveal(active_);
     rebuildTools();
     invalidateLayout();
+    // the area's handler (its home's, for a floating window's stack)
+    if (DockArea* a = area()) {
+        DockArea* handling = a->group_->home ? a->group_->home : a;
+        if (handling->onPanelShown_)
+            handling->onPanelShown_(*this, entries_[active_].id);
+    }
 }
 
 void DockTabs::rebuildTools() {
@@ -933,6 +965,22 @@ void DockArea::setCenter(std::unique_ptr<Widget> center) {
     center_ = &addChild(std::move(center), 0);
 }
 
+DockTabs& DockArea::setCenterStack() {
+    setCenter(std::make_unique<DockTabs>());
+    return *centerStack();
+}
+
+DockTabs* DockArea::centerStack() const {
+    return dynamic_cast<DockTabs*>(center_);
+}
+
+DockTabs* DockArea::firstSideTabs() const {
+    DockTabs* found = nullptr;
+    if (Widget* n = node())
+        forEachTabs(*n, [&](DockTabs& tabs) { found = found || &tabs == center_ ? found : &tabs; });
+    return found;
+}
+
 std::unique_ptr<DockArea> DockArea::makeSibling(std::unique_ptr<Widget> center) {
     auto area = std::make_unique<DockArea>(scope_);
     area->group_ = group_;              // its own group goes with it
@@ -1009,10 +1057,14 @@ DockTabs& DockArea::addPanel(DockPanel panel, Widget* nextTo, DockSide side, flo
     GLW_EXPECTS(panel.scope == scope_);     // a panel goes only into areas of its scope
     auto* stack = dynamic_cast<DockTabs*>(nextTo);
     GLW_EXPECTS(!nextTo || stack || (center_ && nextTo == center_));
-    // beside the center (never in it)
+    // a center stack takes it as a tab; beside the center otherwise
+    if (DockTabs* documents = centerStack(); documents && nextTo == center_ && side == DockSide::Center) {
+        documents->add(std::move(panel));
+        return *documents;
+    }
     if (center_ && nextTo == center_)
         return insertBeside(std::move(panel), *center_, side == DockSide::Center ? DockSide::End : side, share);
-    if (center_ && !firstTabs() && (side == DockSide::Center || !nextTo))
+    if (center_ && !firstSideTabs() && (side == DockSide::Center || !nextTo))
         return insertBeside(std::move(panel), *node(), side == DockSide::Center ? DockSide::End : side, share);
     if (!node()) {
         auto& tabs = static_cast<DockTabs&>(addChild(std::make_unique<DockTabs>(), 0));     // under the window buttons
@@ -1020,7 +1072,7 @@ DockTabs& DockArea::addPanel(DockPanel panel, Widget* nextTo, DockSide side, flo
         return tabs;
     }
     if (side == DockSide::Center) {
-        DockTabs& tabs = stack ? *stack : *firstTabs();
+        DockTabs& tabs = stack ? *stack : *firstSideTabs();
         tabs.add(std::move(panel));
         return tabs;
     }
@@ -1066,6 +1118,8 @@ DockTabs& DockArea::insertBeside(DockPanel panel, Widget& target, DockSide side,
 void DockArea::prune(DockTabs& tabs) {
     if (tabs.count() > 0)
         return;
+    if (const DockArea* a = tabs.area(); a && a->center_ == &tabs)
+        return;         // a center stack stays, its room kept
     Widget* parent = tabs.parent();
     parent->removeChild(tabs);
     auto* split = dynamic_cast<DockSplit*>(parent);
@@ -1411,8 +1465,8 @@ void DockArea::onMouse(MouseEvent& event) {
     switch (event.type) {
     case MouseEventType::Press: {
         DockTabs* tabs = left ? titleAt(event.position) : nullptr;
-        if (!tabs)
-            return;
+        if (!tabs || tabs == center_)
+            return;         // (a center stack's bar: its documents are not floated as one)
         const bool window = floating_ && tabs->title_;
         if (window && !placesWindows())
             return;     // where the system places windows, it moves them by their title itself
@@ -1846,12 +1900,12 @@ bool DockArea::restoreLayout(std::string_view layout, std::string* error) {
     }
     if (built)
         addChild(std::move(built), 0);
-    // those it does not name join the first stack, which still shows the tab the layout says
-    DockTabs* first = firstTabs();
+    // those it does not name join the first stack (not the center's), which still shows the tab the layout says
+    DockTabs* first = firstSideTabs();
     const std::size_t shown = first ? first->active() : 0;
     for (auto& [id, panel] : panels)
         addPanel(std::move(panel));
-    if (first && first == firstTabs())
+    if (first && first == firstSideTabs())
         first->setActive(shown);
     return true;
 }
