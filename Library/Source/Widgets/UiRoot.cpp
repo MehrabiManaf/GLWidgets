@@ -111,16 +111,20 @@ void UiRoot::removeShortcuts(const void* owner) {
 // ---- tooltips ----
 
 void UiRoot::updateToolTip() {
-    // the deepest widget under the mouse with one
+    // the deepest widget under the mouse with one there
     Widget* with = nullptr;
+    std::optional<LocalizedText> text;
     for (auto it = hovered_.rbegin(); it != hovered_.rend() && !with; ++it) {
-        if ((*it)->toolTip())
+        if ((text = (*it)->toolTipAt((*it)->mapFromRoot(mouse_))))
             with = *it;
     }
-    if (with == tipFor_)
+    std::string resolved = text ? context_.translator.resolve(*text) : std::string();
+    if (with == tipFor_ && resolved == tipShown_)
         return;
     hideToolTip(false);
     tipFor_ = with;
+    tipText_ = std::move(text);
+    tipShown_ = std::move(resolved);
     tipSuppressed_ = false;
     Scheduler* scheduler = context_.scheduler;
     if (!with || !scheduler || !host_ || capture_)
@@ -132,10 +136,10 @@ void UiRoot::updateToolTip() {
 }
 
 void UiRoot::showToolTip() {
-    if (!tipFor_ || tip_ || tipSuppressed_ || !host_ || !tipFor_->toolTip())
+    if (!tipFor_ || tip_ || tipSuppressed_ || !host_ || !tipText_ || tipShown_.empty())
         return;
     // under the mouse's pointer
-    tip_ = host_->openPopup({.content = std::make_unique<ToolTipView>(*tipFor_->toolTip(), [this] { tip_ = nullptr; }),
+    tip_ = host_->openPopup({.content = std::make_unique<ToolTipView>(*tipText_, [this] { tip_ = nullptr; }),
                              .anchor = {mouse_.x, mouse_.y, 1, 22},
                              .tooltip = true});
 }
@@ -841,6 +845,8 @@ void UiRoot::forget(Widget& subtree) {
     if (isInside(tipFor_, subtree)) {
         hideToolTip(false);
         tipFor_ = nullptr;
+        tipText_.reset();
+        tipShown_.clear();
     }
     if (isInside(focus_, subtree)) {
         Widget* previous = std::exchange(focus_, nullptr);

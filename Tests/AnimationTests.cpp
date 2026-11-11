@@ -9,6 +9,7 @@
 #include <GLWidgets/Paint/DrawList.hpp>
 #include <GLWidgets/Widgets/Animation.hpp>
 #include <GLWidgets/Widgets/Button.hpp>
+#include <GLWidgets/Widgets/Label.hpp>
 #include <GLWidgets/Widgets/LineEdit.hpp>
 #include <GLWidgets/Widgets/UiRoot.hpp>
 
@@ -16,6 +17,8 @@
 #include <thread>
 #include <vector>
 #include <memory>
+#include <optional>
+#include <string>
 
 using namespace glw;
 using namespace std::chrono_literals;
@@ -254,4 +257,48 @@ TEST(whatIsPostedFromAThreadRunsOnTheNextTickInOrder) {
     CHECK(ran.size() == 3);
     t.scheduler.tick();
     CHECK(ran.back() == 9);
+}
+
+namespace {
+// Its left half says "Left", its right half "Right"; below 30, nothing (its parent's: none).
+class Halves final : public Widget {
+protected:
+    std::optional<LocalizedText> toolTipAt(Point p) const override {
+        if (p.y >= 30)
+            return std::nullopt;
+        return LocalizedText(p.x < size().width / 2 ? "Left" : "Right");
+    }
+};
+} // namespace
+
+TEST(aWidgetsPartsShowTheirOwnTooltips) {
+    tests::FakeHost host;
+    UiRoot root(tests::testContext(), &host);
+    auto content = std::make_unique<Widget>();
+    auto& h = content->add(std::make_unique<Halves>());
+    h.setMinimumSize({100, 40});
+    h.setAlignment(Alignment::Start, Alignment::Start);
+    root.setContent(std::move(content));
+    root.setSize({300, 200});
+    root.layout();
+    const auto shown = [&]() -> std::string {
+        const auto open = host.open();
+        if (open.empty())
+            return {};
+        const Widget& view = *open[0]->root.content();
+        return tests::testContext().translator.resolve(static_cast<const Label&>(*view.children()[0]).text());
+    };
+    root.dispatch(platform::MouseMoved{1, {20, 10}});
+    tests::advance(500ms);
+    CHECK(shown() == "Left");
+    root.dispatch(platform::MouseMoved{1, {30, 12}});      // the same part: it stays
+    CHECK(shown() == "Left");
+    root.dispatch(platform::MouseMoved{1, {80, 10}});      // another: gone, and its own after the delay (soon: just closed)
+    CHECK(host.open().empty());
+    tests::advance(500ms);
+    CHECK(shown() == "Right");
+    root.dispatch(platform::MouseMoved{1, {80, 35}});      // a part without one
+    tests::advance(1000ms);
+    CHECK(host.open().empty());
+    root.dispatch(platform::MouseMoved{1, {200, 150}});
 }

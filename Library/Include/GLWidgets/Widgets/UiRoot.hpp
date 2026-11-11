@@ -264,6 +264,8 @@ private:
     std::vector<std::pair<const void*, std::vector<std::shared_ptr<Action>>>> shortcuts_;
 
     Widget* tipFor_ = nullptr;          // the widget whose tooltip shows, or waits to
+    std::optional<LocalizedText> tipText_;  // its text where the mouse is (toolTipAt)
+    std::string tipShown_;              // ... as shown: another part of it, with another text, shows its own
     UiRoot* tip_ = nullptr;             // the tooltip's popup
     Timer tipTimer_;
     bool tipSuppressed_ = false;        // the mouse did something over it: not again until it leaves

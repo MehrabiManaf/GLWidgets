@@ -229,7 +229,8 @@ public:
     void setCursor(std::optional<platform::Cursor> cursor) { cursor_ = cursor; }
     std::optional<platform::Cursor> cursor() const { return cursor_; }
 
-    // What shows by the mouse when it stays over it a moment (UiRoot shows it, the theme's toolTip); none by default.
+    // What shows by the mouse when it stays over it a moment (UiRoot shows it, the theme's toolTip); none by default. A
+    // widget whose parts differ (a node's pins, a list's rows) says so in toolTipAt.
     void setToolTip(LocalizedText text);
     const LocalizedText* toolTip() const { return toolTip_.get(); }
 
@@ -285,6 +286,11 @@ protected:
     // The pointer's shape with the mouse at `point` (its own coordinates), over it or, while it has the mouse (a button
     // pressed on it), anywhere: setCursor's by default. None: its parent's.
     virtual std::optional<platform::Cursor> cursorAt(Point point) const { return cursor_; }
+    // What shows by the mouse at `point` (its own coordinates) when it stays there a moment: setToolTip's by default. None:
+    // its parent's. Asked as the mouse moves: another text shows in place of the one shown (another part).
+    virtual std::optional<LocalizedText> toolTipAt(Point point) const {
+        return toolTip_ ? std::optional<LocalizedText>(*toolTip_) : std::nullopt;
+    }
     // Where its children are cut when it clips them (its own coordinates): all of it by default, a scroll area's viewport.
     // Outside of it, its children are neither painted nor under the mouse.
     virtual Rect childrenClip() const { return {0, 0, bounds_.width, bounds_.height}; }
