@@ -162,6 +162,14 @@ public:
     // The theme of other colors (ColorScheme), in the style it is in now; eased as setTheme.
     void setColorScheme(ColorScheme scheme, bool animated = true);
     ColorScheme colorScheme() const;
+    // Whether the system's appearance is dark, light, or none when it does not say (Platform::systemDark).
+    std::optional<bool> systemPrefersDark() const;
+    // Told when the system's appearance changes (after the colors follow it, when they do).
+    void setOnSystemThemeChanged(std::function<void(bool dark)> handler);
+    // The colors follow the system's appearance: Dark or Light (the style kept), now and as it changes; off, they stay as
+    // they are. A system that does not say leaves them.
+    void setFollowsSystemColors(bool follows);
+    bool followsSystemColors() const;
     // The language every window shows its texts in (its catalog loaded in translator()), which shows them at once; a
     // language written right to left mirrors the windows (unless setLayoutDirection says otherwise).
     void setLanguage(const std::string& language);

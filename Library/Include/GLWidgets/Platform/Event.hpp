@@ -129,8 +129,13 @@ struct DragEnded {
     bool dropped = false;
 };
 
+// The system's light or dark appearance changed (the user's setting, or the time of day).
+struct SystemThemeChanged {
+    bool dark = false;
+};
+
 using Event = std::variant<QuitRequested, WindowCloseRequested, WindowResized, WindowScaleChanged, WindowExposed,
                            WindowStateChanged, WindowFocusChanged, MouseCrossed, MouseMoved, MouseButtonChanged, MouseWheelScrolled, KeyChanged,
-                           TextInput, TextComposition, DragMoved, DragLeft, DragDropped, DragEnded>;
+                           TextInput, TextComposition, DragMoved, DragLeft, DragDropped, DragEnded, SystemThemeChanged>;
 
 } // namespace glw::platform

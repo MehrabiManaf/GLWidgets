@@ -89,6 +89,10 @@ public:
     // ending with a separator; empty when there is none to be had.
     virtual std::string preferencesFolder(std::string_view organization, std::string_view application) const = 0;
 
+    // Whether the system's appearance is dark (true) or light (false); none when it does not say. Its changes come as
+    // SystemThemeChanged.
+    virtual std::optional<bool> systemDark() const { return std::nullopt; }
+
     // The text of the system's clipboard (UTF-8; empty when it holds none).
     virtual std::string clipboardText() const = 0;
     virtual void setClipboardText(std::string_view text) = 0;

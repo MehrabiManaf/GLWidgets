@@ -37,6 +37,7 @@ public:
     void setCursor(Cursor cursor) override;
     std::string clipboardText() const override;
     void setClipboardText(std::string_view text) override;
+    std::optional<bool> systemDark() const override;
     void showFileDialog(const FileDialogRequest& request, std::function<void(std::vector<std::string>)> done) override;
     std::string preferencesFolder(std::string_view organization, std::string_view application) const override;
 

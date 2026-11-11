@@ -268,10 +268,22 @@ bool SDLCALL SdlPlatform::watch(void* data, SDL_Event* event) {
     return true;    // the event stays in the queue
 }
 
+std::optional<bool> SdlPlatform::systemDark() const {
+    switch (SDL_GetSystemTheme()) {
+    case SDL_SYSTEM_THEME_DARK: return true;
+    case SDL_SYSTEM_THEME_LIGHT: return false;
+    default: return std::nullopt;
+    }
+}
+
 bool SdlPlatform::translate(const SDL_Event& in, Event& out) const {
     switch (in.type) {
     case SDL_EVENT_QUIT:
         out = QuitRequested{};
+        return true;
+
+    case SDL_EVENT_SYSTEM_THEME_CHANGED:
+        out = SystemThemeChanged{SDL_GetSystemTheme() == SDL_SYSTEM_THEME_DARK};
         return true;
 
     case SDL_EVENT_WINDOW_CLOSE_REQUESTED:

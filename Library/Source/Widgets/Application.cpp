@@ -122,6 +122,8 @@ struct Application::Impl final : DockingHost {
     int exitCode = 0;
     std::function<void()> onQuitting;
     std::function<bool()> onQuitRequested;
+    std::function<void(bool)> onSystemThemeChanged;
+    bool followsSystemColors = false;
     bool toldQuitting = false;
     bool inFrame = false;
 
@@ -439,6 +441,13 @@ struct Application::Impl final : DockingHost {
         if (std::holds_alternative<platform::QuitRequested>(event)) {
             if (!onQuitRequested || onQuitRequested())
                 quitting = true;
+            return;
+        }
+        if (const auto* e = std::get_if<platform::SystemThemeChanged>(&event)) {
+            if (followsSystemColors)
+                app.setColorScheme(e->dark ? ColorScheme::Dark : ColorScheme::Light);
+            if (onSystemThemeChanged)
+                onSystemThemeChanged(e->dark);
             return;
         }
         if (handleSystemDrag(event))
@@ -1144,6 +1153,26 @@ ThemeStyle Application::style() const {
 
 void Application::setColorScheme(ColorScheme scheme, bool animated) {
     setTheme(Theme::of(scheme, style()), animated);
+}
+
+std::optional<bool> Application::systemPrefersDark() const {
+    return impl_->platform->systemDark();
+}
+
+void Application::setOnSystemThemeChanged(std::function<void(bool)> handler) {
+    impl_->onSystemThemeChanged = std::move(handler);
+}
+
+void Application::setFollowsSystemColors(bool follows) {
+    impl_->followsSystemColors = follows;
+    if (!follows)
+        return;
+    if (const std::optional<bool> dark = systemPrefersDark())
+        setColorScheme(*dark ? ColorScheme::Dark : ColorScheme::Light, false);
+}
+
+bool Application::followsSystemColors() const {
+    return impl_->followsSystemColors;
 }
 
 ColorScheme Application::colorScheme() const {
