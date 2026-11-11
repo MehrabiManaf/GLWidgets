@@ -113,7 +113,7 @@ std::optional<SystemFontFile> systemFontFor(char32_t c, std::string_view languag
     }
     if (!fallback)
         return std::nullopt;
-    char16_t units[2];
+    char16_t units[2] = {};
     const int length = toUtf16(c, units);
     const wchar_t text[3] = {static_cast<wchar_t>(units[0]), length > 1 ? static_cast<wchar_t>(units[1]) : L'\0', L'\0'};
     wchar_t locale[LOCALE_NAME_MAX_LENGTH] = L"en-us";
@@ -155,7 +155,7 @@ std::optional<SystemFontFile> systemFontFor(char32_t c, std::string_view languag
 #elif defined(__APPLE__)
 
 std::optional<SystemFontFile> systemFontFor(char32_t c, std::string_view) {
-    char16_t units[2];
+    char16_t units[2] = {};
     const int length = toUtf16(c, units);
     UniChar chars[2] = {units[0], units[1]};
     CFStringRef text = CFStringCreateWithCharacters(nullptr, chars, length);
@@ -163,7 +163,15 @@ std::optional<SystemFontFile> systemFontFor(char32_t c, std::string_view) {
     CTFontRef found = CTFontCreateForString(base, text, CFRangeMake(0, length));
     std::optional<SystemFontFile> result;
     CGGlyph glyphs[2] = {};
-    if (found && CTFontGetGlyphsForCharacters(found, chars, glyphs, length)) {
+    // (Last Resort: macOS's font of a placeholder for every character, what it falls back to when none has it: as none)
+    bool lastResort = false;
+    if (found) {
+        if (CFStringRef name = CTFontCopyPostScriptName(found)) {
+            lastResort = CFStringCompare(name, CFSTR("LastResort"), 0) == kCFCompareEqualTo;
+            CFRelease(name);
+        }
+    }
+    if (found && !lastResort && CTFontGetGlyphsForCharacters(found, chars, glyphs, length)) {
         if (auto url = static_cast<CFURLRef>(CTFontCopyAttribute(found, kCTFontURLAttribute))) {
             UInt8 path[PATH_MAX];
             if (CFURLGetFileSystemRepresentation(url, true, path, sizeof path)) {
