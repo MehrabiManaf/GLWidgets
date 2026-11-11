@@ -39,6 +39,7 @@
 #include <GLWidgets/Widgets/LineEdit.hpp>
 #include <GLWidgets/Widgets/Panel.hpp>
 #include <GLWidgets/Widgets/ScrollArea.hpp>
+#include <GLWidgets/Widgets/SpinBox.hpp>
 #include <GLWidgets/Widgets/Splitter.hpp>
 #include <GLWidgets/Widgets/Widget.hpp>
 
@@ -227,6 +228,10 @@ inline Element<glw::Button> Button(glw::Button::Props props) {
 
 inline Element<glw::LineEdit> LineEdit(glw::LineEdit::Props props) {
     return make<glw::LineEdit>(std::move(props));
+}
+
+inline Element<glw::SpinBox> SpinBox(glw::SpinBox::Props props) {
+    return make<glw::SpinBox>(std::move(props));
 }
 
 inline Element<glw::CheckBox> CheckBox(glw::CheckBox::Props props) {
