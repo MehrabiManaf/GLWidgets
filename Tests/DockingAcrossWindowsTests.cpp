@@ -17,6 +17,7 @@
 #include <memory>
 #include <optional>
 #include <string>
+#include <utility>
 #include <vector>
 
 using namespace glw;
@@ -1031,4 +1032,114 @@ TEST(aFloatingWindowKeepsItsTabBar) {
     // its bar is its window's title: not hidden, and no button for it (the float button only)
     floating.setTabBarHidden(true);
     CHECK(!floating.tabBarHidden() && floating.children()[1]->children().size() == 1);
+}
+
+// ---- dragging something (DragDrop.hpp) from a widget of one window to a widget of another ----
+
+namespace {
+
+// Pressed and moved, it drags "A".
+class DragSource final : public Widget {
+public:
+    std::vector<DropAction> finished;
+
+protected:
+    void onMouse(MouseEvent& e) override {
+        e.handled = true;
+        if (e.type == MouseEventType::Press)
+            pressed_ = true;
+        else if (e.type == MouseEventType::Release)
+            pressed_ = false;
+        else if (e.type == MouseEventType::Move && std::exchange(pressed_, false))
+            root()->startDrag({.data = {"test/name", "A"}, .finished = [this](DropAction a) { finished.push_back(a); }});
+    }
+
+private:
+    bool pressed_ = false;
+};
+
+class DropTarget final : public Widget {
+public:
+    std::vector<std::string> dropped;
+    Point droppedAt;
+    bool over = false;
+
+protected:
+    DropAction onDragOver(const DragEvent&) override {
+        over = true;
+        return DropAction::Copy;
+    }
+    void onDragLeave() override { over = false; }
+    DropAction onDrop(const DragEvent& e) override {
+        dropped.push_back(e.data.content);
+        droppedAt = mapToRoot(e.position);
+        return DropAction::Copy;
+    }
+};
+
+struct TwoWindows {
+    Screen screen;
+    DragSource* source;
+    DropTarget* target;
+    Screen::Win* from;
+    Screen::Win* to;
+    TwoWindows() {
+        auto s = std::make_unique<DragSource>();
+        source = s.get();
+        from = &screen.open(std::move(s), {0, 0}, {300, 200});
+        auto t = std::make_unique<DropTarget>();
+        target = t.get();
+        to = &screen.open(std::move(t), {400, 0}, {300, 200});
+    }
+};
+
+} // namespace
+
+TEST(somethingIsDraggedFromOneWindowToAnother) {
+    TwoWindows t;
+    t.screen.press(*t.from, {50, 100});
+    t.screen.moveTo(*t.from, {60, 100});
+    CHECK(t.from->root->dragging() && t.screen.captures == 1);
+    t.screen.moveTo(*t.from, {350, 100});           // between them
+    CHECK(!t.target->over && t.from->host.cursor == platform::Cursor::NotAllowed);
+    t.screen.moveTo(*t.from, {450, 100});
+    CHECK(t.target->over && t.from->host.cursor == platform::Cursor::Arrow);
+    t.screen.release(*t.from, {470, 120});
+    CHECK((t.target->dropped == std::vector<std::string>{"A"}) && t.target->droppedAt == Point{70, 120});
+    CHECK(!t.target->over && t.screen.captures == 0);
+    CHECK((t.source->finished == std::vector<DropAction>{DropAction::Copy}));
+}
+
+TEST(aWindowThatClosesDuringADragIsLeftOut) {
+    TwoWindows t;
+    t.screen.press(*t.from, {50, 100});
+    t.screen.moveTo(*t.from, {60, 100});
+    t.screen.moveTo(*t.from, {450, 100});
+    CHECK(t.target->over);
+    t.screen.closeWindow(*t.to->root);
+    t.screen.closeWindows();
+    t.screen.moveTo(*t.from, {450, 110});
+    t.screen.release(*t.from, {450, 110});
+    CHECK((t.source->finished == std::vector<DropAction>{DropAction::None}));
+}
+
+TEST(whereTheSystemCarriesDragsSomethingGoesIntoAnotherWindow) {
+    TwoWindows t;
+    t.screen.places = false;
+    t.screen.carries = true;
+    t.screen.press(*t.from, {50, 100});
+    t.screen.moveTo(*t.from, {60, 100});
+    t.screen.moveTo(*t.from, {350, 100});           // out of its window: the system's
+    CHECK(t.screen.systemDrag.has_value());
+    if (!t.screen.systemDrag)
+        return;
+    const DockingHost::SystemDrag drag = *t.screen.systemDrag;
+    drag.moved(t.to->root.get(), {50, 100});
+    CHECK(t.target->over && t.from->host.cursor == platform::Cursor::Arrow);
+    drag.moved(nullptr, {});
+    CHECK(!t.target->over && t.from->host.cursor == platform::Cursor::NotAllowed);
+    drag.ended(t.to->root.get(), {60, 110});
+    CHECK((t.target->dropped == std::vector<std::string>{"A"}) && t.target->droppedAt == Point{60, 110});
+    CHECK((t.source->finished == std::vector<DropAction>{DropAction::Copy}));
+    CHECK(!t.from->root->dragging() && t.screen.captures == 0);
 }

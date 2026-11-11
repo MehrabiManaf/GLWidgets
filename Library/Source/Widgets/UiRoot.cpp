@@ -5,6 +5,7 @@
 #include <GLWidgets/Core/Assert.hpp>
 #include <GLWidgets/Paint/Painter.hpp>
 #include <GLWidgets/Widgets/Action.hpp>
+#include <GLWidgets/Widgets/DockingHost.hpp>
 #include <GLWidgets/Widgets/Label.hpp>
 #include <GLWidgets/Widgets/Layout.hpp>
 
@@ -71,9 +72,27 @@ private:
 
 } // namespace
 
+struct UiRoot::Dragging {
+    DragRequest request;
+    UiRoot* over = nullptr;             // the window it is over
+    DropAction action = DropAction::None;   // what would be done with it there
+    bool system = false;                // carried by the system out of its window (Wayland): its moves come from the host
+};
+
 UiRoot::UiRoot(const UiContext& context, UiHost* host) : context_(context), host_(host) {}
 
 UiRoot::~UiRoot() {
+    if (drag_) {
+        // its window goes in the middle of a drag: the one it was over is told, what started it not (gone with it)
+        if (UiRoot* over = liveRoot(drag_->over); over && over != this)
+            over->dragLeft();
+        if (DockingHost* h = context_.docking) {
+            h->captureMouse(false);
+            if (drag_->system)
+                h->cancelSystemDrag();
+        }
+        drag_.reset();
+    }
     hideToolTip(false);
     content_.reset();       // its widgets first, while what they may tell it (shortcuts) is whole
 }
@@ -352,6 +371,8 @@ void UiRoot::dispatch(const platform::Event& event) {
                    [&](const platform::WindowExposed&) { invalidatePaint(); },
                    [&](const platform::WindowStateChanged&) { invalidatePaint(); },
                    [&](const platform::WindowFocusChanged& e) {
+                       if (!e.focused && drag_ && !drag_->system)
+                           endDrag(nullptr, {}, false);
                        if (!e.focused) {    // the buttons are let go somewhere else
                            capture_ = nullptr;
                            buttonsDown_ = 0;
@@ -371,6 +392,8 @@ void UiRoot::dispatch(const platform::Event& event) {
                        updateCursor();
                    },
                    [&](const platform::MouseWheelScrolled& e) {
+                       if (drag_)
+                           return;
                        hideToolTip(true);
                        MouseEvent wheel{MouseEventType::Wheel, {}, platform::MouseButton::Left, 0, e.delta, modifiers_};
                        wheel.wheelPrecise = e.precise;
@@ -378,6 +401,15 @@ void UiRoot::dispatch(const platform::Event& event) {
                    },
                    [&](const platform::KeyChanged& e) {
                        modifiers_ = e.modifiers;
+                       if (drag_) {
+                           // Escape cancels it; Ctrl or Shift may change what a target would do
+                           if (e.pressed && e.key == platform::Key::Escape)
+                               endDrag(nullptr, {}, false);
+                           else if (!drag_->system)
+                               dragTo(mouse_);
+                           updateCursor();
+                           return;
+                       }
                        if (e.pressed)
                            hideToolTip(true);
                        KeyEvent key{e.key, e.modifiers, e.pressed, e.repeat};
@@ -454,6 +486,10 @@ void UiRoot::routeText(TextEvent& event) {
 
 void UiRoot::mouseMoved(Point point) {
     mouse_ = point;
+    if (drag_) {
+        dragTo(point);
+        return;
+    }
     Widget* target = widgetAt(point);
     updateHover(target);
     MouseEvent move{MouseEventType::Move, {}, platform::MouseButton::Left, 0, {}, modifiers_};
@@ -470,6 +506,15 @@ void UiRoot::mouseButton(const platform::MouseButtonChanged& e) {
     if (e.pressed)
         hideToolTip(true);
     MouseEvent event{e.pressed ? MouseEventType::Press : MouseEventType::Release, {}, e.button, e.clicks, {}, modifiers_};
+    if (drag_) {
+        // another button: nothing; all of them let go: dropped where the mouse is (the system's tells where itself)
+        buttonsDown_ = std::max(0, buttonsDown_ + (e.pressed ? 1 : -1));
+        if (buttonsDown_ == 0 && !drag_->system) {
+            const auto [over, at] = dragPlace(e.position);
+            endDrag(over, at, true);
+        }
+        return;
+    }
     if (e.pressed) {
         ++buttonsDown_;
         if (capture_) {     // another button while one is down: to the same widget
@@ -523,6 +568,13 @@ std::optional<platform::Cursor> edgeCursor(platform::HitArea area) {
 } // namespace
 
 void UiRoot::updateCursor() {
+    if (drag_) {
+        // whether it would be taken where it is
+        cursor_ = drag_->action == DropAction::None ? platform::Cursor::NotAllowed : platform::Cursor::Arrow;
+        if (host_)
+            host_->setCursor(cursor_);
+        return;
+    }
     std::optional<platform::Cursor> shape;
     // what has the mouse, wherever it is; or the window's edge; or what is under the mouse (what is enabled of it)
     Widget* from = capture_;
@@ -548,6 +600,156 @@ void UiRoot::captureMouse(Widget& widget) {
 void UiRoot::releaseMouse() {
     capture_ = nullptr;
     buttonsDown_ = 0;
+}
+
+// ---- drag and drop ----
+
+bool UiRoot::startDrag(DragRequest request) {
+    if (buttonsDown_ == 0 || drag_)
+        return false;
+    hideToolTip(true);
+    capture_ = nullptr;
+    drag_ = std::make_unique<Dragging>();
+    drag_->request = std::move(request);
+    if (DockingHost* h = context_.docking)
+        h->captureMouse(true);
+    dragTo(mouse_);
+    updateCursor();
+    return true;
+}
+
+UiRoot* UiRoot::liveRoot(const UiRoot* root) const {
+    if (!root)
+        return nullptr;
+    if (root == this)
+        return const_cast<UiRoot*>(this);
+    DockingHost* h = context_.docking;
+    if (!h || h->closing(*root))
+        return nullptr;
+    for (UiRoot* r : h->windows()) {
+        if (r == root)
+            return r;
+    }
+    return nullptr;
+}
+
+std::pair<UiRoot*, Point> UiRoot::dragPlace(Point point) const {
+    const bool inside = Rect{0, 0, size_.width, size_.height}.contains(point);
+    DockingHost* h = context_.docking;
+    if (h && h->placesWindows()) {
+        // the window in front there, which may be another, over this one
+        const DockingHost::Hit hit = h->windowAt(h->toScreen(*this, point));
+        return {hit.root, hit.point};
+    }
+    return {inside ? const_cast<UiRoot*>(this) : nullptr, point};
+}
+
+void UiRoot::dragTo(Point point) {
+    if (!drag_ || drag_->system)
+        return;
+    const auto [over, at] = dragPlace(point);
+    DockingHost* h = context_.docking;
+    if (!over && h && !h->placesWindows()) {
+        // out of its window, where the system carries drags between windows: the system's from now on
+        UiRoot* self = this;
+        if (h->startSystemDrag(*this, {.moved = [self](const UiRoot* r, Point p) { self->systemDragMoved(r, p); },
+                                       .ended = [self](const UiRoot* r, Point p) { self->systemDragEnded(r, p); }})) {
+            drag_->system = true;
+            dragOver(nullptr, {});
+            return;
+        }
+    }
+    dragOver(over, at);
+}
+
+void UiRoot::dragOver(UiRoot* over, Point at) {
+    Dragging& d = *drag_;
+    if (d.over != over) {
+        if (UiRoot* left = liveRoot(d.over))
+            left->dragLeft();
+        d.over = over;
+    }
+    d.action = over ? over->dragOverAt(d.request.data, at, modifiers_) : DropAction::None;
+    updateCursor();
+}
+
+void UiRoot::endDrag(UiRoot* over, Point at, bool drop) {
+    const std::unique_ptr<Dragging> d = std::move(drag_);
+    DropAction action = DropAction::None;
+    if (drop && over)
+        action = over->dropAt(d->request.data, at, modifiers_);
+    if (UiRoot* last = liveRoot(d->over))
+        last->dragLeft();
+    if (DockingHost* h = context_.docking) {
+        h->captureMouse(false);
+        if (d->system && !drop)
+            h->cancelSystemDrag();
+    }
+    capture_ = nullptr;
+    if (d->request.finished)
+        defer([finished = d->request.finished, action] { finished(action); });
+    updateCursor();
+    if (!drop || !over)
+        return;
+    // the widget under the mouse, now that nothing is dragged
+    if (over == this)
+        updateHover(widgetAt(at));
+}
+
+void UiRoot::systemDragMoved(const UiRoot* over, Point at) {
+    if (drag_ && drag_->system)
+        dragOver(liveRoot(over), at);
+}
+
+void UiRoot::systemDragEnded(const UiRoot* over, Point at) {
+    if (!drag_ || !drag_->system)
+        return;
+    releaseMouse();         // (the system had the mouse: its window was not told it was let go)
+    ++dispatching_;
+    endDrag(liveRoot(over), at, true);
+    if (--dispatching_ == 0)
+        runDeferred();
+}
+
+DropAction UiRoot::dragOverAt(const DragData& data, Point at, platform::KeyModifiers modifiers) {
+    ++dispatching_;
+    Widget* target = nullptr;
+    DropAction action = DropAction::None;
+    for (Widget* w = widgetAt(at); w; w = w->parent_) {
+        if (!w->enabledInTree())
+            continue;
+        action = w->onDragOver(DragEvent{data, w->mapFromRoot(at), modifiers});
+        if (action != DropAction::None) {
+            target = w;
+            break;
+        }
+    }
+    if (target != dropTarget_) {
+        if (Widget* left = std::exchange(dropTarget_, target))
+            left->onDragLeave();
+    }
+    if (--dispatching_ == 0)
+        runDeferred();
+    return action;
+}
+
+void UiRoot::dragLeft() {
+    ++dispatching_;
+    if (Widget* left = std::exchange(dropTarget_, nullptr))
+        left->onDragLeave();
+    if (--dispatching_ == 0)
+        runDeferred();
+}
+
+DropAction UiRoot::dropAt(const DragData& data, Point at, platform::KeyModifiers modifiers) {
+    ++dispatching_;
+    DropAction action = dragOverAt(data, at, modifiers);
+    if (Widget* target = dropTarget_)
+        action = target->onDrop(DragEvent{data, target->mapFromRoot(at), modifiers});
+    dragLeft();
+    if (--dispatching_ == 0)
+        runDeferred();
+    return action;
 }
 
 void UiRoot::updateHover(Widget* target) {
@@ -648,6 +850,8 @@ void UiRoot::forget(Widget& subtree) {
         capture_ = nullptr;
         buttonsDown_ = 0;
     }
+    if (isInside(dropTarget_, subtree))
+        dropTarget_ = nullptr;
     std::erase_if(hovered_, [&](Widget* w) {
         if (!isInside(w, subtree))
             return false;

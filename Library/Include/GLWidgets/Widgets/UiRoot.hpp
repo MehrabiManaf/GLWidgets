@@ -151,6 +151,13 @@ public:
     // The buttons let go where it was not told of it (a drag the system carried away): nothing has the mouse.
     void releaseMouse();
 
+    // A drag (DragDrop.hpp) starts, from what has the mouse (from its onMouse, a button down and the mouse moved far
+    // enough): until the buttons are let go the mouse moves it, over this window and the application's others, and
+    // nothing has the mouse (the widget pressed is not told it is let go: `request.finished` tells how it ended). Escape,
+    // or the window losing the focus, cancels it. False when no button is down, or a drag goes on.
+    bool startDrag(DragRequest request);
+    bool dragging() const { return drag_ != nullptr; }
+
     // The actions whose shortcuts work in this root, those of `owner` (a menu bar, a toolbar, the application): a key that
     // the focused widget does not take triggers the first enabled one it is the shortcut of.
     void addShortcuts(const void* owner, std::vector<std::shared_ptr<Action>> actions);
@@ -208,6 +215,23 @@ private:
     // The pointer's shape: what has the mouse says, or the edge of the window under it, or what is under it.
     void updateCursor();
     void mouseButton(const platform::MouseButtonChanged& e);
+    // ---- a drag started from it ----
+    struct Dragging;
+    // The window under `point` (its own dips) and the point there: itself, another of the application's, or none.
+    std::pair<UiRoot*, Point> dragPlace(Point point) const;
+    // The mouse at `point`: over the window it is over now, where the system does not carry it.
+    void dragTo(Point point);
+    void dragOver(UiRoot* over, Point at);
+    // It ends: let go over `over` at `at` (dropped, when `drop`), or cancelled.
+    void endDrag(UiRoot* over, Point at, bool drop);
+    void systemDragMoved(const UiRoot* over, Point at);
+    void systemDragEnded(const UiRoot* over, Point at);
+    // `root`, if it is a window of the application still (itself, or one its DockingHost has, not closing).
+    UiRoot* liveRoot(const UiRoot* root) const;
+    // ---- a drag over it (from it or another window) ----
+    DropAction dragOverAt(const DragData& data, Point at, platform::KeyModifiers modifiers);
+    void dragLeft();
+    DropAction dropAt(const DragData& data, Point at, platform::KeyModifiers modifiers);
     // `visible`: what of the widget's parent shows (its coordinates); a widget out of it is not painted, nor anything in it.
     static void paintTree(Widget& widget, PaintContext& context, const Rect& visible);
     static Widget* hit(Widget& widget, Point point);     // `point` in the widget's parent's coordinates
@@ -227,6 +251,8 @@ private:
 
     Widget* focus_ = nullptr;
     Widget* capture_ = nullptr;         // has the mouse while buttons are down
+    std::unique_ptr<Dragging> drag_;    // a drag started from it
+    Widget* dropTarget_ = nullptr;      // of it, what took the drag over it
     int buttonsDown_ = 0;
     std::vector<Widget*> hovered_;      // the widget under the mouse and its ancestors, from the root down
     Point mouse_;

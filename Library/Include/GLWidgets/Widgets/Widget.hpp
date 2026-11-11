@@ -20,6 +20,7 @@
 // Events go to the widget under the mouse (or with the focus, for keys) in two phases: preview from the root down to it,
 // then from it back up to the root. A handler marks an event handled to stop it. A widget handling a mouse press gets all
 // mouse events until every button is released (it captures the mouse).
+#include <GLWidgets/Widgets/DragDrop.hpp>
 #include <GLWidgets/Core/Color.hpp>
 #include <GLWidgets/Core/Geometry.hpp>
 #include <GLWidgets/Export.hpp>
@@ -268,6 +269,15 @@ protected:
     virtual void onVisibleChanged(bool visible) {}
     // The window showing it is about to close (UiRoot::windowClosing).
     virtual void onWindowClosing() {}
+
+    // ---- drag and drop (DragDrop.hpp) ----
+    // Something is dragged over it, at the event's position: what it would do with it if let go there (each time the mouse
+    // moves; it may show where it would go). None: it does not take it, its parent is asked.
+    virtual DropAction onDragOver(const DragEvent& event) { return DropAction::None; }
+    // The drag it took is no longer over it: gone elsewhere, cancelled, or dropped (after onDrop).
+    virtual void onDragLeave() {}
+    // Let go over it, where onDragOver took it: what it did with it.
+    virtual DropAction onDrop(const DragEvent& event) { return DropAction::None; }
 
     // For a widget filling a borderless window: what the point (its own coordinates) is for the window before the widget
     // under it is asked (WindowFrame: its resize borders).
