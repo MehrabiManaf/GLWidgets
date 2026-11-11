@@ -45,7 +45,8 @@ enum class ColumnSizing : std::uint8_t {
     Fixed,                  // as set (the theme's until then); dragging its header's edge sets it
     FitContent,             // as wide as its header and its cells need (contentWidth), measured again as the rows change,
                             // the filter, the order, the delegate or the style; dragging its header's edge makes it Fixed
-    Stretch,                // what the others leave, shared with the other stretching columns (at least as set)
+    Stretch,                // what the others leave, shared with the other stretching columns (at least as set; not set,
+                            // at least minimumColumnWidth)
 };
 
 // What makes the widgets of a table's cells, and shows a cell in one.

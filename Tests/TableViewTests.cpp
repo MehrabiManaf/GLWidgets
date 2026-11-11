@@ -331,6 +331,12 @@ TEST(columnsFitTheirContentOrStretch) {
     root.setSize({250, 300});
     root.layout();
     CHECK(near(widthOf(1), fitted) && near(widthOf(0) + widthOf(1), table.list().viewport().width));
+    // narrower than the theme's width and the types together: the names, never set, give their room still (nothing across)
+    root.setSize({160, 300});
+    root.layout();
+    CHECK(near(widthOf(1), fitted) && near(table.totalWidth(), table.list().viewport().width));
+    root.setSize({250, 300});
+    root.layout();
     // a row with a longer type: measured again
     rows.emplace_back("Points", "array<map<string, float>>");
     members->added();

@@ -284,7 +284,8 @@ const std::vector<double>& TableView::lefts() const {
     float total = 0;
     std::size_t stretching = 0;
     for (std::size_t i = 0; i < widths_.size(); ++i) {
-        shown_[i] = columnWidth(i);
+        // a stretching column not set: from nothing (what the others leave is all it is), not from the theme's width
+        shown_[i] = stretches(i) && widths_[i] <= 0 ? minimumColumnWidth : columnWidth(i);
         total += shown_[i];
         stretching += stretches(i) ? 1 : 0;
     }
