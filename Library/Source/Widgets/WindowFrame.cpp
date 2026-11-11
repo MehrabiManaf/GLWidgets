@@ -57,7 +57,7 @@ void WindowButton::onMouse(MouseEvent& event) {
     switch (kind_) {
     case WindowButtonKind::Minimize: host->minimizeWindow(); break;
     case WindowButtonKind::Maximize: host->toggleMaximizeWindow(); break;
-    case WindowButtonKind::Close: host->closeWindow(); break;
+    case WindowButtonKind::Close: host->requestClose(); break;
     }
 }
 

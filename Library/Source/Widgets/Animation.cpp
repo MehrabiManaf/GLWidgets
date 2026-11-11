@@ -22,7 +22,28 @@ TimePoint Scheduler::now() const {
     return clock_ ? clock_() : Clock::now();
 }
 
+void Scheduler::post(std::function<void()> fn) {
+    {
+        std::lock_guard lock(postMu_);
+        posted_.push_back(std::move(fn));
+        hasPosted_ = true;
+    }
+    if (wakeUp_)
+        wakeUp_();
+}
+
 void Scheduler::tick() {
+    // what was posted, first: what a worker found may start timers and animations
+    if (hasPosted_) {
+        std::vector<std::function<void()>> posted;
+        {
+            std::lock_guard lock(postMu_);
+            posted.swap(posted_);
+            hasPosted_ = false;
+        }
+        for (auto& fn : posted)
+            fn();
+    }
     const TimePoint at = now();
     // timers first (one may start an animation), each that is due once; a handler may start or stop others
     for (Timer* t : std::vector(timers_)) {
@@ -45,7 +66,7 @@ void Scheduler::tick() {
 }
 
 std::optional<TimePoint> Scheduler::nextDeadline() const {
-    if (!animations_.empty())
+    if (!animations_.empty() || hasPosted_)
         return now();
     std::optional<TimePoint> next;
     for (const Timer* t : timers_)

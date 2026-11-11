@@ -114,6 +114,7 @@ struct Application::Impl final : DockingHost {
     bool quitting = false;
     int exitCode = 0;
     std::function<void()> onQuitting;
+    std::function<bool()> onQuitRequested;
     bool toldQuitting = false;
     bool inFrame = false;
 
@@ -429,7 +430,8 @@ struct Application::Impl final : DockingHost {
 
     void handle(const platform::Event& event) {
         if (std::holds_alternative<platform::QuitRequested>(event)) {
-            quitting = true;
+            if (!onQuitRequested || onQuitRequested())
+                quitting = true;
             return;
         }
         if (handleSystemDrag(event))
@@ -473,7 +475,7 @@ struct Application::Impl final : DockingHost {
         if (const auto* focus = std::get_if<platform::WindowFocusChanged>(&event); focus && focus->focused)
             toFront(window);
         if (std::holds_alternative<platform::WindowCloseRequested>(event))
-            window->close();
+            window->requestClose();
         else
             window->root_.dispatch(event);
     }
@@ -939,6 +941,7 @@ void Window::setCursor(platform::Cursor cursor) {
 Application::Application() : impl_(std::make_unique<Impl>(*this)) {
     Impl& d = *impl_;
     d.platform = platform::createPlatform();
+    d.scheduler.setWakeUp([&d] { d.platform->wakeUp(); });
 #ifdef NDEBUG
     d.device = rhi::createDevice(*d.platform);
 #else
@@ -1050,6 +1053,19 @@ int Application::run(int frames) {
         }
     }
     return d.exitCode;
+}
+
+void Application::setOnQuitRequested(std::function<bool()> handler) {
+    impl_->onQuitRequested = std::move(handler);
+}
+
+void Application::post(std::function<void()> fn) {
+    impl_->scheduler.post(std::move(fn));
+}
+
+void Window::requestClose() {
+    if (!onCloseRequested_ || onCloseRequested_())
+        close();
 }
 
 void Application::setOnQuitting(std::function<void()> handler) {

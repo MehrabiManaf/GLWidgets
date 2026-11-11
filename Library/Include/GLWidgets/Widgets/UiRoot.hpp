@@ -82,6 +82,9 @@ public:
     virtual void minimizeWindow() = 0;
     virtual void toggleMaximizeWindow() = 0;
     virtual void closeWindow() = 0;
+    // The user asks to close it (the window's close button): a host may ask the application first (Window::setOnCloseRequested,
+    // to save what changed); closeWindow by default.
+    virtual void requestClose() { closeWindow(); }
     // Typed text and the input method, while a text field has the focus; `area` (the root's dips) is where the text is
     // typed, for the input method to put its window by it.
     virtual void startTextInput() = 0;

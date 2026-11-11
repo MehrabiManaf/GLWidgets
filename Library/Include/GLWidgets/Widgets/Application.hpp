@@ -57,8 +57,13 @@ public:
     MenuBar& setMenuBar(std::unique_ptr<MenuBar> menuBar, MenuBarPlacement placement = MenuBarPlacement::TitleBar);
     ToolBar& setToolBar(std::unique_ptr<ToolBar> toolBar);
     void setTitle(LocalizedText title);
-    // Closes it once the event being handled is done: a button may close the window it is in.
+    // Closes it once the event being handled is done: a button may close the window it is in. Always: what the user asks
+    // (its close button, the system's) goes through requestClose.
     void close() { closing_ = true; }
+    // The user asks to close it: its handler says whether it closes (false: it stays; to ask whether to save first, a
+    // dialog that calls close() itself). It closes when there is none.
+    void setOnCloseRequested(std::function<bool()> handler) { onCloseRequested_ = std::move(handler); }
+    void requestClose() override;
     bool closing() const { return closing_; }
 
     platform::WindowState windowState() const override;
@@ -102,6 +107,7 @@ private:
     bool popupAtStart_ = false;                         // a popup beside its anchor: at the anchor's start side
     bool closing_ = false;
     bool told_ = false;                                 // its root was told it closes
+    std::function<bool()> onCloseRequested_;
     // a popup coming in: faded in, its content sliding `slide_` dips to its place
     void entering();
     void roundCorners();                // a popup's: as the theme says, or as it was asked
@@ -125,6 +131,11 @@ public:
     // Called once when the application is about to end (its last window closes, or quit is called), while its windows are
     // all still there: to save them (Workspace.hpp). The tool windows of floating panels do not keep it running.
     void setOnQuitting(std::function<void()> handler);
+    // The system asks the application to quit (Command+Q, the session ending): the handler says whether it does (false: it
+    // goes on; to ask whether to save first, then quit()). It quits when there is none.
+    void setOnQuitRequested(std::function<bool()> handler);
+    // From any thread: `fn` runs on the thread of the user interface, soon, in the order posted (Scheduler::post).
+    void post(std::function<void()> fn);
     // What docking across the windows asks of them, to save and restore them (Workspace.hpp).
     DockingHost& docking();
 

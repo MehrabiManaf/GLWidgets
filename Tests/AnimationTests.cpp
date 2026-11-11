@@ -13,6 +13,8 @@
 #include <GLWidgets/Widgets/UiRoot.hpp>
 
 #include <cmath>
+#include <thread>
+#include <vector>
 #include <memory>
 
 using namespace glw;
@@ -227,4 +229,29 @@ TEST(aSmoothScrollKeepsItsSpeedWhenSentOn) {
     // the other way: from rest again, toward it
     s.scrollTo(&t.scheduler, shown, 0, 180ms);
     CHECK(s.velocity() < 0);
+}
+
+TEST(whatIsPostedFromAThreadRunsOnTheNextTickInOrder) {
+    Timed t;
+    int wakes = 0;
+    t.scheduler.setWakeUp([&] { ++wakes; });
+    CHECK(!t.scheduler.nextDeadline());
+    std::vector<int> ran;
+    std::thread worker([&] {
+        for (int i = 0; i < 3; ++i)
+            t.scheduler.post([&ran, i] { ran.push_back(i); });
+    });
+    worker.join();
+    CHECK(wakes == 3);                                  // the loop asleep in its events wakes up
+    CHECK(ran.empty());                                 // not on the worker
+    CHECK(t.scheduler.nextDeadline() == t.now);         // something waits: the loop does not go back to sleep
+    t.scheduler.tick();
+    CHECK((ran == std::vector<int>{0, 1, 2}));
+    CHECK(!t.scheduler.nextDeadline());
+    // posted while what was posted runs: the next tick's
+    t.scheduler.post([&] { t.scheduler.post([&] { ran.push_back(9); }); });
+    t.scheduler.tick();
+    CHECK(ran.size() == 3);
+    t.scheduler.tick();
+    CHECK(ran.back() == 9);
 }

@@ -14,9 +14,11 @@
 #include <GLWidgets/Core/Color.hpp>
 #include <GLWidgets/Export.hpp>
 
+#include <atomic>
 #include <chrono>
 #include <cstdint>
 #include <functional>
+#include <mutex>
 #include <optional>
 #include <vector>
 
@@ -38,9 +40,17 @@ public:
     Scheduler& operator=(const Scheduler&) = delete;
 
     TimePoint now() const;
-    // Fires the timers that are due and steps the animations that run, to now().
+    // Runs what was posted, fires the timers that are due and steps the animations that run, to now().
     void tick();
-    // When tick has something to do next: the earliest timer, or now while an animation runs; none when nothing waits.
+    // From any thread: `fn` runs on the thread of the user interface, at the start of the next tick, in the order posted (what
+    // a worker found, shown). It wakes the loop that sleeps in its events (setWakeUp). A function must not be posted to a
+    // scheduler that is gone: what posts from a thread stops before the application ends.
+    void post(std::function<void()> fn);
+    // What post calls so that the loop waiting for events wakes up: the Application's (the platform's wakeUp); an engine
+    // driving its roots, its own.
+    void setWakeUp(std::function<void()> wakeUp) { wakeUp_ = std::move(wakeUp); }
+    // When tick has something to do next: the earliest timer, or now while an animation runs or something posted waits; none
+    // when nothing waits.
     std::optional<TimePoint> nextDeadline() const;
     bool animating() const { return !animations_.empty(); }
 
@@ -62,6 +72,10 @@ private:
     std::vector<Animation*> animations_;    // those running
     bool animationsEnabled_ = true;
     std::uint64_t styleGeneration_ = 0;
+    std::mutex postMu_;
+    std::vector<std::function<void()>> posted_;
+    std::atomic<bool> hasPosted_{false};
+    std::function<void()> wakeUp_;
 };
 
 // Calls a function once a delay has passed, or every time it has, until stopped. Stopped when destroyed: a widget keeps

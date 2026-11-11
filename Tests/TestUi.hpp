@@ -53,7 +53,7 @@ struct FakePopup;
 // A window: its popups are roots of their own, kept here (opened in order, a submenu after its menu).
 struct FakeHost : UiHost {
     platform::WindowState state = platform::WindowState::Normal;
-    int minimized = 0, toggled = 0, closed = 0;
+    int minimized = 0, toggled = 0, closed = 0, closeRequests = 0;
     std::vector<std::unique_ptr<FakePopup>> popups;     // the root host's: every popup, open or closed
     FakeHost* top = this;                               // the host of the window the popups came from
     UiRoot* own = nullptr;                              // a popup's root
@@ -68,6 +68,10 @@ struct FakeHost : UiHost {
     void minimizeWindow() override { ++minimized; }
     void toggleMaximizeWindow() override { ++toggled; }
     void closeWindow() override;
+    void requestClose() override {
+        ++closeRequests;
+        closeWindow();
+    }
     void startTextInput() override { textInput = true; }
     void stopTextInput() override { textInput = false; }
     void setTextInputArea(const Rect& area) override { inputArea = area; }

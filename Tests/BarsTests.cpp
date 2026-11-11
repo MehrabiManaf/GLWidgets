@@ -13,6 +13,7 @@
 #include <GLWidgets/Widgets/TextEdit.hpp>
 #include <GLWidgets/Widgets/ToolBar.hpp>
 #include <GLWidgets/Widgets/UiRoot.hpp>
+#include <GLWidgets/Widgets/WindowFrame.hpp>
 
 #include <cstring>
 #include <memory>
@@ -203,4 +204,25 @@ TEST(svgIconsAreRasterizedOnceAtEachSize) {
         refused = true;
     }
     CHECK(refused);
+}
+
+// The window's close button asks its host (which may ask the application whether to save first), rather than closing it.
+TEST(theCloseButtonAsksTheHostToClose) {
+    Barred b;
+    b.root.setContent(std::make_unique<WindowFrame>(std::make_unique<Widget>()));
+    b.root.setSize({640, 400});
+    b.root.layout();
+    const WindowButton* close = nullptr;
+    std::function<void(const Widget&)> find = [&](const Widget& w) {
+        if (auto* button = dynamic_cast<const WindowButton*>(&w); button && button->kind() == WindowButtonKind::Close)
+            close = button;
+        for (const auto& c : w.children())
+            find(*c);
+    };
+    find(*b.root.content());
+    CHECK(close != nullptr);
+    if (!close)
+        return;
+    b.click(close->mapToRoot({close->size().width / 2, close->size().height / 2}));
+    CHECK(b.host.closeRequests == 1);
 }
