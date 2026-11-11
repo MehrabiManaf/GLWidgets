@@ -5,6 +5,7 @@
 #include <GLWidgets/Widgets/Widget.hpp>
 
 #include <algorithm>
+#include <cmath>
 #include <utility>
 #include <vector>
 
@@ -128,6 +129,137 @@ void StackLayout::arrange(Widget& widget, const Rect& content) {
             cell = {rtl ? content.right() - position - length : content.x + position, content.y, length, content.height};
         arrangeInCell(*child, cell, rtl);
         position += length + spacing_;
+    }
+}
+
+// ---- GridLayout ----
+
+GridLayout::GridLayout(std::vector<GridColumn> columns, float columnSpacing, float rowSpacing)
+    : columns_(std::move(columns)), columnSpacing_(columnSpacing), rowSpacing_(rowSpacing) {
+    if (columns_.empty())
+        columns_.push_back({});
+}
+
+void GridLayout::setSpan(const Widget& child, int columns) {
+    if (columns <= 1)
+        spans_.erase(&child);
+    else
+        spans_[&child] = columns;
+}
+
+int GridLayout::span(const Widget& child) const {
+    const auto it = spans_.find(&child);
+    const int n = static_cast<int>(columns_.size());
+    return it == spans_.end() ? 1 : std::clamp(it->second, 1, n);
+}
+
+GridLayout::Grid GridLayout::compute(Widget& widget, float width) {
+    Grid grid;
+    const int n = static_cast<int>(columns_.size());
+    // the cells, in order
+    int row = 0, column = 0;
+    for (Widget* child : visibleChildren(widget)) {
+        const int s = span(*child);
+        if (column + s > n) {
+            ++row;
+            column = 0;
+        }
+        grid.cells.push_back({child, row, column, s});
+        column += s;
+        if (column >= n) {
+            ++row;
+            column = 0;
+        }
+    }
+    const int rows = grid.cells.empty() ? 0 : grid.cells.back().row + 1;
+
+    // the columns: those that do not stretch as wide as their widest child alone in them
+    grid.widths.assign(columns_.size(), 0.0f);
+    std::vector<float> wanted(columns_.size(), 0.0f);       // what each would take, unbounded
+    for (const Cell& c : grid.cells) {
+        if (c.span != 1)
+            continue;
+        const Insets m = c.child->margin();
+        const float w = c.child->measure({unbounded, unbounded}).width + m.horizontal();
+        auto& most = wanted[static_cast<std::size_t>(c.column)];
+        most = std::max(most, w);
+    }
+    float fixed = columnSpacing_ * static_cast<float>(n - 1), shares = 0;
+    for (std::size_t i = 0; i < columns_.size(); ++i) {
+        wanted[i] = std::max(wanted[i], columns_[i].minimum);
+        if (columns_[i].stretch > 0) {
+            shares += columns_[i].stretch;
+            fixed += columns_[i].minimum;
+        } else {
+            grid.widths[i] = wanted[i];
+            fixed += wanted[i];
+        }
+    }
+    for (std::size_t i = 0; i < columns_.size(); ++i) {
+        if (columns_[i].stretch <= 0)
+            continue;
+        if (width >= unbounded || std::isinf(width))
+            grid.widths[i] = wanted[i];
+        else
+            grid.widths[i] = columns_[i].minimum + std::max(0.0f, width - fixed) * columns_[i].stretch / shares;
+    }
+
+    // the rows: as tall as their tallest child, for the width it gets
+    grid.heights.assign(static_cast<std::size_t>(rows), 0.0f);
+    grid.rowStretch.assign(static_cast<std::size_t>(rows), 0.0f);
+    for (const Cell& c : grid.cells) {
+        float w = columnSpacing_ * static_cast<float>(c.span - 1);
+        for (int i = c.column; i < c.column + c.span; ++i)
+            w += grid.widths[static_cast<std::size_t>(i)];
+        const Insets m = c.child->margin();
+        const float h = c.child->measure({std::max(0.0f, w - m.horizontal()), unbounded}).height + m.vertical();
+        const auto r = static_cast<std::size_t>(c.row);
+        grid.heights[r] = std::max(grid.heights[r], h);
+        grid.rowStretch[r] = std::max(grid.rowStretch[r], std::max(0.0f, c.child->stretch()));
+    }
+    return grid;
+}
+
+Size GridLayout::measure(Widget& widget, Size available) {
+    const Grid grid = compute(widget, available.width);
+    if (grid.cells.empty())
+        return {};
+    float width = columnSpacing_ * static_cast<float>(grid.widths.size() - 1);
+    for (float w : grid.widths)
+        width += w;
+    float height = rowSpacing_ * static_cast<float>(grid.heights.size() - 1);
+    for (float h : grid.heights)
+        height += h;
+    return {width, height};
+}
+
+void GridLayout::arrange(Widget& widget, const Rect& content) {
+    Grid grid = compute(widget, content.width);
+    if (grid.cells.empty())
+        return;
+    // what is left of the height, to the rows that stretch
+    float total = rowSpacing_ * static_cast<float>(grid.heights.size() - 1), shares = 0;
+    for (std::size_t r = 0; r < grid.heights.size(); ++r) {
+        total += grid.heights[r];
+        shares += grid.rowStretch[r];
+    }
+    if (shares > 0 && total < content.height) {
+        for (std::size_t r = 0; r < grid.heights.size(); ++r)
+            grid.heights[r] += (content.height - total) * grid.rowStretch[r] / shares;
+    }
+    std::vector<float> xs(grid.widths.size()), ys(grid.heights.size());
+    for (std::size_t i = 1; i < xs.size(); ++i)
+        xs[i] = xs[i - 1] + grid.widths[i - 1] + columnSpacing_;
+    for (std::size_t r = 1; r < ys.size(); ++r)
+        ys[r] = ys[r - 1] + grid.heights[r - 1] + rowSpacing_;
+    const bool rtl = widget.rightToLeft();
+    for (const Cell& c : grid.cells) {
+        const auto first = static_cast<std::size_t>(c.column);
+        const auto last = static_cast<std::size_t>(c.column + c.span - 1);
+        const float width = xs[last] + grid.widths[last] - xs[first];
+        const float x = rtl ? content.right() - xs[first] - width : content.x + xs[first];
+        const auto r = static_cast<std::size_t>(c.row);
+        arrangeInCell(*c.child, {x, content.y + ys[r], width, grid.heights[r]}, rtl);
     }
 }
 

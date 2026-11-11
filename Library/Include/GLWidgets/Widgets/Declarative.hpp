@@ -158,6 +158,26 @@ inline Element<Widget> HStack(StackProps props, Children items) {
     return Stack(Orientation::Horizontal, props, std::move(items));
 }
 
+struct GridProps {
+    std::vector<GridColumn> columns{{}, {.stretch = 1}};     // a form's: its labels, and its fields the rest
+    float columnSpacing = 8;
+    float rowSpacing = 6;
+};
+
+// Children in rows and columns, across the columns then on the next row (GridLayout). A child spanning columns: given to
+// the grid's layout by with():
+//   ui::Grid({}, ui::Label({.text = "Name"}), ui::LineEdit({}), ui::Label({.text = "..."}).bind(note))
+//       .with([&](glw::Widget& grid) { static_cast<glw::GridLayout*>(grid.layout())->setSpan(*note, 2); })
+inline Element<Widget> Grid(GridProps props, Children items) {
+    auto widget = std::make_unique<Widget>();
+    widget->setLayout(std::make_unique<GridLayout>(std::move(props.columns), props.columnSpacing, props.rowSpacing));
+    return withChildren(std::move(widget), std::move(items));
+}
+template <Child... C>
+Element<Widget> Grid(GridProps props, C&&... items) {
+    return Grid(std::move(props), children(std::forward<C>(items)...));
+}
+
 // Children over each other, each placed by its alignments in the whole content.
 template <Child... C>
 Element<Widget> Overlay(C&&... items) {
