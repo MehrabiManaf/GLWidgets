@@ -12,6 +12,7 @@
 #include <cstdint>
 #include <functional>
 #include <optional>
+#include <span>
 #include <string>
 #include <string_view>
 
@@ -43,6 +44,9 @@ enum class HitArea : std::uint8_t {
     Client,                 // the application's: what it draws and handles, the window buttons too
     Caption,                // drags the window; a double click maximizes or restores it
     ResizeTopLeft, ResizeTop, ResizeTopRight, ResizeRight, ResizeBottomRight, ResizeBottom, ResizeBottomLeft, ResizeLeft,
+    // the application's maximize button: the application's still (it draws it, a click on it is its own), told to the
+    // system where it shows something there (Windows 11's snap layouts, over it)
+    MaximizeButton,
 };
 
 // The shape of the mouse's pointer (Platform::setCursor): the system's own.
@@ -126,5 +130,11 @@ public:
 protected:
     Window() = default;
 };
+
+// Where a window `window` (screen coordinates) is put so that it shows on the screens there are (`screens`: their usable
+// areas): where it is when a strip `grip` high along its top (its title bar, what moves it) shows on one of them, `grip`
+// wide at least; otherwise on the screen nearest to it (most of it over, or nearest its middle), as large as it fits
+// there. A window restored where a screen no longer is (unplugged, another resolution) comes back.
+GLW_EXPORT Rect keptOnScreens(const Rect& window, std::span<const Rect> screens, float grip);
 
 } // namespace glw::platform

@@ -443,6 +443,7 @@ struct WindowButtonStyle {
 struct WindowFrameStyle {
     Color background;
     float popupRadius = 0;          // popups' windows (not menus') rounded by this, where the system rounds windows
+    float windowRadius = 0;         // windows' (rounded where the system rounds them: Windows 11; 0: square)
     float resizeBorder = 6;         // dips along the edges that resize the window
     float contentInset = 4;         // around its content: the window's background, between it and the edges
     // The window buttons at the start of the title bar (the system's convention on macOS) or at its end (elsewhere).

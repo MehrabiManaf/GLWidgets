@@ -266,6 +266,7 @@ private:
         Point grab{};                       // the mouse on the screen less that window's position
         bool tearing = false;               // the panel goes into a window of its own, after the event
         bool outOfWindow = false;           // the mouse is out of the window (where windows are not placed)
+        bool system = false;                // carried by the system out of it (Wayland): its moves come from the host
     };
 
     Widget* node() const;                   // its first child: the root of the tree
@@ -299,6 +300,13 @@ private:
     void startDrag(DockTabs& source, std::vector<std::string> ids, std::string shown);
     // The panel dragged into a window of its own, which the drag goes on with (after the event).
     void tearOff(Point point);
+    // Where it would go over `over` at `at` (the root's coordinates there), shown by the area there; `shown`, the one that
+    // showed it so far.
+    void showDrop(const UiRoot* over, Point at, DockArea* shown);
+    // The system's drag (out of its window, where the system carries drags between windows): over a window of the
+    // application (none: off them), let go (over one of them; none: elsewhere).
+    void systemDragMoved(const UiRoot* over, Point at);
+    void systemDragEnded(const UiRoot* over, Point at);
     // The stack of this area whose title (its tab bar where it has no tab) is at `point` (its coordinates), if one is.
     DockTabs* titleAt(Point point) const;
     // A floating area: whether `point` is on its title, a top tab bar where it has no tab.

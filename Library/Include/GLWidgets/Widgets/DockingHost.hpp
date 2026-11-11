@@ -13,6 +13,7 @@
 #include <GLWidgets/Export.hpp>
 #include <GLWidgets/Widgets/Localization.hpp>
 
+#include <functional>
 #include <memory>
 #include <optional>
 #include <vector>
@@ -41,6 +42,15 @@ public:
     virtual Hit windowAt(Point screen, const UiRoot* except = nullptr) const = 0;
     // Keeps giving the mouse to the window it was pressed in while it is dragged out of it.
     virtual void captureMouse(bool capture) = 0;
+    // Where it does not place windows (Wayland): a drag out of `from`, carried by the system to its other windows, told
+    // to `drag` as it goes (over a window of it at a point, or none) and when it ends (let go over a window of it at a
+    // point; none: elsewhere, or cancelled). False where it carries none. cancelSystemDrag: it is told of nothing more.
+    struct SystemDrag {
+        std::function<void(const UiRoot* over, Point at)> moved;
+        std::function<void(const UiRoot* over, Point at)> ended;
+    };
+    virtual bool startSystemDrag(const UiRoot& from, SystemDrag drag) { return false; }
+    virtual void cancelSystemDrag() {}
 
     // ---- windows ----
 

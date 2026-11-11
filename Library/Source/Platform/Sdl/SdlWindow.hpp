@@ -51,6 +51,9 @@ public:
     // (Windows, X11), 1 where they are points (macOS, Wayland).
     static float dipsPerUnit(SDL_Window* window);
     static WindowState stateOf(SDL_Window* window);
+    SDL_Window* sdlWindow() const { return window_; }
+    // What its hit test says is at `point` (dips), Client without one.
+    HitArea hitAreaAt(Point point) const;
 
 private:
     static SDL_HitTestResult SDLCALL hitTestCallback(SDL_Window* window, const SDL_Point* area, void* data);
@@ -60,6 +63,10 @@ private:
     SdlWindow* popupOf_ = nullptr;          // a popup's parent: SDL keeps its position from the parent's corner
     float cornerRadius_ = 0;                // its shape cut round by this (where the system does not round it): again as it resizes
     void cutCorners();
+    // Windows: a borderless window's shadow and what the system adds (snap layouts on the maximize button)
+    void framed();
+    // Where it was put: on the screens there are (keptOnScreens), when it was not.
+    void keepOnScreens();
     HitTest hitTest_;
 };
 

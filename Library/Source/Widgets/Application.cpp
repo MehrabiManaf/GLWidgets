@@ -122,8 +122,10 @@ struct Application::Impl final : DockingHost {
     // `theme` shown by every window
     void applyTheme(const Theme& theme) {
         context->theme = theme;
-        for (const auto& w : opened)
+        for (const auto& w : opened) {
+            w->roundCorners();
             w->root_.styleChanged();
+        }
         for (const auto& w : popups) {
             w->roundCorners();
             w->root_.styleChanged();
@@ -430,6 +432,8 @@ struct Application::Impl final : DockingHost {
             quitting = true;
             return;
         }
+        if (handleSystemDrag(event))
+            return;
         Window* window = find(windowOf(event));
         if (!window)
             return;
@@ -568,6 +572,45 @@ struct Application::Impl final : DockingHost {
     }
 
     void captureMouse(bool capture) override { platform->captureMouse(capture); }
+
+    // ---- a drag the system carries (Wayland) ----
+
+    std::optional<SystemDrag> systemDrag;
+
+    bool startSystemDrag(const UiRoot& from, SystemDrag drag) override {
+        Window* w = find(from);
+        if (!w || !platform->startDrag(*w->window_))
+            return false;
+        systemDrag = std::move(drag);
+        return true;
+    }
+
+    void cancelSystemDrag() override { systemDrag.reset(); }
+
+    // Its events: to the drag going on (none: nothing); true when it was one of them.
+    bool handleSystemDrag(const platform::Event& event) {
+        const auto rootOf = [&](platform::WindowId id) -> const UiRoot* {
+            const Window* w = find(id);
+            return w && !w->closing_ ? &w->root_ : nullptr;
+        };
+        if (const auto* moved = std::get_if<platform::DragMoved>(&event)) {
+            if (systemDrag && systemDrag->moved)
+                systemDrag->moved(rootOf(moved->window), moved->position);
+        } else if (std::holds_alternative<platform::DragLeft>(event)) {
+            if (systemDrag && systemDrag->moved)
+                systemDrag->moved(nullptr, {});
+        } else if (const auto* dropped = std::get_if<platform::DragDropped>(&event)) {
+            if (std::optional<SystemDrag> drag = std::exchange(systemDrag, std::nullopt); drag && drag->ended)
+                drag->ended(rootOf(dropped->window), dropped->position);
+        } else if (std::holds_alternative<platform::DragEnded>(event)) {
+            // not let go on one of its windows (one that was told so already)
+            if (std::optional<SystemDrag> drag = std::exchange(systemDrag, std::nullopt); drag && drag->ended)
+                drag->ended(nullptr, {});
+        } else {
+            return false;
+        }
+        return true;
+    }
 
     UiRoot& openWindow(NewWindow window) override {
         Window* owner = window.owner ? find(*window.owner) : nullptr;
@@ -742,9 +785,15 @@ Window::Window(Application& app, PopupRequest request, Window& parent)
 }
 
 void Window::roundCorners() {
-    // a popup's window rounded as the theme says, where the system rounds it; what draws its edge follows
-    const float radius = popup_ ? popupRadius_.value_or(app_.impl_->context->theme.frame.popupRadius) : 0.0f;
-    const bool rounded = popup_ && window_->setCornerRadius(radius);
+    // a popup's window rounded as the theme says, where the system rounds it; what draws its edge follows. A window's too
+    // (the system squares it while it is maximized or snapped)
+    const WindowFrameStyle& frame = app_.impl_->context->theme.frame;
+    if (!popup_) {
+        window_->setCornerRadius(frame.windowRadius);
+        return;
+    }
+    const float radius = popupRadius_.value_or(frame.popupRadius);
+    const bool rounded = window_->setCornerRadius(radius);
     root_.setWindowRadius(rounded ? radius : 0.0f);
 }
 

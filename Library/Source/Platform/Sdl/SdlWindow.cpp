@@ -15,13 +15,16 @@
 #define WIN32_LEAN_AND_MEAN
 #define NOMINMAX
 #include <windows.h>
+#include <commctrl.h>
 #include <dwmapi.h>
+#include <windowsx.h>
 #endif
 
 #include <algorithm>
 #include <cmath>
 #include <string>
 #include <utility>
+#include <vector>
 
 namespace glw::platform::sdl {
 
@@ -32,6 +35,77 @@ namespace {
 int sizeInUnits(float dips, float f) {
     return std::max(1, static_cast<int>(std::ceil(dips / f - 0.01f)));
 }
+
+#ifdef _WIN32
+HWND hwndOf(SDL_Window* window) {
+    return static_cast<HWND>(SDL_GetPointerProperty(SDL_GetWindowProperties(window), SDL_PROP_WINDOW_WIN32_HWND_POINTER, nullptr));
+}
+
+// A borderless window's messages before SDL's: its maximize button the system's maximize button (HTMAXBUTTON: Windows 11
+// shows its snap layouts over it), the mouse over it given back to SDL as the application's (a move, a press, a release),
+// so that the button lights and works as it does elsewhere.
+LRESULT CALLBACK frameProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam, UINT_PTR, DWORD_PTR data) {
+    auto* window = reinterpret_cast<SdlWindow*>(data);
+    const auto client = [&] {
+        POINT p{GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam)};
+        ScreenToClient(hwnd, &p);
+        return MAKELPARAM(p.x, p.y);
+    };
+    switch (message) {
+    case WM_NCHITTEST: {
+        POINT p{GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam)};
+        ScreenToClient(hwnd, &p);
+        const float scale = window->scale();
+        if (window->hitAreaAt({static_cast<float>(p.x) / scale, static_cast<float>(p.y) / scale}) == HitArea::MaximizeButton)
+            return HTMAXBUTTON;
+        break;
+    }
+    case WM_NCMOUSEMOVE:
+        if (wParam == HTMAXBUTTON) {
+            // told when it leaves the button; the move the application's (and on to the system: its snap layouts)
+            TRACKMOUSEEVENT track{sizeof(TRACKMOUSEEVENT), TME_LEAVE | TME_NONCLIENT, hwnd, 0};
+            TrackMouseEvent(&track);
+            SendMessageW(hwnd, WM_MOUSEMOVE, 0, client());
+        }
+        break;
+    case WM_MOUSELEAVE: {
+        // out of the inside onto the maximize button: still over the application's (SDL would take the mouse as gone)
+        POINT p;
+        GetCursorPos(&p);
+        if (SendMessageW(hwnd, WM_NCHITTEST, 0, MAKELPARAM(p.x, p.y)) == HTMAXBUTTON)
+            return 0;
+        break;
+    }
+    case WM_NCLBUTTONDOWN:
+    case WM_NCLBUTTONDBLCLK:
+        if (wParam == HTMAXBUTTON) {
+            SendMessageW(hwnd, WM_LBUTTONDOWN, MK_LBUTTON, client());
+            return 0;       // not the system's: it would maximize the window itself
+        }
+        break;
+    case WM_NCLBUTTONUP:
+        if (wParam == HTMAXBUTTON) {
+            SendMessageW(hwnd, WM_LBUTTONUP, 0, client());
+            return 0;
+        }
+        break;
+    case WM_NCMOUSELEAVE: {
+        // off the maximize button and out of the window: gone (into the window: its own moves say where)
+        POINT p;
+        GetCursorPos(&p);
+        if (WindowFromPoint(p) != hwnd)
+            PostMessageW(hwnd, WM_MOUSELEAVE, 0, 0);
+        break;
+    }
+    case WM_NCDESTROY:
+        RemoveWindowSubclass(hwnd, frameProc, 1);
+        break;
+    default:
+        break;
+    }
+    return DefSubclassProc(hwnd, message, wParam, lParam);
+}
+#endif
 
 } // namespace
 
@@ -66,11 +140,62 @@ SdlWindow::SdlWindow(SdlPlatform& platform, const WindowDesc& desc) : platform_(
     // SDL made it in its window coordinates, not dips everywhere: now that the window has a screen (and so a scale), give it
     // the size asked for, and center it again with that size
     setSize(desc.size);
-    if (desc.position)
+    if (desc.position) {
         setPosition(*desc.position);
-    else
+        keepOnScreens();
+    } else {
         SDL_SetWindowPosition(window_, SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED);
+    }
+    if (desc.borderless && !desc.overlay)
+        framed();
     platform_.windowCreated();
+}
+
+void SdlWindow::framed() {
+#ifdef _WIN32
+    const HWND hwnd = hwndOf(window_);
+    if (!hwnd)
+        return;
+    // the system's shadow around it: its frame (none shows: SDL gives it no room) extended into it
+    const MARGINS margins{1, 1, 1, 1};
+    DwmExtendFrameIntoClientArea(hwnd, &margins);
+    // Windows 11 (where its corners can be asked for): its snap layouts over the maximize button
+    const DWM_WINDOW_CORNER_PREFERENCE corners = DWMWCP_DEFAULT;
+    if (SUCCEEDED(DwmSetWindowAttribute(hwnd, DWMWA_WINDOW_CORNER_PREFERENCE, &corners, sizeof corners)))
+        SetWindowSubclass(hwnd, frameProc, 1, reinterpret_cast<DWORD_PTR>(this));
+#endif
+}
+
+void SdlWindow::keepOnScreens() {
+    // the screens' usable areas, in its coordinates (where windows can be placed: not Wayland's)
+    if (!platform_.placesWindows())
+        return;
+    int count = 0;
+    SDL_DisplayID* displays = SDL_GetDisplays(&count);
+    std::vector<Rect> screens;
+    for (int i = 0; displays && i < count; ++i) {
+        SDL_Rect r{};
+        if (SDL_GetDisplayUsableBounds(displays[i], &r))
+            screens.push_back({static_cast<float>(r.x), static_cast<float>(r.y), static_cast<float>(r.w), static_cast<float>(r.h)});
+    }
+    SDL_free(displays);
+    const Point at = position();
+    const Size size = screenSize();
+    const Rect placed = keptOnScreens({at.x, at.y, size.width, size.height}, screens, 32 / dipsPerUnit(window_));
+    if (placed.width != size.width || placed.height != size.height)
+        SDL_SetWindowSize(window_, static_cast<int>(placed.width), static_cast<int>(placed.height));
+    if (placed.x != at.x || placed.y != at.y)
+        SDL_SetWindowPosition(window_, static_cast<int>(placed.x), static_cast<int>(placed.y));
+}
+
+HitArea SdlWindow::hitAreaAt(Point point) const {
+    if (!hitTest_)
+        return HitArea::Client;
+    try {
+        return hitTest_(point);
+    } catch (...) {
+        return HitArea::Client;         // (called by the system: nothing may be thrown through it)
+    }
 }
 
 SdlWindow::~SdlWindow() {
@@ -134,7 +259,7 @@ bool SdlWindow::setCornerRadius(float radius) {
     if (!hwnd)
         return false;
     // Windows 11's: DWM rounds the window, smoothly, and clips what it shows (no hairline of its own: the window draws its
-    // edge, as round); before it, the attribute is not known
+    // edge, as round); square again while it is maximized or snapped; before it, the attribute is not known
     const DWM_WINDOW_CORNER_PREFERENCE corners = radius > 0 ? DWMWCP_ROUND : DWMWCP_DONOTROUND;
     if (SUCCEEDED(DwmSetWindowAttribute(hwnd, DWMWA_WINDOW_CORNER_PREFERENCE, &corners, sizeof corners))) {
         const COLORREF border = DWMWA_COLOR_NONE;
@@ -142,7 +267,10 @@ bool SdlWindow::setCornerRadius(float radius) {
         cornerRadius_ = 0;
         return radius > 0;
     }
-    // before it: the window's shape cut round (its corners not smoothed)
+    // before it: a popup's shape cut round (its corners not smoothed); a window stays square (a cut would take its edges'
+    // resizing and its shadow)
+    if (!popupOf_)
+        return false;
     cornerRadius_ = radius;
     cutCorners();
     return radius > 0;
@@ -257,6 +385,7 @@ SDL_HitTestResult SDLCALL SdlWindow::hitTestCallback(SDL_Window* window, const S
     case HitArea::ResizeBottom: return SDL_HITTEST_RESIZE_BOTTOM;
     case HitArea::ResizeBottomLeft: return SDL_HITTEST_RESIZE_BOTTOMLEFT;
     case HitArea::ResizeLeft: return SDL_HITTEST_RESIZE_LEFT;
+    case HitArea::MaximizeButton: return SDL_HITTEST_NORMAL;       // (the application's: Windows 11's is in frameProc)
     }
     return SDL_HITTEST_NORMAL;
 }

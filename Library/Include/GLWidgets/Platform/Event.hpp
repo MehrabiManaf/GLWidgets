@@ -108,8 +108,29 @@ struct TextComposition {
     int selectionLength = 0;
 };
 
+// A drag the system carries between the application's windows (Platform::startDrag: Wayland's drag-and-drop, where a
+// window cannot know where the mouse is out of it): over one of its windows at a point (dips), off it, let go on it;
+// and, to all, that it ended (let go on one of its windows or not: on another application's, nowhere, cancelled).
+struct DragMoved {
+    WindowId window = 0;
+    Point position;
+};
+
+struct DragLeft {
+    WindowId window = 0;
+};
+
+struct DragDropped {
+    WindowId window = 0;
+    Point position;
+};
+
+struct DragEnded {
+    bool dropped = false;
+};
+
 using Event = std::variant<QuitRequested, WindowCloseRequested, WindowResized, WindowScaleChanged, WindowExposed,
                            WindowStateChanged, WindowFocusChanged, MouseCrossed, MouseMoved, MouseButtonChanged, MouseWheelScrolled, KeyChanged,
-                           TextInput, TextComposition>;
+                           TextInput, TextComposition, DragMoved, DragLeft, DragDropped, DragEnded>;
 
 } // namespace glw::platform

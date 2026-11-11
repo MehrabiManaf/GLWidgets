@@ -4,6 +4,9 @@
 
 #include "Platform/Sdl/SdlKeys.hpp"
 #include "Platform/Sdl/SdlWindow.hpp"
+#ifdef GLW_HAVE_WAYLAND
+#include "Platform/Sdl/WaylandDrag.hpp"
+#endif
 
 #include <GLWidgets/Core/Assert.hpp>
 #include <GLWidgets/Core/Error.hpp>
@@ -53,6 +56,9 @@ SdlPlatform::SdlPlatform() {
         throw Error(error);
     }
     wakeUpEvent_ = SDL_RegisterEvents(1);
+#ifdef GLW_HAVE_WAYLAND
+    wayland_ = WaylandDrag::make();         // (none on another video driver)
+#endif
 
     const int version = SDL_GetVersion();
     const char* driver = SDL_GetCurrentVideoDriver();
@@ -62,6 +68,9 @@ SdlPlatform::SdlPlatform() {
 
 SdlPlatform::~SdlPlatform() {
     GLW_ASSERT(windows_ == 0);
+#ifdef GLW_HAVE_WAYLAND
+    wayland_.reset();       // (its objects on SDL's connection: before SDL goes)
+#endif
     if (watching_)
         SDL_RemoveEventWatch(&SdlPlatform::watch, this);
     for (SDL_Cursor* cursor : cursors_) {
@@ -77,6 +86,16 @@ std::unique_ptr<Window> SdlPlatform::createWindow(const WindowDesc& desc) {
 }
 
 bool SdlPlatform::pollEvent(Event& event) {
+#ifdef GLW_HAVE_WAYLAND
+    // a drag carried by Wayland between the windows: its events (read with SDL's) first
+    if (wayland_)
+        wayland_->dispatch(pending_);
+#endif
+    if (!pending_.empty()) {
+        event = std::move(pending_.front());
+        pending_.pop_front();
+        return true;
+    }
     SDL_Event in;
     while (SDL_PollEvent(&in)) {
         if (translate(in, event))
@@ -89,6 +108,13 @@ void SdlPlatform::waitForEvents(std::optional<std::chrono::milliseconds> timeout
     Sint32 ms = -1;
     if (timeout)
         ms = static_cast<Sint32>(std::clamp<std::int64_t>(timeout->count(), 0, INT32_MAX));
+#ifdef GLW_HAVE_WAYLAND
+    // while Wayland carries a drag: awake often (SDL's wait does not end for the events of its queue)
+    if (wayland_ && wayland_->active())
+        ms = ms < 0 ? 10 : std::min<Sint32>(ms, 10);
+#endif
+    if (!pending_.empty())
+        ms = 0;
     // without an event to fill, SDL leaves it in the queue for pollEvent
     SDL_WaitEventTimeout(nullptr, ms);
 }
@@ -109,6 +135,16 @@ void SdlPlatform::setMoveHandler(std::function<void(WindowId)> handler) {
     moveHandler_ = std::move(handler);
     if (moveHandler_ && !watching_)
         watching_ = SDL_AddEventWatch(&SdlPlatform::watch, this);
+}
+
+bool SdlPlatform::startDrag(Window& from) {
+#ifdef GLW_HAVE_WAYLAND
+    auto* window = dynamic_cast<SdlWindow*>(&from);
+    return wayland_ && window && wayland_->start(window->sdlWindow());
+#else
+    (void)from;
+    return false;
+#endif
 }
 
 bool SdlPlatform::placesWindows() const {

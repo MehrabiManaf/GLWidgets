@@ -6,6 +6,7 @@
 #include "TestUi.hpp"
 
 #include <GLWidgets/Paint/DrawList.hpp>
+#include <GLWidgets/Platform/Window.hpp>
 #include <GLWidgets/Widgets/Button.hpp>
 #include <GLWidgets/Widgets/Label.hpp>
 #include <GLWidgets/Widgets/Layout.hpp>
@@ -71,6 +72,23 @@ std::unique_ptr<Widget> stack(Orientation orientation, float spacing = 0) {
 }
 
 } // namespace
+
+TEST(aWindowIsKeptOnTheScreensThereAre) {
+    using platform::keptOnScreens;
+    const Rect screens[] = {{0, 0, 1920, 1040}, {1920, 0, 1280, 984}};
+    // its title bar on one: where it is (on the second, across both)
+    CHECK((keptOnScreens({100, 100, 800, 600}, screens, 32) == Rect{100, 100, 800, 600}));
+    CHECK((keptOnScreens({1800, 50, 800, 600}, screens, 32) == Rect{1800, 50, 800, 600}));
+    // on a screen gone (it was on a third, right of them): on the nearest, as it fits
+    const Rect gone = keptOnScreens({3400, 200, 800, 600}, screens, 32);
+    CHECK((gone == Rect{2400, 200, 800, 600}));
+    // its title bar above every screen: down onto the one it is mostly over
+    CHECK((keptOnScreens({300, -500, 800, 600}, screens, 32) == Rect{300, 0, 800, 600}));
+    // larger than the screen: as large as it
+    CHECK((keptOnScreens({5000, 5000, 3000, 2000}, screens, 32) == Rect{1920, 0, 1280, 984}));
+    // no screens known: as it is
+    CHECK((keptOnScreens({-9000, 0, 10, 10}, std::span<const Rect>{}, 32) == Rect{-9000, 0, 10, 10}));
+}
 
 TEST(verticalStackWithStretch) {
     UiRoot root(context());

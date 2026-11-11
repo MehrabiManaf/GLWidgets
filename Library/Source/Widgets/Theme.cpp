@@ -696,6 +696,7 @@ void Theme::fluid(Theme& t, bool dark) {
     t.dock.tabRadius = 8;
     t.majorTab.cornerRadius = 10;
     t.frame.popupRadius = 10;               // tooltips, dialogs, search popups (not menus): as the system rounds them
+    t.frame.windowRadius = 8;               // windows too, where the system rounds them
     t.node.cornerRadius = 12;
     t.chart.barRadius = 6;
     // their edges rounding down over further
@@ -737,6 +738,7 @@ void Theme::reliefs(Theme& t, bool dark) {
     t.majorTab.cornerRadius = 10;
     t.scrollBar.cornerRadius = 1000;
     t.frame.popupRadius = 8;
+    t.frame.windowRadius = 8;
     const Color shadow = withAlpha(black, dark ? 0.50f : 0.22f);
     // low reliefs, their edges rounding over a few dips
     t.button.bevel = {.shadow = shadow, .relief = 1.6f, .roundness = 2.5f};

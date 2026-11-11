@@ -9,10 +9,13 @@
 #include <SDL3/SDL_mouse.h>
 
 #include <array>
-
+#include <deque>
+#include <memory>
 #include <string>
 
 namespace glw::platform::sdl {
+
+class WaylandDrag;
 
 class SdlPlatform final : public Platform {
 public:
@@ -27,6 +30,7 @@ public:
     void setExposeHandler(std::function<void(WindowId)> handler) override;
     void setMoveHandler(std::function<void(WindowId)> handler) override;
     bool placesWindows() const override;
+    bool startDrag(Window& from) override;
     Point mousePosition() const override;
     bool mouseHeld() const override;
     void captureMouse(bool capture) override;
@@ -52,6 +56,10 @@ private:
     bool watching_ = false;
     std::array<SDL_Cursor*, cursorCount> cursors_{};       // made the first time they are shown
     Cursor cursor_ = Cursor::Arrow;
+#ifdef GLW_HAVE_WAYLAND
+    std::unique_ptr<WaylandDrag> wayland_;  // Wayland's drag-and-drop between its windows (none: not Wayland)
+#endif
+    std::deque<Event> pending_;             // ... its events, before SDL's
 };
 
 } // namespace glw::platform::sdl

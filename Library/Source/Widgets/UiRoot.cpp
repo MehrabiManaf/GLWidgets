@@ -401,6 +401,11 @@ void UiRoot::dispatch(const platform::Event& event) {
                        TextEvent text{e.text, false, 0};
                        routeText(text);
                    },
+                   // (a drag the system carries: the application's, for docking)
+                   [&](const platform::DragMoved&) {},
+                   [&](const platform::DragLeft&) {},
+                   [&](const platform::DragDropped&) {},
+                   [&](const platform::DragEnded&) {},
                    [&](const platform::TextComposition& e) {
                        TextEvent text{e.text, true, e.cursor};
                        routeText(text);
@@ -538,6 +543,11 @@ void UiRoot::updateCursor() {
 void UiRoot::captureMouse(Widget& widget) {
     if (buttonsDown_ > 0 && widget.root() == this)
         capture_ = &widget;
+}
+
+void UiRoot::releaseMouse() {
+    capture_ = nullptr;
+    buttonsDown_ = 0;
 }
 
 void UiRoot::updateHover(Widget* target) {

@@ -959,6 +959,9 @@ DockArea::DockArea(DockScope scope) : group_(std::make_shared<DockGroup>()), sco
 }
 
 DockArea::~DockArea() {
+    if (drag_ && drag_->system)
+        if (DockingHost* h = host())
+            h->cancelSystemDrag();
     std::erase(group_->areas, this);
     if (group_->home != this)
         return;
@@ -1602,8 +1605,25 @@ void DockArea::dragTo(Point point) {
         }
         return;
     }
-    // in its window only: out of it, it would float in a window the system places
+    // in its window only: out of it, it would float in a window the system places; or, where the system carries drags
+    // between windows (Wayland), the system's from then on, to another window of the application
+    if (drag_->system)
+        return;
     drag_->outOfWindow = !Rect{0, 0, r->size().width, r->size().height}.contains(point);
+    if (drag_->outOfWindow && h && !h->placesWindows()) {
+        DockArea* self = this;
+        if (h->startSystemDrag(*r, {.moved = [self](const UiRoot* window, Point p) { self->systemDragMoved(window, p); },
+                                    .ended = [self](const UiRoot* window, Point p) { self->systemDragEnded(window, p); }})) {
+            drag_->system = true;
+            if (shown)
+                shown->clearDrop();
+            return;
+        }
+    }
+    showDrop(over, at, shown);
+}
+
+void DockArea::showDrop(const UiRoot* over, Point at, DockArea* shown) {
     auto [node, area] = over ? nodeAt(*over, at) : std::pair<Widget*, DockArea*>{};
     if (shown && shown != area)
         shown->clearDrop();
@@ -1656,9 +1676,59 @@ void DockArea::dragTo(Point point) {
     drag_->shownArea = area;
 }
 
+void DockArea::systemDragMoved(const UiRoot* over, Point at) {
+    if (!drag_ || !drag_->system)
+        return;
+    drag_->target = nullptr;
+    DockArea* shown = std::exchange(drag_->shownArea, nullptr);
+    if (!over) {
+        if (shown)
+            shown->clearDrop();
+        return;
+    }
+    showDrop(over, at, shown);
+}
+
+void DockArea::systemDragEnded(const UiRoot* over, Point at) {
+    if (!drag_ || !drag_->system)
+        return;
+    if (over)
+        systemDragMoved(over, at);
+    const Drag done = *drag_;
+    drag_.reset();
+    if (done.shownArea)
+        done.shownArea->clearDrop();
+    UiRoot* r = root();
+    if (r)
+        r->releaseMouse();          // (the system had the mouse: its window was not told it was let go)
+    if (DockingHost* h = host())
+        h->captureMouse(false);
+    std::function<void()> apply;
+    if (done.target) {
+        apply = [this, ids = done.ids, shown = done.shown, target = done.target, side = done.side] {
+            move(ids, *target, side);
+            if (DockTabs* tabs = tabsOf(shown))
+                tabs->setActive(*tabs->indexOf(shown));
+        };
+    } else if (!over && !(floating_ && panelCount() == done.ids.size())) {
+        // let go out of the application's windows: a window of its own, where the system puts it (the panels of a
+        // floating window have one already)
+        const auto [position, size] = floatPlace(*done.source, {});
+        apply = [this, ids = done.ids, shown = done.shown, position, size] { floatPanels(ids, shown, position, size, true); };
+    } else {
+        return;
+    }
+    if (r)
+        r->defer(std::move(apply));
+    else
+        apply();
+}
+
 void DockArea::endDrag(Point point, bool drop) {
     if (!drag_)
         return;
+    if (drag_->system)
+        return;             // (the system's: it ends as it tells)
     dragTo(point);
     const Drag done = *drag_;
     drag_.reset();

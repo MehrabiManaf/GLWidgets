@@ -145,6 +145,8 @@ public:
     // The mouse events go to `widget` until every button is released: a drag handed over from the widget pressed (which
     // may go while it goes on). Nothing when no button is down.
     void captureMouse(Widget& widget);
+    // The buttons let go where it was not told of it (a drag the system carried away): nothing has the mouse.
+    void releaseMouse();
 
     // The actions whose shortcuts work in this root, those of `owner` (a menu bar, a toolbar, the application): a key that
     // the focused widget does not take triggers the first enabled one it is the shortcut of.

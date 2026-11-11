@@ -25,7 +25,11 @@ UiHost* hostOf(const Widget& widget) {
 
 // ---- window buttons ----
 
-WindowButton::WindowButton(WindowButtonKind kind) : kind_(kind) {}
+WindowButton::WindowButton(WindowButtonKind kind) : kind_(kind) {
+    // the system's to know of (Windows 11's snap layouts over it)
+    if (kind == WindowButtonKind::Maximize)
+        setWindowArea(platform::HitArea::MaximizeButton);
+}
 
 Size WindowButton::measureContent(Size) {
     const UiContext* ui = context();

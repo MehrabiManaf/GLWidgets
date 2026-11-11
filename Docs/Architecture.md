@@ -97,8 +97,9 @@ What stays native, behind the interface:
 
 | What | Where | Plan |
 |---|---|---|
-| Window shadow and rounded corners | Windows 11 | Popups' corners rounded (`Window::setCornerRadius`: DWM's round corners on Windows 11, the window's region cut round before it); windows' shadows and their own corners still to come |
-| The snap layouts flyout on the maximize button | Windows 11 | Answer `HTMAXBUTTON` for our maximize button (native code, M3) |
+| Window shadow | Windows 10 and 11 | DWM's: the borderless window's frame (SDL gives it no room) extended into it by a pixel (`DwmExtendFrameIntoClientArea`) |
+| Rounded corners | Windows 11 | DWM's (`Window::setCornerRadius`): popups by the theme's `frame.popupRadius` (their region cut round before Windows 11), windows by its `frame.windowRadius` (Fluid, Plastic, Metal: 8; Studio and Plain square), square again when maximized or snapped |
+| The snap layouts flyout on the maximize button | Windows 11 | Our maximize button says it is one (`HitArea::MaximizeButton`); the window's messages before SDL's (a subclass) answer `HTMAXBUTTON` there, and give the mouse's moves, presses and releases over it back to SDL as the inside's, so that the button lights and works as before |
 | Shadow | macOS | Given by the system |
 | Shadow | X11, Wayland | None, or drawn by GLWidgets in a transparent margin (decided in M3) |
 
@@ -1056,13 +1057,13 @@ flow, from their sources to the stores (a Sankey diagram, its values drifting); 
 
 Still to come: more kinds (radar charts; calendars as heat maps).
 
-Still to come in the widget core: the native extras of the chrome (Windows 11 shadow, rounded corners and snap layouts).
+Windows' shadow, rounded corners and snap layouts are the system's (see the table of what stays native above).
 
 ## Docking
 
 *Done: in a window and across windows, with global panels and saved workspaces (`Widgets/Docking.hpp`,
 `Widgets/MajorTabs.hpp`, `Widgets/DockingHost.hpp`, `Widgets/Workspace.hpp`), in the full mode and Wayland's restricted
-one. Wayland's drag-and-drop between windows: later.*
+one, panels carried between windows there by Wayland's drag-and-drop.*
 
 Two kinds of tabs, as in Slate:
 
@@ -1203,10 +1204,15 @@ So docking has two modes:
 - **Restricted** (Wayland, where `Platform::placesWindows` is false): a tab is dragged in its window only, with the same
   guides and drops. Let go out of its window, a panel floats in a window the compositor places; a major tab opens in a
   window of its own. No window follows the mouse and nothing is seen through: a floating window is moved by its title as
-  any window, by the compositor (its tab bars are its caption), and its float button docks its panel back. Moving a tab
-  into another window by the mouse needs Wayland's own drag-and-drop between our windows (and `xdg-toplevel-drag`, where
-  the compositor has it, for a window that follows the mouse), through SDL's `wl_display` / `wl_surface`: not done yet.
-  `GLW_DOCKING=restricted` gives this mode anywhere, to try it.
+  any window, by the compositor (its tab bars are its caption), and its float button docks its panel back. A tab dragged
+  out of its window is handed to the compositor as Wayland's own drag-and-drop (`Platform::startDrag`, `DockingHost::
+  startSystemDrag`): the application's other windows are told it is over them and where (`DragMoved`, `DragLeft`), so
+  that the same guides show there, and that it was let go (`DragDropped`): it docks there. Let go elsewhere (or
+  cancelled: `DragEnded`), it floats as before. On SDL's connection (`SDL_PROP_GLOBAL_VIDEO_WAYLAND_WL_DISPLAY_POINTER`),
+  GLWidgets binds its own seat, pointer (for the serial of the press a drag starts from) and data device, in a queue of
+  its own (`Platform/Sdl/WaylandDrag.cpp`, built with wayland-client); the data is of its own kind and nothing is sent.
+  A window that follows the mouse meanwhile would need `xdg-toplevel-drag` (KDE Plasma's): not done.
+  `GLW_DOCKING=restricted` gives this mode anywhere, to try it (without the system's drag: let go out, a tab floats).
 
 An application can also run on XWayland to get the full mode (`SDL_VIDEO_DRIVER=x11`).
 
@@ -1319,7 +1325,7 @@ The `GLW_USE_SYSTEM_SDL3` option uses an installed SDL3 instead of the pinned re
 | M2 | Text: HarfBuzz and FreeType, glyph atlas, bidi, line breaking, text layout with cursor and selection | Done, apart from visual cursor movement (see [Text](#text)); the system's fonts for what a text's fonts have not |
 | M3 | Widget core: tree, events, focus, layout, a UI root independent of the platform, window chrome as widgets (with the native extras), live resize | Done, apart from the native extras of the chrome and what is listed in [Widgets](#widgets) |
 | M4 | Basic widgets (label, button, line edit, scroll area, splitter), styles, `LocalizedText` and catalogs, right-to-left layouts | Done: plural rules and the formatting of numbers and dates (`Locale`: Persian digits, the Solar Hijri calendar) too (see [Localization](#localization-and-right-to-left)) |
-| M5 | Docking: major and panel tabs, windows merging and splitting by their tabs, both modes, layout persistence | Done: docking in a window, major tabs and saved layouts (M5a), across windows in the full mode (M5b), global panels, saved workspaces and Wayland's restricted mode (M5c). Wayland's drag-and-drop between windows, and keeping restored windows on the screens there are, later; the restricted mode not yet run on Wayland |
+| M5 | Docking: major and panel tabs, windows merging and splitting by their tabs, both modes, layout persistence | Done: docking in a window, major tabs and saved layouts (M5a), across windows in the full mode (M5b), global panels, saved workspaces and Wayland's restricted mode (M5c); panels across windows by Wayland's drag-and-drop; windows restored onto the screens there are (`keptOnScreens`). Not yet run on Wayland itself |
 | M6 | Validation: a node canvas and a code editor (FlowGraph), charts, an engine embedding example | In progress: the node canvas (`Canvas`, `node_editor`), menus, popups and dialogs, the code editor (`TextEdit`, `code_editor`), charts (lines, stacked areas, candles, histograms, box plots, scatter plots, timelines, flame graphs, Sankey diagrams, pies, treemaps, bars, races, heat maps, sparklines, gauges: `chart_demo`) |
 
 ## Open questions

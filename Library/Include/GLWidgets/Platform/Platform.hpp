@@ -51,6 +51,10 @@ public:
     // the compositor places windows and an application sees the mouse over its own windows only. Without it, Window's
     // positions mean nothing and mousePosition is not to be relied on.
     virtual bool placesWindows() const = 0;
+    // A drag the system carries from `from` (a button held down in it) to the application's other windows: what they are
+    // told of as DragMoved, DragLeft, DragDropped, and DragEnded when it ends. False where the system carries none (it
+    // does not need to: where it places windows, the application follows the mouse itself).
+    virtual bool startDrag(Window& from) { return false; }
     // Where the mouse is, in screen coordinates (Window::position), wherever it is.
     virtual Point mousePosition() const = 0;
     // Whether its left button is held, wherever it is (a window being moved by the system: not let go yet).
