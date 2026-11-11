@@ -281,6 +281,11 @@ struct CollapsiblePanelStyle {
     Color title;
     Color arrow;
     float headerHeight = 30;
+    // The buttons at the header's end (an action's: a + that adds an item): as high as wide, their icons, the room between
+    // them and from the header's end and its top and bottom.
+    float actionSize = 22;
+    float actionIconSize = 14;
+    float actionMargin = 6;
     Insets padding{14, 8, 14, 12};  // around the content
     float spacing = 8;              // between the content's widgets
     float cornerRadius = 0;

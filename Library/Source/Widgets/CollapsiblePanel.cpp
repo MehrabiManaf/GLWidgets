@@ -39,7 +39,7 @@ CollapsiblePanel::CollapsiblePanel(Props props) : expanded_(props.expanded), onT
     title_->setHitTestVisible(false);
     title_->setAlignment(Alignment::Stretch, Alignment::Center);
     auto actions = std::make_unique<Widget>();
-    actions->setLayout(std::make_unique<StackLayout>(Orientation::Horizontal, 2.0f));
+    actions->setLayout(std::make_unique<StackLayout>(Orientation::Horizontal, s.actionMargin));
     actions_ = &add(std::move(actions));
     auto content = std::make_unique<Widget>();
     content->setLayout(std::make_unique<StackLayout>(Orientation::Vertical, s.spacing));
@@ -61,7 +61,10 @@ void CollapsiblePanel::setTitle(LocalizedText title) {
 }
 
 ToolButton& CollapsiblePanel::addAction(std::shared_ptr<Action> action) {
-    return static_cast<ToolButton&>(actions_->addChild(std::make_unique<ToolButton>(std::move(action))));
+    auto& button = static_cast<ToolButton&>(actions_->addChild(std::make_unique<ToolButton>(std::move(action))));
+    const CollapsiblePanelStyle& s = style();
+    button.setSizes(s.actionSize, s.actionIconSize);
+    return button;
 }
 
 void CollapsiblePanel::setExpanded(bool expanded, bool animated) {
@@ -108,7 +111,9 @@ Size CollapsiblePanel::measureContent(Size available) {
     const float width = std::isfinite(available.width) ? available.width : unbounded;
     const Size title = title_->measure({unbounded, unbounded});
     const Size actions = actions_->measure({unbounded, unbounded});
-    float wanted = arrowRoom + title.width + actionsGap + actions.width;
+    // (the room at its end as arrangeContent leaves it)
+    const float margin = actions_->children().empty() ? 4.0f : style().actionMargin;
+    float wanted = arrowRoom + title.width + actionsGap + actions.width + margin;
     float height = headerHeight();
     if (content_->visible()) {
         // as much of its content as it is open
@@ -126,8 +131,10 @@ void CollapsiblePanel::arrangeContent(const Rect& content) {
     const auto mirrored = [&](Rect r) { return rtl ? Rect{content.x + width - (r.x - content.x) - r.width, r.y, r.width, r.height} : r; };
     const Size actions = actions_->desiredSize();
     const float actionsWidth = actions.width;
-    actions_->arrange(mirrored({content.x + width - actionsWidth - 4, content.y + (h - actions.height) / 2, actionsWidth, actions.height}));
-    const float titleWidth = std::max(0.0f, width - arrowRoom - actionsWidth - actionsGap - 4);
+    // the buttons at its end, the style's room from it
+    const float margin = actions_->children().empty() ? 4.0f : style().actionMargin;
+    actions_->arrange(mirrored({content.x + width - actionsWidth - margin, content.y + (h - actions.height) / 2, actionsWidth, actions.height}));
+    const float titleWidth = std::max(0.0f, width - arrowRoom - actionsWidth - actionsGap - margin);
     arrangeInCell(*title_, mirrored({content.x + arrowRoom, content.y, titleWidth, h}), rtl);
     // all of its content, at its height: what does not show yet is cut
     if (content_->visible()) {
@@ -229,6 +236,12 @@ void CollapsiblePanel::onRootChanged() {
 void CollapsiblePanel::onStyleChanged() {
     const CollapsiblePanelStyle& s = style();
     content_->setPadding(s.padding);
+    // the buttons at its header's end, as the style sizes them and the room between them
+    actions_->setLayout(std::make_unique<StackLayout>(Orientation::Horizontal, s.actionMargin));
+    for (const auto& child : actions_->children()) {
+        if (auto* button = dynamic_cast<ToolButton*>(child.get()))
+            button->setSizes(s.actionSize, s.actionIconSize);
+    }
     invalidateLayout();
 }
 

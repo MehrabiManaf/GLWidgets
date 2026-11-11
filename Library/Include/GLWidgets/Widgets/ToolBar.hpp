@@ -14,6 +14,7 @@
 
 #include <cstddef>
 #include <memory>
+#include <optional>
 #include <vector>
 
 namespace glw {
@@ -28,6 +29,9 @@ public:
     ~ToolButton() override;
 
     const std::shared_ptr<Action>& action() const { return action_; }
+    // Its size (as high as it is wide, without a text) and its icon's, in dips, other than its toolbar's (ToolBarStyle): a
+    // smaller button in a panel's header. None: the style's.
+    void setSizes(std::optional<float> buttonSize, std::optional<float> iconSize);
 
 protected:
     Size measureContent(Size available) override;
@@ -47,6 +51,9 @@ private:
     bool showText_;
     Label* label_ = nullptr;
     bool pressed_ = false;
+    std::optional<float> buttonSize_, iconSize_;
+    float buttonSize() const { return buttonSize_.value_or(style().buttonSize); }
+    float iconSize() const { return iconSize_.value_or(style().iconSize); }
     ColorTransition background_{[this] { invalidatePaint(); }};
     ColorTransition outline_{[this] { invalidatePaint(); }};
     Ripple ripple_{[this] { invalidatePaint(); }};

@@ -7,7 +7,9 @@
 #include "TestUi.hpp"
 
 #include <GLWidgets/Widgets/CollapsiblePanel.hpp>
+#include <GLWidgets/Widgets/Icon.hpp>
 #include <GLWidgets/Widgets/LineEdit.hpp>
+#include <GLWidgets/Widgets/ToolBar.hpp>
 #include <GLWidgets/Widgets/UiRoot.hpp>
 
 #include <cmath>
@@ -119,4 +121,29 @@ TEST(aCollapsiblePanelClosingTakesTheFocusOutOfItsContent) {
     CHECK(p.field->hasFocus());
     p.panel->setExpanded(false);
     CHECK(p.panel->hasFocus() && !p.field->hasFocus() && !p.panel->content().visible());
+}
+
+// The buttons at the header's end: as the style sizes them, its room from the header's end and between them, in the middle
+// of its height.
+TEST(aCollapsiblePanelsHeaderButtonsHaveTheStylesSizeAndRoom) {
+    tests::FakeHost host;
+    UiRoot root(tests::testContext(), &host);
+    auto made = std::make_unique<CollapsiblePanel>(CollapsiblePanel::Props{.title = "Functions", .expanded = true});
+    CollapsiblePanel& panel = *made;
+    const auto withIcon = [](const char* text) {     // an icon: a square button (with a text alone it is as wide as its text)
+        auto a = std::make_shared<Action>(LocalizedText(text));
+        a->setIcon(Icon::fromSvg(R"(<svg viewBox="0 0 16 16"><path d="M2 8 H14"/></svg>)", true));
+        return a;
+    };
+    ToolButton& add = panel.addAction(withIcon("Add"));
+    ToolButton& more = panel.addAction(withIcon("More"));
+    root.setContent(std::move(made));
+    root.setSize({300, 200});
+    root.layout();
+    const CollapsiblePanelStyle& s = panel.style();
+    const auto at = [&](const Widget& w) { return panel.mapFromRoot(w.mapToRoot({})); };
+    CHECK(add.size().width == s.actionSize && add.size().height == s.actionSize && more.size().width == s.actionSize);
+    CHECK(std::abs(at(more).x + s.actionSize - (300 - s.actionMargin)) < 0.5f);       // the last at the end, the room before it
+    CHECK(std::abs(at(more).x - (at(add).x + s.actionSize) - s.actionMargin) < 0.5f); // the room between them
+    CHECK(std::abs(at(add).y + s.actionSize / 2 - s.headerHeight / 2) < 0.5f);        // in the middle of the header
 }

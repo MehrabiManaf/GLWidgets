@@ -72,20 +72,28 @@ void ToolButton::update() {
     invalidateLayout();
 }
 
+void ToolButton::setSizes(std::optional<float> buttonSize, std::optional<float> iconSize) {
+    if (buttonSize == buttonSize_ && iconSize == iconSize_)
+        return;
+    buttonSize_ = buttonSize;
+    iconSize_ = iconSize;
+    invalidateLayout();
+}
+
 Size ToolButton::measureContent(Size) {
-    const ToolBarStyle& s = style();
+    const float button = buttonSize(), iconSide = iconSize();
     if (!label_)
-        return {s.buttonSize, s.buttonSize};
+        return {button, button};
     const Size text = label_->measure({unbounded, unbounded});
-    const float icon = action_->icon().empty() ? 0.0f : s.iconSize + textGap;
-    return {std::max(s.buttonSize, (s.buttonSize - s.iconSize) / 2 * 2 + icon + text.width), s.buttonSize};
+    const float icon = action_->icon().empty() ? 0.0f : iconSide + textGap;
+    return {std::max(button, (button - iconSide) / 2 * 2 + icon + text.width), button};
 }
 
 void ToolButton::arrangeContent(const Rect& content) {
     if (!label_)
         return;
-    const ToolBarStyle& s = style();
-    const float start = (s.buttonSize - s.iconSize) / 2 + (action_->icon().empty() ? 0.0f : s.iconSize + textGap);
+    const float button = buttonSize(), iconSide = iconSize();
+    const float start = (button - iconSide) / 2 + (action_->icon().empty() ? 0.0f : iconSide + textGap);
     const float w = std::max(0.0f, content.width - start);
     const bool rtl = rightToLeft();
     arrangeInCell(*label_, {rtl ? content.x : content.x + start, content.y, w, content.height}, rtl);
@@ -110,9 +118,9 @@ void ToolButton::paint(PaintContext& context) {
     const Color ink = enabled ? s.icon : s.disabledIcon;
     if (!action_->icon().empty()) {
         // its icon, in the middle (or at the start, before its text)
-        const float x = label_ ? (rightToLeft() ? r.width - (s.buttonSize + s.iconSize) / 2 : (s.buttonSize - s.iconSize) / 2)
-                               : (r.width - s.iconSize) / 2;
-        action_->icon().draw(context, {x, (r.height - s.iconSize) / 2, s.iconSize, s.iconSize}, ink);
+        const float button = buttonSize(), icon = iconSize();
+        const float x = label_ ? (rightToLeft() ? r.width - (button + icon) / 2 : (button - icon) / 2) : (r.width - icon) / 2;
+        action_->icon().draw(context, {x, (r.height - icon) / 2, icon, icon}, ink);
     }
     if (label_)
         label_->setColor(ink);
