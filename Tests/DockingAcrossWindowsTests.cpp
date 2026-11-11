@@ -879,48 +879,56 @@ TEST(whereWindowsAreNotPlacedAPanelIsDraggedInItsWindowOnly) {
 }
 
 TEST(whereTheSystemCarriesDragsAPanelGoesIntoAnotherWindow) {
-    Screen screen;
-    screen.places = false;
-    Tools t(screen, {0, 0});
-    // the palette in a window of its own (let go out of its window)
-    screen.drag(*t.window, panelTab(screen, *t.area, "palette"), {1200, 300});
-    CHECK(screen.all.size() == 2);
-    Screen::Win& floating = *screen.all.front();
-    screen.layout();
+    // the window buttons at the end of the bars (Windows, Linux) and at their start (macOS)
+    for (const bool atStart : {false, true}) {
+        Screen screen;
+        screen.context.theme.frame.buttonsAtStart = atStart;
+        screen.places = false;
+        Tools t(screen, {0, 0});
+        // the palette in a window of its own (let go out of its window)
+        screen.drag(*t.window, panelTab(screen, *t.area, "palette"), {1200, 300});
+        CHECK(screen.all.size() == 2);
+        Screen::Win& floating = *screen.all.front();
+        screen.layout();
 
-    // the graph's tab out of its window: the system's drag now, nothing floats yet
-    screen.carries = true;
-    const Point tab = panelTab(screen, *t.area, "graph");
-    screen.press(*t.window, tab);
-    screen.moveTo(*t.window, {tab.x + 10, tab.y});
-    screen.moveTo(*t.window, {tab.x + 900, tab.y + 900});
-    CHECK(screen.systemDrags == 1 && screen.systemDrag && screen.all.size() == 2);
+        // the graph's tab out of its window: the system's drag now, nothing floats yet
+        screen.carries = true;
+        const Point tab = panelTab(screen, *t.area, "graph");
+        screen.press(*t.window, tab);
+        screen.moveTo(*t.window, {tab.x + 10, tab.y});
+        screen.moveTo(*t.window, {tab.x + 900, tab.y + 900});
+        CHECK(screen.systemDrags == 1 && screen.systemDrag && screen.all.size() == 2);
 
-    // over the floating window's stack (its tab bar), let go there: in it, by the palette
-    const Point onBar = t.area->tabsOf("palette")->mapToRoot({30, 10});
-    screen.systemDrag->moved(floating.root.get(), onBar);
-    const DockingHost::SystemDrag drag = *std::exchange(screen.systemDrag, std::nullopt);
-    drag.ended(floating.root.get(), onBar);
-    screen.closeWindows();
-    screen.layout();
-    CHECK(t.area->tabsOf("graph") && t.area->tabsOf("graph") == t.area->tabsOf("palette"));
-    CHECK(t.area->tabsOf("graph")->area()->floating());
+        // over the floating window's stack (on the palette's tab: the window's buttons may be first on its bar, on macOS),
+        // let go there: in it, by the palette
+        const Point onBar = panelTab(screen, *t.area, "palette") - floating.position;
+        screen.systemDrag->moved(floating.root.get(), onBar);
+        const DockingHost::SystemDrag drag = *std::exchange(screen.systemDrag, std::nullopt);
+        drag.ended(floating.root.get(), onBar);
+        screen.closeWindows();
+        screen.layout();
+        CHECK(t.area->tabsOf("graph") && t.area->tabsOf("graph") == t.area->tabsOf("palette"));
+        if (!t.area->tabsOf("graph") || !t.area->tabsOf("graph")->area()->floating()) {
+            CHECK(false);       // (not where it was let go: what follows has nothing to drag)
+            continue;
+        }
 
-    // dragged out of that window and let go elsewhere (no window of the application): a window of its own
-    const Point again = panelTab(screen, *t.area, "graph");
-    screen.press(floating, again);
-    screen.moveTo(floating, {again.x + 10, again.y});
-    screen.moveTo(floating, {again.x + 900, again.y + 900});
-    CHECK(screen.systemDrags == 2 && screen.systemDrag);
-    const DockingHost::SystemDrag away = *std::exchange(screen.systemDrag, std::nullopt);
-    away.moved(nullptr, {});
-    away.ended(nullptr, {});
-    screen.closeWindows();
-    screen.layout();
-    CHECK(screen.all.size() == 3 && t.area->tabsOf("graph") != t.area->tabsOf("palette"));
-    // (the window it came from takes the mouse again: nothing held it)
-    screen.moveTo(floating, {1210, 310});
-    CHECK(floating.root->widgetAt({10, 10}) != nullptr);
+        // dragged out of that window and let go elsewhere (no window of the application): a window of its own
+        const Point again = panelTab(screen, *t.area, "graph");
+        screen.press(floating, again);
+        screen.moveTo(floating, {again.x + 10, again.y});
+        screen.moveTo(floating, {again.x + 900, again.y + 900});
+        CHECK(screen.systemDrags == 2 && screen.systemDrag);
+        const DockingHost::SystemDrag away = *std::exchange(screen.systemDrag, std::nullopt);
+        away.moved(nullptr, {});
+        away.ended(nullptr, {});
+        screen.closeWindows();
+        screen.layout();
+        CHECK(screen.all.size() == 3 && t.area->tabsOf("graph") != t.area->tabsOf("palette"));
+        // (the window it came from takes the mouse again: nothing held it)
+        screen.moveTo(floating, {1210, 310});
+        CHECK(floating.root->widgetAt({10, 10}) != nullptr);
+    }
 }
 
 TEST(whereWindowsAreNotPlacedAMajorTabOpensAWindowOfItsOwn) {
