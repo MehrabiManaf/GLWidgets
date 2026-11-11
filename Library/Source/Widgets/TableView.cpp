@@ -240,6 +240,7 @@ void TableView::setDelegate(std::unique_ptr<TableDelegate> delegate) {
     measurers_.clear();
     delegate_ = std::move(delegate);
     list_->setDelegate(std::make_unique<RowDelegate>(*this));       // its rows made again, with the new delegate's cells
+    refitLater();
 }
 
 void TableView::setRowHeight(std::optional<float> height) {
@@ -256,13 +257,84 @@ void TableView::setSelectionMode(SelectionMode mode) {
 
 void TableView::resetColumns() {
     widths_.resize(model_ ? model_->columnCount() : 0, 0.0f);
+    sizing_.resize(widths_.size(), ColumnSizing::Fixed);
+    refitLater();
     updateLefts();
 }
 
 void TableView::updateLefts() {
+    shownFor_ = -1;
+}
+
+bool TableView::stretches(std::size_t column) const {
+    if (column >= widths_.size())
+        return false;
+    if (std::find(sizing_.begin(), sizing_.end(), ColumnSizing::Stretch) != sizing_.end())
+        return sizing_[column] == ColumnSizing::Stretch;
+    return stretchLast_ && column + 1 == widths_.size();
+}
+
+const std::vector<double>& TableView::lefts() const {
+    const float view = viewWidth();
+    if (shownFor_ == view && lefts_.size() == widths_.size() + 1)
+        return lefts_;
+    shownFor_ = view;
+    // each as set; what is left of the view shared by those that stretch
+    shown_.assign(widths_.size(), 0.0f);
+    float total = 0;
+    std::size_t stretching = 0;
+    for (std::size_t i = 0; i < widths_.size(); ++i) {
+        shown_[i] = columnWidth(i);
+        total += shown_[i];
+        stretching += stretches(i) ? 1 : 0;
+    }
+    if (stretching > 0 && view > total) {
+        const float more = (view - total) / static_cast<float>(stretching);
+        for (std::size_t i = 0; i < widths_.size(); ++i)
+            shown_[i] += stretches(i) ? more : 0.0f;
+    }
     lefts_.assign(widths_.size() + 1, 0.0);
     for (std::size_t i = 0; i < widths_.size(); ++i)
-        lefts_[i + 1] = lefts_[i] + columnWidth(i);
+        lefts_[i + 1] = lefts_[i] + shown_[i];
+    return lefts_;
+}
+
+void TableView::setColumnSizing(std::size_t column, ColumnSizing sizing) {
+    if (column >= sizing_.size() || sizing_[column] == sizing)
+        return;
+    sizing_[column] = sizing;
+    if (sizing == ColumnSizing::FitContent)
+        refitLater();
+    updateLefts();
+    rearrangeStrips();
+    invalidateLayout();
+}
+
+ColumnSizing TableView::columnSizing(std::size_t column) const {
+    return column < sizing_.size() ? sizing_[column] : ColumnSizing::Fixed;
+}
+
+void TableView::refitLater() {
+    if (std::find(sizing_.begin(), sizing_.end(), ColumnSizing::FitContent) == sizing_.end())
+        return;
+    refit_ = true;
+    invalidateLayout();
+}
+
+void TableView::refit() {
+    refit_ = false;
+    bool changed = false;
+    for (std::size_t column = 0; column < sizing_.size(); ++column) {
+        if (sizing_[column] != ColumnSizing::FitContent)
+            continue;
+        const float width = std::max(minimumColumnWidth, contentWidth(column));
+        changed = changed || width != widths_[column];
+        widths_[column] = width;
+    }
+    if (changed) {
+        updateLefts();
+        rearrangeStrips();
+    }
 }
 
 float TableView::columnWidth(std::size_t column) const {
@@ -288,6 +360,7 @@ void TableView::setStretchLastColumn(bool stretch) {
     if (stretch == stretchLast_)
         return;
     stretchLast_ = stretch;
+    updateLefts();
     rearrangeStrips();
     invalidateLayout();
 }
@@ -303,21 +376,19 @@ float TableView::viewWidth() const {
 }
 
 float TableView::shownWidth(std::size_t column) const {
-    const float width = columnWidth(column);
-    if (stretchLast_ && column + 1 == widths_.size())
-        return std::max(width, static_cast<float>(viewWidth() - lefts_[column]));
-    return width;
+    lefts();
+    return column < shown_.size() ? shown_[column] : 0.0f;
 }
 
 double TableView::totalWidth() const {
     if (widths_.empty())
         return 0;
     const std::size_t last = widths_.size() - 1;
-    return lefts_[last] + shownWidth(last);
+    return lefts()[last] + shownWidth(last);
 }
 
 float TableView::columnX(std::size_t column, float width) const {
-    const float x = static_cast<float>(lefts_[column] - horizontalOffset_);
+    const float x = static_cast<float>(lefts()[column] - horizontalOffset_);
     return rightToLeft() ? width - x - shownWidth(column) : x;
 }
 
@@ -326,7 +397,8 @@ std::pair<std::size_t, std::size_t> TableView::shownColumns() const {
     const float width = viewWidth();
     if (count == 0 || width <= 0)
         return {0, 0};
-    const auto begin = lefts_.begin(), end = lefts_.begin() + static_cast<std::ptrdiff_t>(count);
+    const std::vector<double>& at = lefts();
+    const auto begin = at.begin(), end = at.begin() + static_cast<std::ptrdiff_t>(count);
     // the last starting at or before the offset; those starting before the view ends
     const std::size_t first = static_cast<std::size_t>(std::max<std::ptrdiff_t>(0, std::upper_bound(begin, end, horizontalOffset_) - begin - 1));
     const std::size_t last = static_cast<std::size_t>(std::lower_bound(begin, end, horizontalOffset_ + width) - begin);
@@ -577,9 +649,10 @@ void TableView::scrollAcrossSmoothly(double offset, bool aimed) {
     // to the nearest column's edge (or the end): the column at the start shows whole
     const double limit = maximumHorizontalOffset();
     offset = std::clamp(offset, 0.0, limit);
-    if (offset < limit - 0.5 && lefts_.size() > 1) {
-        const auto after = std::upper_bound(lefts_.begin(), lefts_.end() - 1, offset);
-        const double right = after != lefts_.end() - 1 ? *after : limit, left = *(after - 1);
+    const std::vector<double>& at = lefts();
+    if (offset < limit - 0.5 && at.size() > 1) {
+        const auto after = std::upper_bound(at.begin(), at.end() - 1, offset);
+        const double right = after != at.end() - 1 ? *after : limit, left = *(after - 1);
         offset = std::min(limit, offset - left < right - offset ? left : right);
     }
     if (offset == smoothAcross_.target(horizontalOffset_))
@@ -599,7 +672,7 @@ void TableView::showAcross(double offset) {
 void TableView::scrollToColumn(std::size_t column) {
     if (column >= widths_.size())
         return;
-    const double left = lefts_[column], right = left + shownWidth(column);
+    const double left = lefts()[column], right = left + shownWidth(column);
     if (left < horizontalOffset_)
         setHorizontalOffset(left);
     else if (right > horizontalOffset_ + viewWidth())
@@ -615,6 +688,8 @@ Size TableView::measureContent(Size available) {
 
 void TableView::arrangeContent(const Rect& content) {
     area_ = content;
+    if (refit_)
+        refit();
     const float header = headerVisible_ ? style().rowHeight : 0.0f;
     const float barWidth = context() ? context()->theme.scrollBar.width : 8.0f;
     const auto lay = [&](bool bar) {
@@ -672,7 +747,7 @@ void TableView::paint(PaintContext& context) {
             p.drawPolyline(arrow, 1.4f, s.headerText);
         }
         // a short line at its end side, but for the last one stretched
-        if (stretchLast_ && column + 1 == widths_.size())
+        if (stretches(column) && column + 1 == widths_.size())
             continue;
         const bool hot = hoveredEdge_ == column || (resizing_ && resizing_->column == column);
         const float edge = rtl ? x : x + w;
@@ -715,7 +790,7 @@ void TableView::paintOver(PaintContext& context) {
         p.pushClip(area);
         const auto [first, last] = shownColumns();
         for (std::size_t column = first; column < last; ++column) {
-            if (stretchLast_ && column + 1 == widths_.size())
+            if (stretches(column) && column + 1 == widths_.size())
                 break;
             const float x = area.x + columnX(column, area.width);
             const float edge = rtl ? x : x + shownWidth(column);
@@ -756,7 +831,7 @@ std::optional<std::size_t> TableView::edgeAt(Point point) const {
     const auto [first, last] = shownColumns();
     std::optional<std::size_t> found;
     for (std::size_t column = first; column < last; ++column) {
-        if (stretchLast_ && column + 1 == widths_.size())
+        if (stretches(column) && column + 1 == widths_.size())
             break;
         const float x = h.x + columnX(column, h.width);
         const float edge = rtl ? x : x + shownWidth(column);
@@ -818,6 +893,8 @@ void TableView::onPreviewMouse(MouseEvent& event) {
             fitted_.set(0);                 // a drag takes over from the easing
             fitting_.reset();
             resizing_ = Resize{*edge, event.position.x, shownWidth(*edge)};
+            if (sizing_[*edge] == ColumnSizing::FitContent)
+                sizing_[*edge] = ColumnSizing::Fixed;
             invalidatePaint();
             return;
         }
@@ -952,6 +1029,7 @@ void TableView::onRootChanged() {
 void TableView::onStyleChanged() {
     list_->setStyle(style());   // its rows: the table's style
     updateLefts();              // the theme's column width
+    refitLater();               // its fonts
     header_->clear();           // its colors
     invalidateLayout();
 }
@@ -961,15 +1039,18 @@ void TableView::onStyleChanged() {
 void TableView::rowsInserted(std::size_t first, std::size_t count) {
     cancelEdit();
     rows_->notifyInserted(first, count);
+    refitLater();
 }
 
 void TableView::rowsRemoved(std::size_t first, std::size_t count) {
     cancelEdit();
     rows_->notifyRemoved(first, count);
+    refitLater();
 }
 
 void TableView::rowsChanged(std::size_t first, std::size_t count) {
     rows_->notifyChanged(first, count);
+    refitLater();
 }
 
 void TableView::changesBegun() {

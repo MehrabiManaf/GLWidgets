@@ -14,6 +14,8 @@
 #include <functional>
 #include <memory>
 #include <string>
+#include <utility>
+#include <vector>
 
 using namespace glw;
 
@@ -286,4 +288,73 @@ TEST(aTableFollowsItsModel) {
     t.root.layout();
     CHECK(t.shown(std::nullopt, 1) == "FewC1" && t.shown(std::nullopt, 2) == "(not shown)");
     CHECK(t.table->cellWidget(top, 2) == nullptr);
+}
+
+// Names and their types: the types' column as wide as the widest (measured again as the rows change), the names' all the
+// rest, whatever the table's width; a drag of the fitting column's edge sets it as the user says from then on.
+TEST(columnsFitTheirContentOrStretch) {
+    std::vector<std::pair<std::string, std::string>> rows{{"Speed", "float"}, {"Name", "string"}};
+    class Members final : public TableModel {
+    public:
+        explicit Members(std::vector<std::pair<std::string, std::string>>& rows) : rows_(rows) {}
+        std::size_t rowCount() const override { return rows_.size(); }
+        std::size_t columnCount() const override { return 2; }
+        LocalizedText header(std::size_t column) const override { return LocalizedText(column == 0 ? "Name" : "Type"); }
+        void added() { notifyRowsInserted(rows_.size() - 1, 1); }
+
+    private:
+        std::vector<std::pair<std::string, std::string>>& rows_;
+    };
+    auto members = std::make_shared<Members>(rows);
+    UiRoot root{tests::testContext()};
+    auto made = std::make_unique<TableView>();
+    TableView& table = *made;
+    table.setModel(members);
+    table.setDelegate(std::make_unique<TableTextDelegate>(
+        [&rows](std::size_t r, std::size_t c) { return LocalizedText(c == 0 ? rows[r].first : rows[r].second); }));
+    table.setColumnSizing(0, ColumnSizing::Stretch);
+    table.setColumnSizing(1, ColumnSizing::FitContent);
+    CHECK(table.columnSizing(1) == ColumnSizing::FitContent && table.columnSizing(0) == ColumnSizing::Stretch);
+    root.setSize({400, 300});
+    root.setContent(std::move(made));
+    root.layout();
+    const auto widthOf = [&](std::size_t column) {
+        const Widget* header = table.headerWidget(column);
+        return header ? header->size().width : 0.0f;
+    };
+    // the types as wide as they need, the names the rest
+    const float fitted = table.contentWidth(1);
+    CHECK(near(table.columnWidth(1), fitted) && near(widthOf(1), fitted));
+    CHECK(near(widthOf(0) + widthOf(1), table.list().viewport().width));
+    CHECK(near(table.totalWidth(), table.list().viewport().width));
+    // narrower: the names give room, the types keep theirs
+    root.setSize({250, 300});
+    root.layout();
+    CHECK(near(widthOf(1), fitted) && near(widthOf(0) + widthOf(1), table.list().viewport().width));
+    // a row with a longer type: measured again
+    rows.emplace_back("Points", "array<map<string, float>>");
+    members->added();
+    root.layout();
+    CHECK(table.columnWidth(1) > fitted + 20 && near(table.columnWidth(1), table.contentWidth(1)));
+    // a drag of its header's edge (at its end, in view): as the user says from then on (Fixed), not measured again
+    root.setSize({700, 300});
+    root.layout();
+    const Widget& typeHeader = *table.headerWidget(1);
+    const Point edge = typeHeader.mapToRoot({typeHeader.size().width - 1, typeHeader.size().height / 2});
+    root.dispatch(platform::MouseMoved{1, edge});
+    root.dispatch(platform::MouseButtonChanged{1, platform::MouseButton::Left, true, 1, edge});
+    root.dispatch(platform::MouseMoved{1, {edge.x - 30, edge.y}});
+    root.dispatch(platform::MouseButtonChanged{1, platform::MouseButton::Left, false, 1, {edge.x - 30, edge.y}});
+    root.layout();
+    CHECK(table.columnSizing(1) == ColumnSizing::Fixed);
+    const float dragged = table.columnWidth(1);
+    rows.emplace_back("Other", "a type with a much longer name than any of the others");
+    members->added();
+    root.layout();
+    CHECK(near(table.columnWidth(1), dragged));
+    // the last column stretched by default when none is said to
+    table.setColumnSizing(0, ColumnSizing::Fixed);
+    table.setColumnSizing(1, ColumnSizing::Fixed);
+    root.layout();
+    CHECK(widthOf(0) + widthOf(1) >= table.list().viewport().width - 0.5f);
 }

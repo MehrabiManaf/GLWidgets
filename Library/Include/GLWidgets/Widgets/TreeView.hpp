@@ -88,6 +88,8 @@ public:
     // ---- columns ----
     float columnWidth(std::size_t column) const { return table_->columnWidth(column); }
     void setColumnWidth(std::size_t column, float width) { table_->setColumnWidth(column, width); }
+    // How wide a column is: as set, as its content needs, or what the others leave (TableView::setColumnSizing).
+    void setColumnSizing(std::size_t column, ColumnSizing sizing) { table_->setColumnSizing(column, sizing); }
     // As wide as its header and the cells of the nodes that show need (the first one's indents and arrows with them),
     // eased there; a double click on its header's edge does it.
     void fitColumn(std::size_t column) { table_->fitColumn(column); }

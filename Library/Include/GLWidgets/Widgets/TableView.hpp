@@ -7,7 +7,9 @@
 // again for others as the table scrolls.
 //
 // Columns are as wide as set (the theme's until then), the last one taking what room the others leave; dragging the edge
-// of a header resizes its column. The table scrolls across with its bar, the wheel turned with Shift (or tilted), or Left
+// of a header resizes its column. A column may instead be as wide as what it shows needs, measured again as its rows
+// change (ColumnSizing::FitContent), or share with the others that stretch the room the rest leave (Stretch): a list of
+// names and their types, the types' column as wide as the widest, the names' all the rest. The table scrolls across with its bar, the wheel turned with Shift (or tilted), or Left
 // and Right. Rows are chosen and activated as a list's are (ListView).
 //
 // A click on the header of a column its model can sort by (TableModel::sortable, compare) sorts the rows by it: ascending,
@@ -29,6 +31,7 @@
 #include <GLWidgets/Widgets/Widget.hpp>
 
 #include <cstddef>
+#include <cstdint>
 #include <functional>
 #include <memory>
 #include <optional>
@@ -36,6 +39,14 @@
 #include <vector>
 
 namespace glw {
+
+// How wide a column is (TableView::setColumnSizing).
+enum class ColumnSizing : std::uint8_t {
+    Fixed,                  // as set (the theme's until then); dragging its header's edge sets it
+    FitContent,             // as wide as its header and its cells need (contentWidth), measured again as the rows change,
+                            // the filter, the order, the delegate or the style; dragging its header's edge makes it Fixed
+    Stretch,                // what the others leave, shared with the other stretching columns (at least as set)
+};
 
 // What makes the widgets of a table's cells, and shows a cell in one.
 class GLW_EXPORT TableDelegate {
@@ -93,8 +104,11 @@ public:
     // spread across them (none: all of them; a thousand by default).
     float contentWidth(std::size_t column);
     void setFitRows(std::optional<std::size_t> rows) { fitRows_ = rows; }
-    // The last column takes the room the others leave (true by default).
+    // The last column takes the room the others leave (true by default), when no column stretches (setColumnSizing).
     void setStretchLastColumn(bool stretch);
+    // How wide a column is (Fixed by default).
+    void setColumnSizing(std::size_t column, ColumnSizing sizing);
+    ColumnSizing columnSizing(std::size_t column) const;
     void setHeaderVisible(bool visible);
     bool headerVisible() const { return headerVisible_; }
     // The width of all columns, the last one as it shows.
@@ -142,9 +156,15 @@ public:
     // The arrow in a header, as sortBy shows it, its rows left as they are (what shows them sorts them: a tree).
     void setSortIndicator(std::optional<std::size_t> column, SortOrder order = SortOrder::Ascending);
     // Only the rows `accepts` says yes to (the model's rows); none: all of them.
-    void setFilter(std::function<bool(std::size_t)> accepts) { list_->setFilter(std::move(accepts)); }
+    void setFilter(std::function<bool(std::size_t)> accepts) {
+        list_->setFilter(std::move(accepts));
+        refitLater();
+    }
     // Sorted and filtered again (what the filter says changed).
-    void reorder() { list_->reorder(); }
+    void reorder() {
+        list_->reorder();
+        refitLater();
+    }
     std::size_t shownRowCount() const { return list_->shownCount(); }
 
     // ---- editing ----
@@ -196,10 +216,17 @@ private:
     void changesEnded() override;
 
     void resetColumns();                    // the widths for the model's columns: those set kept
-    void updateLefts();
+    void updateLefts();                     // the widths changed: where the columns show, worked out again when asked
+    // Where each column starts, one more (where the last ends), and how wide it shows: for the room the view has now, the
+    // stretching columns sharing what is left.
+    const std::vector<double>& lefts() const;
+    bool stretches(std::size_t column) const;
+    // The columns that fit their content: measured again at the next layout.
+    void refitLater();
+    void refit();
     // Where the columns show: the width of the list's rows.
     float viewWidth() const;
-    double columnLeft(std::size_t column) const { return lefts_[column]; }
+    double columnLeft(std::size_t column) const { return lefts()[column]; }
     // As it shows: the last stretched.
     float shownWidth(std::size_t column) const;
     // Where a column is in a strip `width` wide (the start side mirrored in right to left).
@@ -234,7 +261,11 @@ private:
     std::optional<ItemViewStyle> style_;
 
     std::vector<float> widths_;             // as set (0: the theme's)
-    std::vector<double> lefts_;             // where each starts, one more: where the last ends (not stretched)
+    std::vector<ColumnSizing> sizing_;      // each column's (Fixed when not set)
+    mutable std::vector<double> lefts_;     // where each starts, one more: where the last ends (as shown)
+    mutable std::vector<float> shown_;      // how wide each shows
+    mutable float shownFor_ = -1;           // the view's width they were worked out for (-1: to be worked out)
+    bool refit_ = false;                    // the columns that fit their content: to be measured
     bool stretchLast_ = true;
     bool headerVisible_ = true;
     double horizontalOffset_ = 0;
