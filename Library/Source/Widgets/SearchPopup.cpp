@@ -97,6 +97,10 @@ public:
 
     void start() {
         filter();
+        if (options_.current && field_->text().empty() && *options_.current < shown_->indices.size()) {
+            list_->setCurrent(*options_.current);       // all of them, in their order: its row is its index
+            list_->scrollTo(*options_.current);
+        }
         field_->focus();
     }
 

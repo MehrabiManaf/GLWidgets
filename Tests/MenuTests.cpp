@@ -277,3 +277,35 @@ TEST(aSearchPopupFiltersAsItIsTypedAndChooses) {
     Menued::key(m.popup(0), platform::Key::Escape);
     CHECK(chosen.size() == 2 && m.popups().empty() && closed == 3);
 }
+
+// Searchable: a click, or typing into it, opens a search popup; only its texts can be chosen.
+TEST(aSearchableComboBoxChoosesBySearching) {
+    Menued m;
+    std::vector<std::size_t> changed;
+    auto combo = std::make_unique<ComboBox>(ComboBox::Props{.items = {"bool", "int", "float", "string", "vector2"},
+                                                            .current = 3,
+                                                            .onChanged = [&](std::size_t i) { changed.push_back(i); },
+                                                            .searchable = true});
+    ComboBox& box = *combo;
+    box.setAlignment(Alignment::Start, Alignment::Start);
+    m.root.setContent(std::move(combo));
+    m.root.layout();
+    // a click: the search popup under it, at least 220 wide, the current one chosen at first
+    Menued::click(m.root, {10, 10});
+    CHECK(box.isOpen() && m.popups().size() == 1);
+    CHECK(m.popup(0).size().width >= 220);
+    Menued::key(m.popup(0), platform::Key::Down);       // the one after it
+    Menued::key(m.popup(0), platform::Key::Enter);
+    CHECK(box.current() == 4 && changed == std::vector<std::size_t>{4} && !box.isOpen());
+    // with the focus, it takes typed text: what was typed is searched for
+    box.focus();
+    CHECK(m.host.textInput);
+    m.root.dispatch(platform::TextInput{1, "fl"});
+    CHECK(box.isOpen());
+    Menued::key(m.popup(0), platform::Key::Enter);
+    CHECK(box.current() == 2);
+    // Escape: nothing chosen
+    m.root.dispatch(platform::TextInput{1, "zz"});
+    Menued::key(m.popup(0), platform::Key::Escape);
+    CHECK(box.current() == 2 && changed.size() == 2 && !box.isOpen());
+}

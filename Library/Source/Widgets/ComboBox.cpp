@@ -8,6 +8,7 @@
 #include <GLWidgets/Text/TextLayout.hpp>
 #include <GLWidgets/Widgets/Label.hpp>
 #include <GLWidgets/Widgets/Menu.hpp>
+#include <GLWidgets/Widgets/SearchPopup.hpp>
 #include <GLWidgets/Widgets/UiRoot.hpp>
 
 #include <algorithm>
@@ -23,7 +24,11 @@ constexpr float arrowRoom = 28;         // its arrow's, at the end side
 
 ComboBox::ComboBox() : ComboBox(Props{}) {}
 
-ComboBox::ComboBox(Props props) : items_(std::move(props.items)), onChanged_(std::move(props.onChanged)) {
+ComboBox::ComboBox(Props props)
+    : items_(std::move(props.items)),
+      onChanged_(std::move(props.onChanged)),
+      searchable_(props.searchable),
+      placeholder_(std::move(props.placeholder)) {
     setFocusable(true);
     setPadding({10, 5, arrowRoom, 5});
     label_ = &add(std::make_unique<Label>(Label::Props{.elide = true}));
@@ -58,9 +63,35 @@ void ComboBox::choose(std::size_t index) {
         onChanged_(index);
 }
 
-void ComboBox::open() {
+void ComboBox::setSearchable(bool searchable, LocalizedText placeholder) {
+    searchable_ = searchable;
+    placeholder_ = std::move(placeholder);
+}
+
+void ComboBox::open(std::string typed) {
     if (open_ || items_.empty())
         return;
+    if (searchable_) {
+        std::vector<SearchItem> items;
+        items.reserve(items_.size());
+        for (const LocalizedText& item : items_)
+            items.push_back({item, {}});
+        const Size room{std::max(size().width, 220.0f), 300};
+        open_ = showSearchPopup(*this, {0, 0, size().width, size().height},
+                                {.items = std::move(items),
+                                 .placeholder = placeholder_,
+                                 .text = std::move(typed),
+                                 .onChosen = [this](std::size_t i) { choose(i); },
+                                 .onClosed =
+                                     [this] {
+                                         open_ = false;
+                                         invalidatePaint();
+                                     },
+                                 .size = room,
+                                 .current = current_ < items_.size() ? std::optional<std::size_t>(current_) : std::nullopt});
+        invalidatePaint();
+        return;
+    }
     std::vector<MenuItem> menu;
     for (std::size_t i = 0; i < items_.size(); ++i)
         menu.push_back({.text = items_[i], .onTriggered = [this, i] { choose(i); }, .checked = i == current_});
@@ -117,6 +148,27 @@ void ComboBox::onMouse(MouseEvent& event) {
         invalidatePaint();
         event.handled = true;
     }
+}
+
+void ComboBox::onText(TextEvent& event) {
+    // typed into it: searched for
+    if (!searchable_ || event.composing || event.text.empty() || open_)
+        return;
+    event.handled = true;
+    open(event.text);
+}
+
+void ComboBox::onFocusChanged(bool focused) {
+    // a searchable one takes typed text (the system's text input on, while it has the focus)
+    if (searchable_) {
+        if (UiHost* host = root() ? root()->host() : nullptr) {
+            if (focused)
+                host->startTextInput();
+            else
+                host->stopTextInput();
+        }
+    }
+    invalidatePaint();
 }
 
 void ComboBox::onKey(KeyEvent& event) {

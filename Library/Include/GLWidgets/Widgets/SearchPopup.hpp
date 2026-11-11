@@ -36,6 +36,8 @@ struct SearchOptions {
     std::function<void(std::size_t)> onChosen;      // the item's index in `items`, once the popup closed
     std::function<void()> onClosed;         // after it closed, chosen or not
     Size size{300, 340};
+    // The item chosen now (a combo box's): selected, and scrolled to, while the field is empty. None: the first.
+    std::optional<std::size_t> current;
 };
 
 // Opens it under `anchor` (the widget's coordinates). False where the widget's window has no popups.
