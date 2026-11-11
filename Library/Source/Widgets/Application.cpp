@@ -82,6 +82,13 @@ Point placePopup(const platform::Window& parent, const Rect& anchor, PopupPlacem
 
 struct Application::Impl final : DockingHost {
     Application& app;
+    std::optional<LayoutDirection> direction;           // the application's; none: the language's
+    // The windows' layout: mirrored or not.
+    LayoutDirection layoutDirection() const {
+        if (direction && *direction != LayoutDirection::Inherit)
+            return *direction;
+        return translator->rightToLeft() ? LayoutDirection::RightToLeft : LayoutDirection::LeftToRight;
+    }
     std::unique_ptr<platform::Platform> platform;
     std::unique_ptr<rhi::Device> device;
     std::unique_ptr<paint::Renderer> renderer;
@@ -728,8 +735,7 @@ Window::Window(Application& app, const WindowOptions& options, std::unique_ptr<W
     if (owner)
         window_->setParent(owner->window_.get());
     surface_ = impl.device->createSurface(*window_);
-    if (impl.translator->rightToLeft())
-        root_.setLayoutDirection(LayoutDirection::RightToLeft);
+    root_.setLayoutDirection(impl.layoutDirection());
     if (options.customChrome && !overlay) {
         auto frame = std::make_unique<WindowFrame>(std::move(content));
         frame->titleBar().setTitle(title_);
@@ -886,7 +892,7 @@ void Window::setTitle(LocalizedText title) {
 
 void Window::languageChanged() {
     window_->setTitle(app_.impl_->translator->resolve(title_));
-    root_.setLayoutDirection(app_.impl_->translator->rightToLeft() ? LayoutDirection::RightToLeft : LayoutDirection::LeftToRight);
+    root_.setLayoutDirection(app_.impl_->layoutDirection());
     root_.languageChanged();
 }
 
@@ -1133,6 +1139,14 @@ ColorScheme Application::colorScheme() const {
 
 void Application::setLanguage(const std::string& language) {
     impl_->translator->setLanguage(language);
+    for (const auto& w : impl_->opened)
+        w->languageChanged();
+    for (const auto& w : impl_->popups)
+        w->languageChanged();
+}
+
+void Application::setLayoutDirection(std::optional<LayoutDirection> direction) {
+    impl_->direction = direction;
     for (const auto& w : impl_->opened)
         w->languageChanged();
     for (const auto& w : impl_->popups)

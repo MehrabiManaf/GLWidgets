@@ -160,8 +160,12 @@ public:
     void setColorScheme(ColorScheme scheme, bool animated = true);
     ColorScheme colorScheme() const;
     // The language every window shows its texts in (its catalog loaded in translator()), which shows them at once; a
-    // language written right to left mirrors the windows.
+    // language written right to left mirrors the windows (unless setLayoutDirection says otherwise).
     void setLanguage(const std::string& language);
+    // The direction of every window's layout whatever the language: an application that translates its texts but keeps
+    // its layout (a diagram's, a code editor's, which do not mirror) says LeftToRight. None (or Inherit): the language's.
+    // Texts are still written in their own direction, right to left in Persian, wherever they are.
+    void setLayoutDirection(std::optional<LayoutDirection> direction);
     Translator& translator();
     const text::FontLibrary& fonts() const;
     // To load fonts into (a monospace font for code): what widgets show with them comes from there.
