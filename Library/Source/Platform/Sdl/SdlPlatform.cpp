@@ -11,6 +11,9 @@
 #include <GLWidgets/Core/Assert.hpp>
 #include <GLWidgets/Core/Error.hpp>
 
+#include <SDL3/SDL_dialog.h>
+#include <SDL3/SDL_filesystem.h>
+#include <SDL3/SDL_properties.h>
 #include <SDL3/SDL_clipboard.h>
 #include <SDL3/SDL_hints.h>
 #include <SDL3/SDL_mouse.h>
@@ -192,6 +195,62 @@ std::string SdlPlatform::clipboardText() const {
 
 void SdlPlatform::setClipboardText(std::string_view text) {
     SDL_SetClipboardText(std::string(text).c_str());
+}
+
+namespace {
+// What SDL's dialog needs until it answers (it keeps pointers to the filters): freed by its callback.
+struct PendingDialog {
+    std::vector<std::string> names, patterns;
+    std::vector<SDL_DialogFileFilter> filters;
+    std::function<void(std::vector<std::string>)> done;
+};
+} // namespace
+
+void SdlPlatform::showFileDialog(const FileDialogRequest& request, std::function<void(std::vector<std::string>)> done) {
+    auto* pending = new PendingDialog;
+    pending->done = std::move(done);
+    for (const FileFilter& f : request.filters) {
+        pending->names.push_back(f.name);
+        pending->patterns.push_back(f.extensions.empty() ? std::string("*") : f.extensions);
+    }
+    for (std::size_t i = 0; i < pending->names.size(); ++i)
+        pending->filters.push_back({pending->names[i].c_str(), pending->patterns[i].c_str()});
+    SDL_FileDialogType type = SDL_FILEDIALOG_OPENFILE;
+    if (request.kind == FileDialogKind::Save)
+        type = SDL_FILEDIALOG_SAVEFILE;
+    else if (request.kind == FileDialogKind::Folder)
+        type = SDL_FILEDIALOG_OPENFOLDER;
+    const SDL_PropertiesID props = SDL_CreateProperties();
+    if (!pending->filters.empty()) {
+        SDL_SetPointerProperty(props, SDL_PROP_FILE_DIALOG_FILTERS_POINTER, pending->filters.data());
+        SDL_SetNumberProperty(props, SDL_PROP_FILE_DIALOG_NFILTERS_NUMBER, static_cast<Sint64>(pending->filters.size()));
+    }
+    if (auto* parent = dynamic_cast<SdlWindow*>(request.parent))
+        SDL_SetPointerProperty(props, SDL_PROP_FILE_DIALOG_WINDOW_POINTER, parent->sdlWindow());
+    if (!request.location.empty())
+        SDL_SetStringProperty(props, SDL_PROP_FILE_DIALOG_LOCATION_STRING, request.location.c_str());
+    if (!request.title.empty())
+        SDL_SetStringProperty(props, SDL_PROP_FILE_DIALOG_TITLE_STRING, request.title.c_str());
+    SDL_SetBooleanProperty(props, SDL_PROP_FILE_DIALOG_MANY_BOOLEAN, request.kind == FileDialogKind::OpenMany);
+    SDL_ShowFileDialogWithProperties(
+        type,
+        [](void* data, const char* const* files, int) {
+            std::unique_ptr<PendingDialog> p(static_cast<PendingDialog*>(data));
+            std::vector<std::string> chosen;
+            for (const char* const* f = files; f && *f; ++f)
+                chosen.emplace_back(*f);
+            if (p->done)
+                p->done(std::move(chosen));
+        },
+        pending, props);
+    SDL_DestroyProperties(props);
+}
+
+std::string SdlPlatform::preferencesFolder(std::string_view organization, std::string_view application) const {
+    char* path = SDL_GetPrefPath(std::string(organization).c_str(), std::string(application).c_str());
+    std::string result = path ? path : "";
+    SDL_free(path);
+    return result;
 }
 
 bool SDLCALL SdlPlatform::watch(void* data, SDL_Event* event) {

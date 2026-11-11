@@ -1063,6 +1063,19 @@ void Application::post(std::function<void()> fn) {
     impl_->scheduler.post(std::move(fn));
 }
 
+void Application::showFileDialog(platform::FileDialogRequest request, std::function<void(std::vector<std::string>)> done,
+                                 Window* parent) {
+    if (parent)
+        request.parent = parent->window_.get();
+    Scheduler& scheduler = impl_->scheduler;
+    impl_->platform->showFileDialog(request, [&scheduler, done = std::move(done)](std::vector<std::string> chosen) {
+        scheduler.post([done, chosen = std::move(chosen)] {
+            if (done)
+                done(chosen);
+        });
+    });
+}
+
 void Window::requestClose() {
     if (!onCloseRequested_ || onCloseRequested_())
         close();

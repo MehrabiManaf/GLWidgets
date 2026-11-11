@@ -16,8 +16,25 @@
 #include <optional>
 #include <string>
 #include <string_view>
+#include <vector>
 
 namespace glw::platform {
+
+// A kind of files a file dialog offers: "FlowGraph scripts" and "flow" (extensions, without dots, separated by ';').
+struct FileFilter {
+    std::string name;
+    std::string extensions;
+};
+
+enum class FileDialogKind : std::uint8_t { Open, OpenMany, Save, Folder };
+
+struct FileDialogRequest {
+    FileDialogKind kind = FileDialogKind::Open;
+    Window* parent = nullptr;               // the window it belongs to (modal to it where the system makes it so)
+    std::string title;                      // the system's own when empty
+    std::string location;                   // the folder it starts in, or a file's path (its name proposed when saving)
+    std::vector<FileFilter> filters;        // none: every file
+};
 
 class GLW_EXPORT Platform {
 public:
@@ -64,6 +81,13 @@ public:
     // The shape of the pointer while it is over the application's windows (where they are the application's: over the
     // edges a window resizes by, the system shows its own).
     virtual void setCursor(Cursor cursor) = 0;
+
+    // The system's dialog for choosing files or a folder. `done` gets what was chosen (UTF-8 paths; none: cancelled or failed),
+    // later, on any thread (Application::showFileDialog brings it to the thread of the user interface).
+    virtual void showFileDialog(const FileDialogRequest& request, std::function<void(std::vector<std::string>)> done) = 0;
+    // The folder the user's preferences of `application` (of `organization`) go into, made if it was not there: UTF-8,
+    // ending with a separator; empty when there is none to be had.
+    virtual std::string preferencesFolder(std::string_view organization, std::string_view application) const = 0;
 
     // The text of the system's clipboard (UTF-8; empty when it holds none).
     virtual std::string clipboardText() const = 0;
