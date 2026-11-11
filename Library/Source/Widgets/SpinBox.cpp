@@ -10,6 +10,9 @@
 #include <algorithm>
 #include <charconv>
 #include <cmath>
+#include <locale>
+#include <sstream>
+#include <string>
 #include <system_error>
 
 namespace glw {
@@ -29,10 +32,21 @@ std::optional<double> parse(std::string_view written) {
         text.remove_suffix(1);
     if (!text.empty() && text.front() == '+')
         text.remove_prefix(1);
-    double value = 0;
-    const auto [end, error] = std::from_chars(text.data(), text.data() + text.size(), value);
-    if (text.empty() || error != std::errc{} || end != text.data() + text.size() || !std::isfinite(value))
+    if (text.empty())
         return std::nullopt;
+    double value = 0;
+#if defined(__cpp_lib_to_chars) && __cpp_lib_to_chars >= 201611L
+    const auto [end, error] = std::from_chars(text.data(), text.data() + text.size(), value);
+    if (error != std::errc{} || end != text.data() + text.size() || !std::isfinite(value))
+        return std::nullopt;
+#else
+    // a library without from_chars for doubles (Apple's): a stream of the classic locale, all of it read
+    std::istringstream in{std::string(text)};
+    in.imbue(std::locale::classic());
+    in >> value;
+    if (in.fail() || in.peek() != std::char_traits<char>::eof() || !std::isfinite(value))
+        return std::nullopt;
+#endif
     return value;
 }
 
