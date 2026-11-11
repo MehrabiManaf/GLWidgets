@@ -87,6 +87,7 @@ add_library(GLWidgets ${GLW_LIB_TYPE}
     Source/Widgets/ToolBar.cpp
     Source/Widgets/TableView.cpp
     Source/Widgets/TabPaint.cpp
+    Source/Widgets/TabView.cpp
     Source/Widgets/TextEdit.cpp
     Source/Widgets/TreeView.cpp
     Source/Widgets/UiRoot.cpp
