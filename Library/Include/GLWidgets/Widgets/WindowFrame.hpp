@@ -14,6 +14,7 @@
 #include <string>
 
 #include <GLWidgets/Widgets/MenuBar.hpp>
+#include <GLWidgets/Widgets/StatusBar.hpp>
 #include <GLWidgets/Widgets/ToolBar.hpp>
 
 namespace glw {
@@ -77,6 +78,9 @@ public:
     MenuBar* menuBar() const { return menuBar_; }
     ToolBar& setToolBar(std::unique_ptr<ToolBar> toolBar);
     ToolBar* toolBar() const { return toolBar_; }
+    // Its status bar, under its content (none: none).
+    StatusBar& setStatusBar(std::unique_ptr<StatusBar> statusBar);
+    StatusBar* statusBar() const { return statusBar_; }
 
 protected:
     void paint(PaintContext& context) override;
@@ -90,6 +94,7 @@ private:
     Widget* content_ = nullptr;
     MenuBar* menuBar_ = nullptr;
     ToolBar* toolBar_ = nullptr;
+    StatusBar* statusBar_ = nullptr;
 };
 
 } // namespace glw

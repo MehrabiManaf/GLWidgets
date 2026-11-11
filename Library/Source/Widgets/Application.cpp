@@ -863,6 +863,19 @@ ToolBar& Window::setToolBar(std::unique_ptr<ToolBar> toolBar) {
     return static_cast<ToolBar&>(box.addChild(toolBar ? std::move(toolBar) : std::make_unique<ToolBar>(), menu ? 1 : 0));
 }
 
+StatusBar& Window::setStatusBar(std::unique_ptr<StatusBar> statusBar) {
+    if (frame_)
+        return frame_->setStatusBar(std::move(statusBar));
+    Widget& box = bars();
+    for (const auto& child : box.children()) {
+        if (dynamic_cast<StatusBar*>(child.get())) {
+            box.removeChild(*child);
+            break;
+        }
+    }
+    return static_cast<StatusBar&>(box.addChild(statusBar ? std::move(statusBar) : std::make_unique<StatusBar>()));
+}
+
 Widget& Window::bars() {
     if (!bars_) {
         // the content under a column of bars

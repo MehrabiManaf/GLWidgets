@@ -17,6 +17,7 @@
 #include <GLWidgets/Platform/Platform.hpp>
 #include <GLWidgets/Rhi/Device.hpp>
 #include <GLWidgets/Widgets/MenuBar.hpp>
+#include <GLWidgets/Widgets/StatusBar.hpp>
 #include <GLWidgets/Widgets/ToolBar.hpp>
 #include <GLWidgets/Widgets/UiRoot.hpp>
 #include <GLWidgets/Widgets/Widget.hpp>
@@ -56,6 +57,8 @@ public:
     // Its menu bar: in its title bar (custom chrome) or under it; its toolbar, under them.
     MenuBar& setMenuBar(std::unique_ptr<MenuBar> menuBar, MenuBarPlacement placement = MenuBarPlacement::TitleBar);
     ToolBar& setToolBar(std::unique_ptr<ToolBar> toolBar);
+    // Its status bar, along its bottom (none: a new one).
+    StatusBar& setStatusBar(std::unique_ptr<StatusBar> statusBar = nullptr);
     void setTitle(LocalizedText title);
     // Closes it once the event being handled is done: a button may close the window it is in. Always: what the user asks
     // (its close button, the system's) goes through requestClose.

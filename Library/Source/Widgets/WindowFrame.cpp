@@ -203,7 +203,13 @@ void WindowFrame::setContent(std::unique_ptr<Widget> content) {
     if (!content)
         content = std::make_unique<Widget>();
     content->setStretch(1);     // all that the title bar leaves
-    content_ = &addChild(std::move(content));
+    // above the status bar, if there is one
+    std::size_t at = children().size();
+    for (std::size_t i = 0; i < children().size(); ++i) {
+        if (children()[i].get() == statusBar_)
+            at = i;
+    }
+    content_ = &addChild(std::move(content), at);
     onStyleChanged();
 }
 
@@ -238,6 +244,15 @@ ToolBar& WindowFrame::setToolBar(std::unique_ptr<ToolBar> toolBar) {
     const std::size_t at = menuBar_ && menuBar_->parent() == this ? 2 : 1;
     toolBar_ = &static_cast<ToolBar&>(addChild(std::move(toolBar), at));
     return *toolBar_;
+}
+
+StatusBar& WindowFrame::setStatusBar(std::unique_ptr<StatusBar> statusBar) {
+    if (statusBar_)
+        removeChild(*statusBar_);
+    if (!statusBar)
+        statusBar = std::make_unique<StatusBar>();
+    statusBar_ = &static_cast<StatusBar&>(addChild(std::move(statusBar)));      // the last: along the bottom
+    return *statusBar_;
 }
 
 void WindowFrame::onRootChanged() {

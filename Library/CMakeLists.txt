@@ -83,6 +83,7 @@ add_library(GLWidgets ${GLW_LIB_TYPE}
     Source/Widgets/SearchPopup.cpp
     Source/Widgets/SpinBox.cpp
     Source/Widgets/Splitter.cpp
+    Source/Widgets/StatusBar.cpp
     Source/Widgets/Theme.cpp
     Source/Widgets/ToolBar.cpp
     Source/Widgets/TableView.cpp

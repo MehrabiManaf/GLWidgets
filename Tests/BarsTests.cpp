@@ -9,12 +9,15 @@
 #include <GLWidgets/Core/Error.hpp>
 #include <GLWidgets/Widgets/Action.hpp>
 #include <GLWidgets/Widgets/Icon.hpp>
+#include <GLWidgets/Widgets/Label.hpp>
 #include <GLWidgets/Widgets/MenuBar.hpp>
+#include <GLWidgets/Widgets/StatusBar.hpp>
 #include <GLWidgets/Widgets/TextEdit.hpp>
 #include <GLWidgets/Widgets/ToolBar.hpp>
 #include <GLWidgets/Widgets/UiRoot.hpp>
 #include <GLWidgets/Widgets/WindowFrame.hpp>
 
+#include <chrono>
 #include <cstring>
 #include <memory>
 #include <string>
@@ -225,4 +228,41 @@ TEST(theCloseButtonAsksTheHostToClose) {
         return;
     b.click(close->mapToRoot({close->size().width / 2, close->size().height / 2}));
     CHECK(b.host.closeRequests == 1);
+}
+
+// A status bar: a message for a while, its steady text otherwise, widgets at its end; along a frame's bottom.
+TEST(aStatusBarShowsMessagesForAWhileAndKeepsItsWidgets) {
+    tests::FakeHost host;
+    UiRoot root{tests::testContext(), &host};
+    auto frame = std::make_unique<WindowFrame>(std::make_unique<Widget>());
+    WindowFrame& f = *frame;
+    root.setContent(std::move(frame));
+    StatusBar& bar = f.setStatusBar(std::make_unique<StatusBar>());
+    auto state = std::make_unique<Widget>();
+    state->setMinimumSize({60, 16});
+    Widget& running = bar.addPermanent(std::move(state));
+    root.setSize({640, 400});
+    root.layout();
+    // the last of the frame, along the bottom; the widget at its end
+    CHECK(f.children().back().get() == &bar && bar.bounds().bottom() == 400);
+    CHECK(running.bounds().right() == bar.size().width - 10);
+    // a new content goes above it
+    f.setContent(std::make_unique<Widget>());
+    CHECK(f.children().back().get() == &bar);
+    bar.setText("Ready");
+    const auto shown = [&] {
+        return tests::testContext().translator.resolve(static_cast<const Label&>(*bar.children()[0]).text());
+    };
+    CHECK(shown() == "Ready");
+    bar.showMessage("Saved", std::chrono::milliseconds(3000));
+    CHECK(shown() == "Saved" && bar.message());
+    tests::advance(std::chrono::milliseconds(2999));
+    CHECK(shown() == "Saved");
+    tests::advance(std::chrono::milliseconds(1));
+    CHECK(shown() == "Ready" && !bar.message());
+    bar.showMessage("Stays");
+    tests::advance(std::chrono::milliseconds(60000));
+    CHECK(shown() == "Stays");
+    bar.clearMessage();
+    CHECK(shown() == "Ready");
 }
