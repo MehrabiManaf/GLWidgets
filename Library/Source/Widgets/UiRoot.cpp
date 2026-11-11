@@ -38,12 +38,21 @@ UiHost::~UiHost() = default;
 
 namespace {
 
-// A tooltip's popup: its text, wrapped past the theme's width. It tells its root when it goes.
+// A tooltip's popup: its title, text and note, one under the other, wrapped past the theme's width. It tells its root
+// when it goes.
 class ToolTipView final : public Widget {
 public:
-    ToolTipView(LocalizedText text, std::function<void()> gone) : gone_(std::move(gone)) {
+    ToolTipView(ToolTip tip, std::function<void()> gone) : gone_(std::move(gone)) {
         setPadding({8, 5, 8, 6});
-        label_ = &add(std::make_unique<Label>(Label::Props{.text = std::move(text), .fontSize = 12, .wrap = true}));
+        setLayout(std::make_unique<StackLayout>(Orientation::Vertical, 4.0f));
+        const auto part = [this](LocalizedText text) -> Label* {
+            if (text.source.empty())
+                return nullptr;
+            return &add(std::make_unique<Label>(Label::Props{.text = std::move(text), .fontSize = 12, .wrap = true}));
+        };
+        title_ = part(std::move(tip.title));
+        label_ = part(std::move(tip.text));
+        note_ = part(std::move(tip.note));
     }
     void detach() { gone_ = nullptr; }
 
@@ -58,7 +67,13 @@ protected:
         const Rect all{0, 0, size().width, size().height};
         context.painter.fillRect(all, s.background);
         context.painter.strokeRoundedRect(all, root() ? root()->windowRadius() : 0.0f, 1, s.border);
-        label_->setColor(s.text);
+        // the title as the text is; the text, when it has a title, a little softer; the note muted
+        if (title_)
+            title_->setColor(s.text);
+        if (label_)
+            label_->setColor(title_ ? withAlpha(s.text, 0.82f) : s.text);
+        if (note_)
+            note_->setColor(withAlpha(s.text, 0.58f));
     }
     void onWindowClosing() override {
         if (gone_)
@@ -66,7 +81,9 @@ protected:
     }
 
 private:
+    Label* title_ = nullptr;
     Label* label_ = nullptr;
+    Label* note_ = nullptr;
     std::function<void()> gone_;
 };
 
@@ -113,12 +130,18 @@ void UiRoot::removeShortcuts(const void* owner) {
 void UiRoot::updateToolTip() {
     // the deepest widget under the mouse with one there
     Widget* with = nullptr;
-    std::optional<LocalizedText> text;
+    std::optional<ToolTip> text;
     for (auto it = hovered_.rbegin(); it != hovered_.rend() && !with; ++it) {
-        if ((text = (*it)->toolTipAt((*it)->mapFromRoot(mouse_))))
+        if ((text = (*it)->toolTipAt((*it)->mapFromRoot(mouse_))) && !text->empty())
             with = *it;
+        else
+            text.reset();
     }
-    std::string resolved = text ? context_.translator.resolve(*text) : std::string();
+    std::string resolved;
+    if (text) {
+        const Translator& t = context_.translator;
+        resolved = t.resolve(text->title) + '\n' + t.resolve(text->text) + '\n' + t.resolve(text->note);
+    }
     if (with == tipFor_ && resolved == tipShown_)
         return;
     hideToolTip(false);

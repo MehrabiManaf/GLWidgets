@@ -66,6 +66,7 @@ public:
 
     Element stretch(float stretch) && { return apply([&](W& w) { w.setStretch(stretch); }); }
     Element toolTip(LocalizedText text) && { return apply([&](W& w) { w.setToolTip(std::move(text)); }); }
+    Element toolTip(ToolTip tip) && { return apply([&](W& w) { w.setToolTip(std::move(tip)); }); }
     Element margin(Insets margin) && { return apply([&](W& w) { w.setMargin(margin); }); }
     Element padding(Insets padding) && { return apply([&](W& w) { w.setPadding(padding); }); }
     Element alignment(Alignment horizontal, Alignment vertical) && {

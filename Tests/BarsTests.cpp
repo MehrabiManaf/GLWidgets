@@ -162,7 +162,7 @@ TEST(aToolBarsButtonsFollowTheirActionsAndWhatDoesNotFitIsInItsMenu) {
     CHECK(tools.overflow().empty());
     // a click: triggered; its tooltip, its text and shortcut
     ToolButton& first = static_cast<ToolButton&>(*tools.children()[0]);
-    CHECK(first.toolTip() && first.toolTip()->source == "Tool 0 (" + actions[0]->shortcut().text() + ")");
+    CHECK(first.toolTip() && first.toolTip()->text.source == "Tool 0 (" + actions[0]->shortcut().text() + ")");
     const Point at = first.mapToRoot({first.size().width / 2, first.size().height / 2});
     b.click(at);
     CHECK(b.log == 1);

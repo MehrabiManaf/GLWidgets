@@ -51,7 +51,7 @@ public:
     const LocalizedText& title(std::size_t index) const { return tabs_[index].title; }
     void setTitle(std::size_t index, LocalizedText title);
     // What shows by the mouse over the tab (its title when none, if it is cut).
-    void setTabToolTip(std::size_t index, LocalizedText text);
+    void setTabToolTip(std::size_t index, ToolTip tip);
     Widget* content(std::size_t index) const { return tabs_[index].content; }
     std::optional<std::size_t> indexOf(const Widget& content) const;
 
@@ -77,7 +77,7 @@ private:
     struct Tab {
         LocalizedText title;
         Widget* content = nullptr;
-        std::optional<LocalizedText> toolTip;
+        std::optional<ToolTip> toolTip;
     };
     // The bar's tabs made again: their titles, which is shown.
     void rebuild();

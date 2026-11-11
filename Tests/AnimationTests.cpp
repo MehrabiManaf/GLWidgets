@@ -263,10 +263,10 @@ namespace {
 // Its left half says "Left", its right half "Right"; below 30, nothing (its parent's: none).
 class Halves final : public Widget {
 protected:
-    std::optional<LocalizedText> toolTipAt(Point p) const override {
+    std::optional<ToolTip> toolTipAt(Point p) const override {
         if (p.y >= 30)
             return std::nullopt;
-        return LocalizedText(p.x < size().width / 2 ? "Left" : "Right");
+        return ToolTip{.text = LocalizedText(p.x < size().width / 2 ? "Left" : "Right")};
     }
 };
 } // namespace
@@ -301,4 +301,37 @@ TEST(aWidgetsPartsShowTheirOwnTooltips) {
     tests::advance(1000ms);
     CHECK(host.open().empty());
     root.dispatch(platform::MouseMoved{1, {200, 150}});
+}
+
+TEST(aTooltipHasATitleATextAndANote) {
+    tests::FakeHost host;
+    UiRoot root(tests::testContext(), &host);
+    auto content = std::make_unique<Widget>();
+    auto& a = content->add(std::make_unique<Widget>());
+    a.setMinimumSize({100, 40});
+    a.setAlignment(Alignment::Start, Alignment::Start);
+    a.setToolTip(ToolTip{.title = "Type: int", .text = "A whole number.", .note = "Click to change it."});
+    auto& b = content->add(std::make_unique<Widget>());
+    b.setMinimumSize({100, 40});
+    b.setAlignment(Alignment::End, Alignment::End);
+    b.setToolTip(ToolTip{.text = "Only a text"});
+    root.setContent(std::move(content));
+    root.setSize({300, 200});
+    root.layout();
+    const auto parts = [&] {
+        std::vector<std::string> texts;
+        for (const auto& child : host.open().at(0)->root.content()->children())
+            texts.push_back(tests::testContext().translator.resolve(static_cast<const Label&>(*child).text()));
+        return texts;
+    };
+    root.dispatch(platform::MouseMoved{1, {20, 10}});
+    tests::advance(500ms);
+    CHECK((parts() == std::vector<std::string>{"Type: int", "A whole number.", "Click to change it."}));
+    root.dispatch(platform::MouseMoved{1, {250, 180}});
+    tests::advance(500ms);
+    CHECK((parts() == std::vector<std::string>{"Only a text"}));
+    root.dispatch(platform::MouseMoved{1, {150, 100}});
+    CHECK(host.open().empty());
+    a.setToolTip(ToolTip{});                    // empty: none
+    CHECK(!a.toolTip());
 }

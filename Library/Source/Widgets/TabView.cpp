@@ -128,13 +128,13 @@ protected:
         }
     }
 
-    std::optional<LocalizedText> toolTipAt(Point point) const override {
+    std::optional<ToolTip> toolTipAt(Point point) const override {
         const auto i = tabAt(point);
         if (!i)
             return std::nullopt;
         if (const auto& tip = view_.tabs_[*i].toolTip)
             return tip;
-        return face(*i).cut() ? std::optional<LocalizedText>(view_.tabs_[*i].title) : std::nullopt;
+        return face(*i).cut() ? std::optional<ToolTip>(ToolTip{.text = view_.tabs_[*i].title}) : std::nullopt;
     }
 
     void onMouse(MouseEvent& event) override {
@@ -350,9 +350,9 @@ void TabView::setTitle(std::size_t index, LocalizedText title) {
     rebuild();
 }
 
-void TabView::setTabToolTip(std::size_t index, LocalizedText text) {
+void TabView::setTabToolTip(std::size_t index, ToolTip tip) {
     if (index < tabs_.size())
-        tabs_[index].toolTip = std::move(text);
+        tabs_[index].toolTip = tip.empty() ? std::nullopt : std::optional<ToolTip>(std::move(tip));
 }
 
 std::optional<std::size_t> TabView::indexOf(const Widget& content) const {
