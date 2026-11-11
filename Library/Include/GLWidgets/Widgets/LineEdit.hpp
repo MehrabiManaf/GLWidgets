@@ -9,7 +9,8 @@
 // word). Control (Command on macOS) with A, C, X, V selects all, copies, cuts and pastes. An input method's composition
 // shows at the caret until it is typed. A text longer than the field scrolls to keep the caret in view.
 //
-// onChanged is called when the user changes the text (not by setText); onSubmit when they press Enter.
+// onChanged is called when the user changes the text (not by setText); onSubmit when they press Enter. A field may take
+// only some texts (accepts): what the user types or pastes that would make another is refused (setText is not checked).
 #include <GLWidgets/Export.hpp>
 #include <GLWidgets/Widgets/Animation.hpp>
 #include <GLWidgets/Text/TextLayout.hpp>
@@ -21,6 +22,7 @@
 #include <functional>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <utility>
 
 namespace glw {
@@ -34,6 +36,9 @@ public:
         std::function<void(const std::string&)> onChanged;
         std::function<void(const std::string&)> onSubmit;
         std::optional<LineEditStyle> style;             // none: the theme's
+        // Whether the text an edit would make is taken: a number's digits, a name's letters, a length at most. Texts on the
+        // way to one must be taken too (an empty one, "-" before a number's digits). None: any text.
+        std::function<bool(std::string_view)> accepts;
     };
 
     LineEdit();
@@ -46,6 +51,9 @@ public:
     void setOnSubmit(std::function<void(const std::string&)> onSubmit) { onSubmit_ = std::move(onSubmit); }
     void setStyle(std::optional<LineEditStyle> style);
     const LineEditStyle& style() const;
+    void setAccepts(std::function<bool(std::string_view)> accepts) { accepts_ = std::move(accepts); }
+    // Room at its end side, past the text, for what a widget around it draws there (a spin box's arrows), in dips.
+    void setEndRoom(float room);
 
     // UTF-8 offsets: where the caret is, and where the selection started (the same when nothing is selected).
     std::size_t caret() const { return caret_; }
@@ -90,6 +98,8 @@ private:
     std::function<void(const std::string&)> onChanged_;
     std::function<void(const std::string&)> onSubmit_;
     std::optional<LineEditStyle> style_;
+    std::function<bool(std::string_view)> accepts_;
+    float endRoom_ = 0;
 
     std::size_t anchor_ = 0;
     std::size_t caret_ = 0;

@@ -151,3 +151,22 @@ TEST(clickPutsTheCaret) {
     f.root.dispatch(platform::MouseButtonChanged{1, platform::MouseButton::Left, false, 2, inHello});
     CHECK(f.edit->selection() == std::pair<std::size_t, std::size_t>{0, 5});
 }
+
+TEST(aFieldTakesOnlyWhatItAccepts) {
+    Field f;
+    f.edit->setAccepts([](std::string_view t) { return t.size() <= 4 && t.find(' ') == std::string_view::npos; });
+    f.type("ab");
+    f.type(" ");                        // refused: as it was
+    CHECK(f.edit->text() == "ab" && f.changes == 1);
+    f.type("cd");
+    f.type("e");                        // too long
+    CHECK(f.edit->text() == "abcd" && f.changes == 2);
+    f.host.clipboard = "x y";
+    f.edit->select(0, 2);
+    f.key(Key::V, KeyModifiers::Control);   // a paste is checked too
+    CHECK(f.edit->text() == "abcd");
+    f.key(Key::Backspace);              // deleting the selection: taken
+    CHECK(f.edit->text() == "cd");
+    f.edit->setText("not checked");     // by the program: not checked
+    CHECK(f.edit->text() == "not checked");
+}

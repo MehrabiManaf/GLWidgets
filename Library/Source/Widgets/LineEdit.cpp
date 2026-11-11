@@ -51,7 +51,8 @@ LineEdit::LineEdit(Props props)
       placeholder_(std::move(props.placeholder)),
       onChanged_(std::move(props.onChanged)),
       onSubmit_(std::move(props.onSubmit)),
-      style_(std::move(props.style)) {
+      style_(std::move(props.style)),
+      accepts_(std::move(props.accepts)) {
     setFocusable(true);
     setCursor(platform::Cursor::Text);
     setAlignment(Alignment::Stretch, Alignment::Center);
@@ -104,8 +105,17 @@ void LineEdit::onRootChanged() {
     onStyleChanged();
 }
 
+void LineEdit::setEndRoom(float room) {
+    if (room == endRoom_)
+        return;
+    endRoom_ = room;
+    onStyleChanged();
+}
+
 void LineEdit::onStyleChanged() {
-    setPadding(style().padding);
+    Insets padding = style().padding;
+    padding.end += endRoom_;
+    setPadding(padding);
     layout_.reset();
     placeholderLayout_.reset();
     invalidateLayout();
@@ -237,6 +247,12 @@ void LineEdit::edited() {
 
 void LineEdit::replaceSelection(std::string_view with) {
     const auto [from, to] = selection();
+    if (accepts_) {
+        std::string made = text_;
+        made.replace(from, to - from, with);
+        if (!accepts_(made))
+            return;         // refused: as it was
+    }
     text_.replace(from, to - from, with);
     caret_ = anchor_ = from + with.size();
     edited();
