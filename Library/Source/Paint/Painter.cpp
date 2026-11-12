@@ -230,7 +230,18 @@ void Painter::drawLine(Point a, Point b, float width, Color color) {
 }
 
 void Painter::drawPolyline(std::span<const Point> points, float width, Color color) {
-    if (points.size() < 2 || color.a <= 0 || width <= 0)
+    stroke(points, width, color, false);
+}
+
+void Painter::drawPolygon(std::span<const Point> points, float width, Color color) {
+    // (its first point given again at its end: once)
+    if (points.size() > 3 && points.front().x == points.back().x && points.front().y == points.back().y)
+        points = points.first(points.size() - 1);
+    stroke(points, width, color, true);
+}
+
+void Painter::stroke(std::span<const Point> points, float width, Color color, bool closed) {
+    if (points.size() < (closed ? 3u : 2u) || color.a <= 0 || width <= 0)
         return;
     transformed(points);
     const std::size_t n = points_.size();
@@ -246,9 +257,10 @@ void Painter::drawPolyline(std::span<const Point> points, float width, Color col
     const std::uint32_t solid = packColor(color);
     const std::uint32_t clear = packColor({color.r, color.g, color.b, 0});
 
-    normals_.resize(n - 1);
-    for (std::size_t i = 0; i + 1 < n; ++i) {
-        const Point d = normalized(points_[i + 1] - points_[i]);
+    const std::size_t edges = closed ? n : n - 1;
+    normals_.resize(edges);
+    for (std::size_t i = 0; i < edges; ++i) {
+        const Point d = normalized(points_[(i + 1) % n] - points_[i]);
         normals_[i] = Point{-d.y, d.x};
     }
     // a segment of no length (a point twice) goes the way of the one before it (after it, at the start)
@@ -278,6 +290,32 @@ void Painter::drawPolyline(std::span<const Point> points, float width, Color col
             list_.indices.insert(list_.indices.end(), {a + k, a + k + 1, b + k + 1, a + k, b + k + 1, b + k});
         count += 18;
     };
+    // the join at a turn from the edge of normal `a` to that of `b`: where the one ends and the other starts (the same
+    // vertices when mitered)
+    const auto join = [&](Point p, Point a, Point b) -> std::pair<std::uint32_t, std::uint32_t> {
+        const Point mean = (a + b) * 0.5f;
+        const float d2 = mean.x * mean.x + mean.y * mean.y;
+        if (d2 >= 0.25f) {
+            const std::uint32_t at = across(p, mean * (1.0f / d2));
+            return {at, at};
+        }
+        const std::uint32_t end = across(p, a), start = across(p, b);
+        between(end, start);
+        return {end, start};
+    };
+    if (closed) {
+        // every corner joined, the last edge back to the first corner
+        const auto [firstEnd, firstStart] = join(points_[0], normals_[n - 1], normals_[0]);
+        std::uint32_t previous = firstStart;
+        for (std::size_t i = 1; i < n; ++i) {
+            const auto [end, start] = join(points_[i], normals_[i - 1], normals_[i]);
+            between(previous, end);
+            previous = start;
+        }
+        between(previous, firstEnd);
+        cmd.indexCount += count;
+        return;
+    }
     std::uint32_t previous = across(points_[0], normals_[0]);
     for (std::size_t i = 1; i < n; ++i) {
         const Point p = points_[i];

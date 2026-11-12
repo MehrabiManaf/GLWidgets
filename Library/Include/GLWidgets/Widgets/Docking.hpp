@@ -214,6 +214,10 @@ public:
     // floated, docked into it and out of it - that stays when its last panel goes, its room kept, empty. Panels docked
     // around it go beside it; addPanel(panel, center, DockSide::Center) puts one in it. Saved layouts keep what it has.
     DockTabs& setCenterStack();
+    // Its center stack's documents kept in it (an editor's, whose documents are not tools): their tabs only move along its
+    // bar - not floated, not docked elsewhere - and the other panels do not go into it, only beside it. Off by default.
+    void setCenterFixed(bool fixed);
+    bool centerFixed() const { return centerFixed_; }
     // Its center, when it is a stack (setCenterStack).
     DockTabs* centerStack() const;
     // An area of the same group around `center`, for another window: panels move between them as between an area and its
@@ -353,6 +357,9 @@ private:
     std::shared_ptr<DockGroup> group_;
     DockScope scope_;
     Widget* center_ = nullptr;
+    bool centerFixed_ = false;
+    // A stack whose panels stay in it: a center stack that is fixed (setCenterFixed).
+    bool fixedStack(const DockTabs* tabs) const;
     bool floating_ = false;
     std::optional<Drag> drag_;
     std::optional<Point> titlePress_;       // the root's: a title pressed, not dragged yet

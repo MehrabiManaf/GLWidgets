@@ -58,6 +58,9 @@ public:
     void drawLine(Point a, Point b, float width, Color color);
     // Segments through `points` joined with miters (limited to twice the width at sharp turns), ends cut square.
     void drawPolyline(std::span<const Point> points, float width, Color color);
+    // The outline of a closed polygon (its last point back to its first: not repeated), joined at every corner as a
+    // polyline's turns are - its first corner too, which a polyline back to its start leaves open.
+    void drawPolygon(std::span<const Point> points, float width, Color color);
     // A cubic Bezier curve (flattenBezier), its segments within a quarter of a pixel of it at the scale it is drawn.
     void drawBezier(Point from, Point c1, Point c2, Point to, float width, Color color);
     // A convex polygon, its points in order (either direction).
@@ -212,6 +215,7 @@ private:
     std::vector<Transform> transforms_;
     std::vector<Point> points_;         // scratch, so that a polyline does not allocate each time
     std::vector<Point> normals_;
+    void stroke(std::span<const Point> points, float width, Color color, bool closed);
     std::vector<Point> curve_;
     Camera camera_;
     std::optional<ReliefBricks> reliefBricks_;

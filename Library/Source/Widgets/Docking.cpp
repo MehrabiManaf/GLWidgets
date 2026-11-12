@@ -102,7 +102,8 @@ protected:
         const std::string id = owner_.panelId(index_);
         std::vector<MenuItem> items;
         const UiContext* ui = context();
-        if (ui && ui->docking)
+        const bool fixed = area->centerFixed() && area->centerStack() == &owner_;
+        if (ui && ui->docking && !fixed)
             items.push_back({.text = area->floating() ? tr("Dock") : tr("Float"), .onTriggered = [area, id] { area->toggleFloating(id); }});
         items.push_back({.text = tr("Hide the tab bar"),
                          .onTriggered = [owner] { owner->setTabBarHidden(true); },
@@ -801,9 +802,11 @@ void DockTabs::rebuildTools() {
         return;
     for (const DockButton& button : entries_[active_].buttons)
         tools_->add(std::make_unique<DockToolButton>(button.icon, button.onClick));
-    // the float button, where there are windows to float in
+    // the float button, where there are windows to float in (not on a stack whose documents stay in it)
     const UiContext* ui = context();
     if (!ui || !ui->docking)
+        return;
+    if (const DockArea* a = area(); a && a->centerFixed() && a->centerStack() == this)
         return;
     auto icon = [this](PaintContext& context, const Rect& r, Color color) {
         const DockArea* a = area();
@@ -1068,6 +1071,18 @@ DockTabs& DockArea::setCenterStack() {
     return *centerStack();
 }
 
+void DockArea::setCenterFixed(bool fixed) {
+    if (fixed == centerFixed_)
+        return;
+    centerFixed_ = fixed;
+    if (DockTabs* documents = centerStack())
+        documents->rebuildTools();          // its float button: there or not
+}
+
+bool DockArea::fixedStack(const DockTabs* tabs) const {
+    return centerFixed_ && tabs && tabs == centerStack();
+}
+
 DockTabs* DockArea::centerStack() const {
     return dynamic_cast<DockTabs*>(center_);
 }
@@ -1313,6 +1328,8 @@ DockArea* DockArea::floatPanels(const std::vector<std::string>& ids, const std::
 }
 
 void DockArea::toggleFloating(std::string_view id) {
+    if (fixedStack(tabsOf(id)))
+        return;             // a document of a fixed center: it stays
     auto apply = [this, id = std::string(id)] {
         DockTabs* tabs = tabsOf(id);
         DockingHost* h = group_->host;
@@ -1443,6 +1460,9 @@ bool DockArea::reorderTo(Point point) {
     const std::optional<std::size_t> from = source.indexOf(drag_->ids.front());
     if (!from || source.count() < 2)
         return true;
+    // where they are now: a move just made rebuilt its tabs, not laid out yet (the mouse let go before a frame)
+    if (UiRoot* r = source.root())
+        r->layout();
     const bool rtl = source.rightToLeft();
     std::size_t to = 0;
     const auto& tabs = source.bar_->children();
@@ -1807,6 +1827,13 @@ void DockArea::dragTo(Point point) {
     UiRoot* r = root();
     if (!r)
         return;
+    if (fixedStack(drag_->source)) {
+        // a document of a fixed center: put among the others where it is along the bar, nowhere else
+        reorderTo(point);
+        if (shown)
+            shown->clearDrop();
+        return;
+    }
     // the window and the point the mouse is over
     DockingHost* h = host();
     const UiRoot* over = r;
@@ -1899,13 +1926,14 @@ void DockArea::showDrop(const UiRoot* over, Point at, DockArea* shown) {
     std::optional<DockSide> side;
     if (tabs && local.y >= 0 && local.y < bar && local.x >= 0 && local.x < tabs->size().width)
         side = DockSide::Center;
-    const bool middle = tabs && !own;       // a center takes a tab on its sides only
+    // a center takes a tab on its sides only; a fixed center's stack takes none in it
+    const bool middle = tabs && !own && !area->fixedStack(tabs);
     for (DockSide s : {DockSide::Center, DockSide::Start, DockSide::End, DockSide::Top, DockSide::Bottom}) {
         if ((s != DockSide::Center || middle) && guideOf(*node, s).contains(local))
             side = s;
     }
     if (side == DockSide::Center && !middle)
-        side.reset();       // where it is already
+        side.reset();       // where it is already (or a fixed center: beside it only)
     // made in place, member by member (a copy of the optional side: GCC sees it as maybe uninitialized)
     area->guides_.emplace();
     area->guides_->node = node;

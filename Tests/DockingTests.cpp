@@ -450,6 +450,51 @@ TEST(aTabBarSlidesAwayAndBack) {
 
 // A center that is a stack of documents: its tabs as any stack's, panels beside it by default, kept when its last tab goes,
 // what it has kept in a saved layout, the stack shown told.
+// A fixed center: its documents move along its bar only (not floated, not docked with the tools), and a tool dragged onto it
+// does not go in among them.
+TEST(aFixedCenterKeepsItsDocumentsAndTakesNoTools) {
+    tests::FakeHost host;
+    UiRoot root(tests::testContext(), &host);
+    root.setSize({800, 600});
+    auto made = std::make_unique<DockArea>();
+    DockArea& area = *made;
+    DockTabs& documents = area.setCenterStack();
+    area.setCenterFixed(true);
+    CHECK(area.centerFixed());
+    area.addPanel(panel("EventGraph"), &documents, DockSide::Center);
+    area.addPanel(panel("Jump"), &documents, DockSide::Center);
+    DockTabs& tools = area.addPanel(panel("details"), &documents, DockSide::End, 0.3f);
+    root.setContent(std::move(made));
+    root.layout();
+    const auto tabOf = [](DockTabs& tabs, std::size_t i) {
+        const Widget& t = *tabs.children()[0]->children()[i];
+        return t.mapToRoot({t.size().width / 2, t.size().height / 2});
+    };
+    const auto middleOf = [](const Widget& w) { return w.mapToRoot({w.size().width / 2, w.size().height / 2 + 30}); };
+    const auto drag = [&](Point from, Point to) {
+        root.dispatch(platform::MouseMoved{1, from});
+        root.dispatch(platform::MouseButtonChanged{1, platform::MouseButton::Left, true, 1, from});
+        root.dispatch(platform::MouseMoved{1, {from.x + 10, from.y}});
+        root.dispatch(platform::MouseMoved{1, to});
+        root.dispatch(platform::MouseButtonChanged{1, platform::MouseButton::Left, false, 1, to});
+        root.layout();
+    };
+    // a document dragged onto the tools: still a document
+    drag(tabOf(documents, 1), middleOf(tools));
+    CHECK(area.tabsOf("Jump") == &documents && documents.count() == 2 && tools.count() == 1);
+    // along its bar: put where it is let go
+    const Point first = tabOf(documents, 0);
+    drag(tabOf(documents, 1), {first.x - 20, first.y});
+    CHECK(documents.panelId(0) == "Jump");
+    // a tool dragged onto the documents' middle: not among them
+    drag(tabOf(tools, 0), middleOf(documents));
+    CHECK(area.tabsOf("details") != &documents && documents.count() == 2);
+    // not floated
+    area.toggleFloating("Jump");
+    root.layout();
+    CHECK(area.tabsOf("Jump") == &documents);
+}
+
 TEST(aCenterStackHoldsDocumentsAndStaysEmpty) {
     tests::FakeHost host;
     UiRoot root(tests::testContext(), &host);

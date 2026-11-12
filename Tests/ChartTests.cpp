@@ -680,6 +680,31 @@ TEST(aJaggedLineIsAsWideAtItsSharpTurns) {
     CHECK(gentle.vertices.size() == 12);
 }
 
+// A closed outline: joined at every corner, its first too (a polyline back to its start is cut square there: a notch).
+TEST(aPolygonsOutlineIsJoinedAtEveryCorner) {
+    paint::DrawList list;
+    {
+        paint::Painter p(list, {0, 0, 100, 100}, 1);
+        const Point square[] = {{10, 10}, {50, 10}, {50, 50}, {10, 50}};
+        p.drawPolygon(square, 3, {1, 1, 1, 1});
+    }
+    // four mitered corners, four edges between them
+    CHECK(list.vertices.size() == 16 && list.indices.size() == 72);
+    // the first corner's outside: covered (a solid vertex out at its miter)
+    bool cornered = false;
+    for (const paint::Vertex& v : list.vertices)
+        cornered = cornered || ((v.color >> 24) == 255 && v.position.x < 10 && v.position.y < 10);
+    CHECK(cornered);
+    // its first point given again at its end: the same
+    paint::DrawList again;
+    {
+        paint::Painter p(again, {0, 0, 100, 100}, 1);
+        const Point square[] = {{10, 10}, {50, 10}, {50, 50}, {10, 50}, {10, 10}};
+        p.drawPolygon(square, 3, {1, 1, 1, 1});
+    }
+    CHECK(again.vertices.size() == 16 && again.indices.size() == 72);
+}
+
 TEST(aSliceOfAPieIsARingRelief) {
     paint::DrawList list;
     {
