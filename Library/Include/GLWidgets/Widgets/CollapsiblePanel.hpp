@@ -57,6 +57,7 @@ public:
     const CollapsiblePanelStyle& style() const;
 
 protected:
+    std::optional<Rect> childClip(const Widget& child) const override;
     Size measureContent(Size available) override;
     void arrangeContent(const Rect& content) override;
     void paint(PaintContext& context) override;
@@ -76,6 +77,10 @@ private:
 
     Label* title_ = nullptr;
     Widget* actions_ = nullptr;             // at the header's end
+    class Content;
+    friend class Content;
+    // How its content's `child` is moved as it opens or closes (the style's cascade); none where it is.
+    std::optional<paint::Lifted> rowLifted(const Widget& child) const;
     Widget* content_ = nullptr;
     bool expanded_ = false;
     bool headerHovered_ = false;

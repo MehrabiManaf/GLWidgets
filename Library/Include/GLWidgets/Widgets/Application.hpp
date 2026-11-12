@@ -125,6 +125,7 @@ private:
     std::optional<float> popupRadius_;
     Animation entrance_{[this] { entering(); }};
     Point slide_;
+    PopupEntrance entranceKind_ = PopupEntrance::Slide;
 };
 
 class GLW_EXPORT Application {

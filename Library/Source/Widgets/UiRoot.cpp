@@ -5,6 +5,7 @@
 #include <GLWidgets/Core/Assert.hpp>
 #include <GLWidgets/Paint/Painter.hpp>
 #include <GLWidgets/Widgets/Action.hpp>
+#include <GLWidgets/Widgets/Bevel.hpp>
 #include <GLWidgets/Widgets/DockingHost.hpp>
 #include <GLWidgets/Widgets/Label.hpp>
 #include <GLWidgets/Widgets/Layout.hpp>
@@ -65,8 +66,7 @@ protected:
     void paint(PaintContext& context) override {
         const ToolTipStyle& s = context.ui.theme.toolTip;
         const Rect all{0, 0, size().width, size().height};
-        context.painter.fillRect(all, s.background);
-        context.painter.strokeRoundedRect(all, root() ? root()->windowRadius() : 0.0f, 1, s.border);
+        paintPopupBackground(context.painter, all, root() ? root()->windowRadius() : 0.0f, s.background, s.border, s.bevel);
         // the title as the text is; the text, when it has a title, a little softer; the note muted
         if (title_)
             title_->setColor(s.text);
@@ -271,6 +271,30 @@ void UiRoot::layout() {
     needsPaint_ = true;
 }
 
+void UiRoot::setContentArrival(std::optional<Arrival> arrival) {
+    const bool same = arrival.has_value() == contentArrival_.has_value() &&
+                      (!arrival || (arrival->progress == contentArrival_->progress && arrival->fromBehind == contentArrival_->fromBehind));
+    if (same)
+        return;
+    contentArrival_ = arrival;
+    invalidatePaint();
+}
+
+namespace {
+
+// What was drawn since `mark` arriving as `arrival` says, in `area` (the target's dips).
+void paintArriving(paint::Painter& painter, const paint::Painter::Mark& mark, const Arrival& arrival, const Rect& area) {
+    if (arrival.fromBehind) {
+        painter.riseIn(mark, arrival.progress, area);
+    } else {
+        // (from somewhere: moving together, drawn in their order; from nowhere: falling through one another)
+        painter.setDepthTest(!arrival.from);
+        painter.fallIn(mark, arrival.progress, area, arrival.from);
+    }
+}
+
+} // namespace
+
 void UiRoot::setContentShift(Point shift) {
     if (shift == contentShift_)
         return;
@@ -294,7 +318,10 @@ void UiRoot::paint(paint::DrawList& list) {
     if (content_) {
         // what arrives, after the rest: over it, as it comes (from wherever it comes, nothing cut)
         std::vector<Later> later;
+        const paint::Painter::Mark arriving = contentArrival_ ? painter.mark() : paint::Painter::Mark{};
         paintTree(*content_, context, {0, 0, size_.width, size_.height}, &later);
+        if (contentArrival_)
+            paintArriving(painter, arriving, *contentArrival_, {0, 0, size_.width, size_.height});
         for (const Later& l : later) {
             painter.pushTransform(l.transform);
             paintTree(*l.widget, context, {-1e6f, -1e6f, 2e6f, 2e6f});
@@ -344,6 +371,9 @@ void UiRoot::paintTree(Widget& widget, PaintContext& context, const Rect& visibl
         inside = transform.unmap(inside);
     }
     for (const auto& child : widget.children_) {
+        // moved in space (a style's motion): what it paints, placed
+        const std::optional<paint::Lifted> lifted = child->visible_ ? widget.childLifted(*child) : std::nullopt;
+        const paint::Painter::Mark childMark = lifted ? painter.mark() : paint::Painter::Mark{};
         if (const std::optional<Rect> cut = widget.childClip(*child)) {
             painter.pushClip(*cut);
             paintTree(*child, context, inside.intersected(*cut), later);
@@ -351,6 +381,8 @@ void UiRoot::paintTree(Widget& widget, PaintContext& context, const Rect& visibl
         } else {
             paintTree(*child, context, inside, later);
         }
+        if (lifted)
+            painter.place(childMark, painter.transform().map(child->bounds_.center()), *lifted);
     }
     if (transformed)
         painter.popTransform();
@@ -359,14 +391,7 @@ void UiRoot::paintTree(Widget& widget, PaintContext& context, const Rect& visibl
     widget.paintOver(context);
     painter.popTransform();
     if (arrival) {
-        const Rect area{corner.x, corner.y, widget.bounds_.width, widget.bounds_.height};
-        if (arrival->fromBehind) {
-            painter.riseIn(mark, arrival->progress, area);
-        } else {
-            // (from somewhere: moving together, drawn in their order; from nowhere: falling through one another)
-            painter.setDepthTest(!arrival->from);
-            painter.fallIn(mark, arrival->progress, area, arrival->from);
-        }
+        paintArriving(painter, mark, *arrival, {corner.x, corner.y, widget.bounds_.width, widget.bounds_.height});
     }
 }
 

@@ -14,6 +14,7 @@
 #include <GLWidgets/Text/GlyphAtlas.hpp>
 #include <GLWidgets/Text/TextLayout.hpp>
 #include <GLWidgets/Widgets/Bevel.hpp>
+#include <GLWidgets/Widgets/CollapsiblePanel.hpp>
 #include <GLWidgets/Widgets/Layout.hpp>
 #include <GLWidgets/Widgets/Theme.hpp>
 #include <GLWidgets/Widgets/UiRoot.hpp>
@@ -497,4 +498,79 @@ TEST(theSolidStylesControlsAreBricksOfTheirOwn) {
         paintScrollThumb(p, {380, 20, 12, 80}, true, true, 1, {0.5f, 0.5f, 0.5f, 1}, 4, solid.scrollBar.thumbBevel);
     }
     CHECK(list.sceneVertices.size() == 4);
+}
+
+TEST(theSolidStylesPopupsAreSlabsThatComeInAndItsPanelsCascade) {
+    const Theme solid = Theme::dark(ThemeStyle::Solid), plastic = Theme::dark(ThemeStyle::Plastic);
+    CHECK(solid.menu.bevel.relief > 0 && solid.dialog.bevel.relief > 0 && solid.toolTip.bevel.relief > 0);
+    CHECK(solid.motion.popupEntrance == PopupEntrance::Rise && solid.motion.dialogEntrance == PopupEntrance::Land);
+    CHECK(solid.collapsiblePanel.cascade && !plastic.collapsiblePanel.cascade && plastic.motion.popupEntrance == PopupEntrance::Slide);
+    // a popup's background: a slab (a brick, with the painter's bricks) where the bevel raises it; flat otherwise
+    DrawList slab, flat;
+    {
+        Painter p(slab, {0, 0, 200, 300}, 1);
+        p.setReliefBricks(solid.reliefBricks);
+        paintPopupBackground(p, {0, 0, 200, 300}, 4, {0.2f, 0.2f, 0.2f, 1}, {0, 0, 0, 0}, solid.menu.bevel);
+        Painter q(flat, {0, 0, 200, 300}, 1);
+        paintPopupBackground(q, {0, 0, 200, 300}, 4, {0.2f, 0.2f, 0.2f, 1}, {0, 0, 0, 0}, plastic.menu.bevel);
+    }
+    CHECK(slab.sceneVertices.size() == 4 && flat.sceneVertices.empty() && flat.vertices.size() == 4);
+}
+
+TEST(aRootsContentArrivesAsAPopupComesIn) {
+    tests::FakeHost host;
+    UiContext context = tests::testContext();
+    context.theme = Theme::dark(ThemeStyle::Solid);
+    UiRoot root(context, &host);
+    auto made = std::make_unique<Filled>(Color{0, 0, 1, 1});
+    root.setContent(std::move(made));
+    root.setSize({200, 100});
+    root.layout();
+    DrawList list;
+    // rising from behind: its 2D not shown yet
+    root.setContentArrival(Arrival{0.1f, true});
+    root.paint(list);
+    CHECK(!list.vertices.empty() && (list.vertices.front().color >> 24) == 0);
+    // there: as it is
+    root.setContentArrival(std::nullopt);
+    root.paint(list);
+    CHECK((list.vertices.front().color >> 24) == 255);
+}
+
+TEST(aCascadingPanelsWidgetsComeOutFromUnderItsHeaderInOrder) {
+    tests::testScheduler().setAnimationsEnabled(true);
+    tests::FakeHost host;
+    UiContext context = tests::testContext();
+    context.theme = Theme::dark(ThemeStyle::Solid);
+    UiRoot root(context, &host);
+    auto made = std::make_unique<CollapsiblePanel>(CollapsiblePanel::Props{.title = "Panel", .expanded = true});
+    CollapsiblePanel& panel = *made;
+    for (const Color color : {Color{1, 0, 0, 1}, Color{0, 1, 0, 1}, Color{0, 0, 1, 1}}) {
+        auto row = std::make_unique<Filled>(color);
+        row->setMinimumSize({100, 30});
+        panel.addContent(std::move(row));
+    }
+    root.setContent(std::move(made));
+    root.setSize({300, 400});
+    root.layout();
+    DrawList list;
+    const auto topOf = [&](Color color) {
+        for (const Vertex& v : list.vertices) {
+            if (v.color == packColor(color))
+                return v.position.y;
+        }
+        return -1e9f;
+    };
+    root.paint(list);
+    const float redAt = topOf({1, 0, 0, 1}), blueAt = topOf({0, 0, 1, 1});
+    // closed, then opening: part of the way, the first nearer its place than the last (still under the header)
+    panel.setExpanded(false, false);
+    root.layout();
+    panel.setExpanded(true);
+    tests::advance(context.theme.motion.slow / 3);
+    root.layout();
+    root.paint(list);
+    CHECK(redAt - topOf({1, 0, 0, 1}) < blueAt - topOf({0, 0, 1, 1}));
+    tests::advance(context.theme.motion.slow);
+    tests::testScheduler().setAnimationsEnabled(false);
 }

@@ -60,6 +60,11 @@ private:
     bool down_ = false;
 };
 
+// The background of a popup (a menu, a dialog, a tooltip) filling `rect`, `outline` around it: raised as a slab when
+// `bevel` says so (its relief above 0), flat otherwise.
+GLW_EXPORT void paintPopupBackground(paint::Painter& painter, const Rect& rect, float radius, Color background, Color outline,
+                                     const Bevel& bevel);
+
 // A press's ripple (a style's that has one: ButtonStyle::ripple): out of where the control was pressed to its ends, as high
 // as it is and as round (inside it, a pill's round ends too), fading as it goes. Started on a press, painted over the
 // control's background, under what is on it.

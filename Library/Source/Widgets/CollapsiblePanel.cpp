@@ -29,6 +29,18 @@ bool inside(const Widget* widget, const Widget& subtree) {
 
 } // namespace
 
+// Its content: its widgets one under the other, each moved as the panel says while it opens or closes.
+class CollapsiblePanel::Content final : public Widget {
+public:
+    explicit Content(const CollapsiblePanel& panel) : panel_(panel) {}
+
+protected:
+    std::optional<paint::Lifted> childLifted(const Widget& child) const override { return panel_.rowLifted(child); }
+
+private:
+    const CollapsiblePanel& panel_;
+};
+
 CollapsiblePanel::CollapsiblePanel() : CollapsiblePanel(Props{}) {}
 
 CollapsiblePanel::CollapsiblePanel(Props props) : expanded_(props.expanded), onToggled_(std::move(props.onToggled)) {
@@ -41,12 +53,53 @@ CollapsiblePanel::CollapsiblePanel(Props props) : expanded_(props.expanded), onT
     auto actions = std::make_unique<Widget>();
     actions->setLayout(std::make_unique<StackLayout>(Orientation::Horizontal, s.actionMargin));
     actions_ = &add(std::move(actions));
-    auto content = std::make_unique<Widget>();
+    auto content = std::make_unique<Content>(*this);
     content->setLayout(std::make_unique<StackLayout>(Orientation::Vertical, s.spacing));
     content->setPadding(s.padding);
     content_ = &add(std::move(content));
     progress_.set(expanded_ ? 1.0f : 0.0f);
     content_->setVisible(expanded_);
+}
+
+std::optional<Rect> CollapsiblePanel::childClip(const Widget& child) const {
+    // its content, while its widgets come out from under its header: cut under it
+    if (&child == content_ && style().cascade && progress_.running()) {
+        const float top = header().bottom();
+        return Rect{0, top, size().width, std::max(0.0f, size().height - top)};
+    }
+    return std::nullopt;
+}
+
+std::optional<paint::Lifted> CollapsiblePanel::rowLifted(const Widget& child) const {
+    if (!style().cascade || !progress_.running())
+        return std::nullopt;
+    // its widgets in order, the first out first (the last back first: the same as the panel closes)
+    const auto& rows = content_->children();
+    std::size_t index = 0, count = 0;
+    for (const auto& row : rows) {
+        if (!row->visible())
+            continue;
+        if (row.get() == &child)
+            index = count;
+        ++count;
+    }
+    if (count == 0)
+        return std::nullopt;
+    const float step = count > 1 ? std::min(0.12f, 0.45f / static_cast<float>(count - 1)) : 0.0f;
+    const float span = 1 - step * static_cast<float>(count - 1);
+    const float o = std::clamp((progress_.value() - step * static_cast<float>(index)) / span, 0.0f, 1.0f);
+    const float e = 1 - (1 - o) * (1 - o) * (1 - o);
+    if (e >= 1)
+        return std::nullopt;
+    // from under the header (as far up as its bottom is below the content's top), a little nearer the one looking on
+    // the way, turned toward the light (above, to the upper left): a highlight across it
+    const float up = child.bounds().bottom();
+    const float x = -0.42f, y = -0.62f, n = std::sqrt(x * x + y * y);
+    const float arc = std::sin(3.14159265f * e);
+    return paint::Lifted{.lift = 6 * arc,
+                         .turn = paint::Quaternion::axisAngle({-y / n, x / n, 0}, 0.22f * arc),
+                         .shift = {0, -up * (1 - e)},
+                         .alpha = std::min(1.0f, o * 3)};
 }
 
 const CollapsiblePanelStyle& CollapsiblePanel::style() const {

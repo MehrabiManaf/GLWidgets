@@ -838,8 +838,12 @@ Window::Window(Application& app, PopupRequest request, Window& parent)
     // across from a menu beside it, up into the middle for a dialog); a tooltip only fades
     const UiContext& ui = *impl.context;
     if (ui.scheduler && ui.scheduler->animationsEnabled()) {
+        // or (a style's) rising into its window, or landing in it
+        entranceKind_ = request.modal ? ui.theme.motion.dialogEntrance : ui.theme.motion.popupEntrance;
         const float distance = ui.theme.motion.popupSlide;
-        if (request.tooltip)
+        if (entranceKind_ != PopupEntrance::Slide)
+            slide_ = {};
+        else if (request.tooltip)
             slide_ = {};
         else if (request.placement == PopupPlacement::Below)
             slide_ = {0, at.y >= request.anchor.y ? -distance : distance};
@@ -848,7 +852,11 @@ Window::Window(Application& app, PopupRequest request, Window& parent)
         else
             slide_ = {0, distance * 1.5f};
         entrance_.set(0);
-        entrance_.animateTo(ui.scheduler, 1, ui.theme.motion.normal, Easing::OutCubic);
+        if (entranceKind_ == PopupEntrance::Slide)
+            entrance_.animateTo(ui.scheduler, 1, ui.theme.motion.normal, Easing::OutCubic);
+        else            // (the arrival eases itself)
+            entrance_.animateTo(ui.scheduler, 1, entranceKind_ == PopupEntrance::Land ? ui.theme.motion.slow : ui.theme.motion.normal,
+                                Easing::Linear);
         entering();
     }
     window_->show(!request.tooltip);
@@ -869,8 +877,20 @@ void Window::roundCorners() {
 
 void Window::entering() {
     const float shown = entrance_.value();
-    window_->setOpacity(shown);
-    root_.setContentShift(slide_ * (1 - shown));
+    if (entranceKind_ == PopupEntrance::Slide) {
+        window_->setOpacity(shown);
+        root_.setContentShift(slide_ * (1 - shown));
+        return;
+    }
+    // its window there at once, nearly (what is in it comes in)
+    window_->setOpacity(std::min(1.0f, shown * 4));
+    const Rect all{0, 0, root_.size().width, root_.size().height};
+    if (shown >= 1)
+        root_.setContentArrival(std::nullopt);
+    else if (entranceKind_ == PopupEntrance::Rise)
+        root_.setContentArrival(Arrival{shown, true});
+    else
+        root_.setContentArrival(Arrival{shown, false, all});
 }
 
 UiRoot* Window::openPopup(PopupRequest request) {

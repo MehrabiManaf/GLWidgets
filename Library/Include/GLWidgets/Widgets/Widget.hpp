@@ -24,6 +24,7 @@
 #include <GLWidgets/Core/Color.hpp>
 #include <GLWidgets/Core/Geometry.hpp>
 #include <GLWidgets/Export.hpp>
+#include <GLWidgets/Paint/Scene.hpp>
 #include <GLWidgets/Paint/Transform.hpp>
 #include <GLWidgets/Platform/Event.hpp>
 #include <GLWidgets/Platform/Keys.hpp>
@@ -328,6 +329,9 @@ protected:
     // (Painter::fallIn: a docked panel landing) or rising from behind it (Painter::riseIn: a panel floated), a brick at a
     // time, cut by no clip meanwhile.
     virtual std::optional<Arrival> arrival() const { return std::nullopt; }
+    // One of its children moved in space as it is painted (none: where it is): all it paints lifted, turned about its
+    // middle and moved as `Lifted` says (Painter::place). A panel's rows coming out from under its header.
+    virtual std::optional<paint::Lifted> childLifted(const Widget& child) const { return std::nullopt; }
     // `area` (its own coordinates), something in it that must show: a scroll area scrolls to it.
     virtual void revealArea(const Rect& area) {}
 

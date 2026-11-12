@@ -100,8 +100,7 @@ protected:
         const bool rtl = rightToLeft();
         const float width = size().width;
         const Rect all{0, 0, width, size().height};
-        p.fillRect(all, s.background);
-        p.strokeRoundedRect(all, root() ? root()->windowRadius() : 0.0f, 1, s.border);
+        paintPopupBackground(p, all, root() ? root()->windowRadius() : 0.0f, s.background, s.border, s.bevel);
         for (std::size_t i = 0; i < rows_.size(); ++i) {
             const Row& row = rows_[i];
             const MenuItem& item = items_[i];

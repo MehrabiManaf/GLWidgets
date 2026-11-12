@@ -37,11 +37,17 @@ void Theme::solid(Theme& t, bool dark) {
     t.node.bodyBevel.roundness = 3;
     t.chart.barRadius = 2.25f;
     t.chart.barBevel.roundness = 1.25f;
+    // menus, tooltips, dialogs: slabs over the window; a menu, a tooltip rising into its window, a dialog landing in it
+    t.menu.bevel = t.toolTip.bevel = t.dialog.bevel = {.relief = 0.8f, .roundness = 1.5f};
+    t.motion.popupEntrance = PopupEntrance::Rise;
+    t.motion.dialogEntrance = PopupEntrance::Land;
     // a table's column headers keys of their own; the selection moving from row to row (a brick sliding)
     for (ItemViewStyle* view : {&t.itemView, &t.table}) {
         view->headerGap = 2;
         view->slideSelection = true;
     }
+    // a collapsible panel's widgets coming out from under its header, one after another
+    t.collapsiblePanel.cascade = true;
     // a check box's brick falling into its box as it is checked
     t.checkBox.checkDrop = 14;
     // a scroll bar's thumb a brick in a groove

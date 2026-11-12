@@ -16,6 +16,15 @@ Color lit(Color c, float amount) {
     return {c.r + (to - c.r) * t, c.g + (to - c.g) * t, c.b + (to - c.b) * t, c.a};
 }
 
+void paintPopupBackground(paint::Painter& p, const Rect& rect, float radius, Color background, Color outline, const Bevel& bevel) {
+    if (bevel.relief > 0)
+        p.fillRelief(rect, radius, bevel.relief, bevel.roundness, background);
+    else
+        p.fillRect(rect, background);
+    if (outline.a > 0)
+        p.strokeRoundedRect(rect, radius, 1, outline);
+}
+
 void Press::to(Scheduler* scheduler, bool pressed, const MotionStyle& motion) {
     if (pressed == down_)
         return;

@@ -310,6 +310,9 @@ struct CollapsiblePanelStyle {
     Insets padding{14, 8, 14, 12};  // around the content
     float spacing = 8;              // between the content's widgets
     float cornerRadius = 0;
+    // Opening, its content's widgets come out from under its header one after another, turned a little toward the light
+    // on their way (closing, back under it, the last first); false: its content shows as its edge goes down.
+    bool cascade = false;
 };
 
 struct MenuBarStyle {
@@ -353,6 +356,7 @@ struct MenuStyle {
     float padding = 4;              // around the items
     float cornerRadius = 0;         // of the highlight
     float minimumWidth = 160;
+    Bevel bevel;                    // its background raised as a slab (relief above 0: a style's of reliefs); flat
 };
 
 // A multi-line text and code (TextEdit): its text, its gutter, and the colors of the kinds of tokens a highlighter finds.
@@ -378,6 +382,11 @@ struct TextEditStyle {
 };
 
 // How long things take to change (Fluent's durations): a hover or a press, what opens, what moves far.
+// How a popup's content comes in: sliding a little out of its anchor (faded in); rising from behind its window
+// (Painter::riseIn: its pieces the controls first, its slab last); landing in its place from a little nearer the one
+// looking (Painter::fallIn from where it is: its slab first, then a row after another).
+enum class PopupEntrance : std::uint8_t { Slide, Rise, Land };
+
 struct MotionStyle {
     std::chrono::milliseconds fast{100};
     std::chrono::milliseconds normal{200};
@@ -386,6 +395,8 @@ struct MotionStyle {
                                                 // goes further: SmoothScroll::boosted)
     std::chrono::milliseconds ripple{450};      // a press's ripple, out and gone
     float popupSlide = 6;                       // dips a popup slides in from, out of its anchor
+    PopupEntrance popupEntrance = PopupEntrance::Slide;     // a menu's, a tooltip's, a list's
+    PopupEntrance dialogEntrance = PopupEntrance::Slide;    // a modal one's (a dialog)
     // None of them: every motion at once (Plain).
     bool still() const { return fast.count() == 0 && normal.count() == 0 && slow.count() == 0 && scroll.count() == 0; }
 };
@@ -398,6 +409,7 @@ struct ToolTipStyle {
     std::chrono::milliseconds delay{500};   // the mouse still over a widget before its tooltip shows
     // ... when another tooltip closed a moment ago: going from one to the next is quick
     std::chrono::milliseconds reshowDelay{80};
+    Bevel bevel;                            // its background raised as a slab (relief above 0); flat
 };
 
 struct DialogStyle {
@@ -408,6 +420,7 @@ struct DialogStyle {
     float spacing = 16;             // between its title, its content and its buttons
     float titleSize = 16;
     float maximumWidth = 460;       // its text wraps past it
+    Bevel bevel;                    // its background raised as a slab (relief above 0); flat
 };
 
 // A node of a node editor (a graph on a Canvas): a body with a header of the node's own color (its kind's) over it, as the

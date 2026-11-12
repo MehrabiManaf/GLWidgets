@@ -77,8 +77,7 @@ Size Dialog::measureContent(Size available) {
 void Dialog::paint(PaintContext& context) {
     const DialogStyle& s = dialogStyle(*this);
     const Rect all{0, 0, size().width, size().height};
-    context.painter.fillRect(all, s.background);
-    context.painter.strokeRoundedRect(all, root() ? root()->windowRadius() : 0.0f, 1, s.border);
+    paintPopupBackground(context.painter, all, root() ? root()->windowRadius() : 0.0f, s.background, s.border, s.bevel);
 }
 
 void Dialog::onKey(KeyEvent& event) {

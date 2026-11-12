@@ -176,6 +176,8 @@ public:
     void setOverlay(std::optional<Color> color);
     // Its content this far from its place, drawn and under the mouse there: a popup sliding in.
     void setContentShift(Point shift);
+    // All of its content arriving (none: where it is), as a widget's that arrives (Widget::arrival): a popup coming in.
+    void setContentArrival(std::optional<Arrival> arrival);
     Point contentShift() const { return contentShift_; }
     // The theme / the language of the context changed: every widget is told, and the tree laid out again.
     void styleChanged();
@@ -253,6 +255,7 @@ private:
     bool needsPaint_ = true;
     std::optional<Color> overlay_;
     Point contentShift_;
+    std::optional<Arrival> contentArrival_;
     std::uint64_t layoutGeneration_ = 1;
 
     Widget* focus_ = nullptr;
