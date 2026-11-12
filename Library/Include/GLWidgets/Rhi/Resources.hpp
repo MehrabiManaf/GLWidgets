@@ -25,6 +25,7 @@ enum class TextureFormat : std::uint8_t {
     R8,
     RGBA16Float,
     RGB10A2,
+    Depth32Float,       // a depth buffer's (CommandList::beginSurfacePass with depth)
 };
 
 // Bytes per pixel of `format` (0 for Unknown).
@@ -33,6 +34,7 @@ GLW_EXPORT std::size_t bytesPerPixel(TextureFormat format);
 enum class TextureUsage : std::uint8_t {
     Sampled      = 1 << 0,  // read by shaders
     RenderTarget = 1 << 1,  // drawn into (CommandList::beginTexturePass)
+    DepthTarget  = 1 << 2,  // a texture pass's depth buffer (Depth32Float)
 };
 constexpr TextureUsage operator|(TextureUsage a, TextureUsage b) {
     return static_cast<TextureUsage>(static_cast<std::uint8_t>(a) | static_cast<std::uint8_t>(b));
@@ -172,6 +174,11 @@ struct PipelineDesc {
     Topology topology = Topology::TriangleList;
     BlendMode blend = BlendMode::PremultipliedAlpha;
     TextureFormat colorFormat = TextureFormat::Unknown;    // of the surface or texture drawn into
+    // Its pass's depth buffer: none (Unknown), or Depth32Float; then whether what it draws is tested against it (nearer
+    // or as near passes) and written to it.
+    TextureFormat depthFormat = TextureFormat::Unknown;
+    bool depthTest = false;
+    bool depthWrite = false;
 };
 
 class GLW_EXPORT Pipeline {

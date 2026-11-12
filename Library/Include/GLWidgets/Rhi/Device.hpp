@@ -65,9 +65,21 @@ public:
 
     // Starts drawing into the next image of `surface`, cleared to `clear`, and gives its size. None when there is nothing to
     // draw into now (the window is minimized, the swap chain is being remade): nothing to draw then, and no endPass.
-    virtual std::optional<PixelSize> beginSurfacePass(Surface& surface, Color clear) = 0;
-    // Starts drawing into `target` (made with TextureUsage::RenderTarget), cleared to `clear`.
-    virtual void beginTexturePass(Texture& target, Color clear) = 0;
+    // `depth`: with a depth buffer of the surface's own (as large as its image, cleared to the farthest), for pipelines
+    // made with depthFormat Depth32Float.
+    virtual std::optional<PixelSize> beginSurfacePass(Surface& surface, Color clear, bool depth = false) = 0;
+    // Starts drawing into `target` (made with TextureUsage::RenderTarget), cleared to `clear` (none: drawn over what it
+    // has). `depth`: its depth buffer (a Depth32Float texture made with TextureUsage::DepthTarget, as large), cleared to the
+    // farthest when `clearDepth`, kept for a pass that goes on drawing into the same target.
+    virtual void beginTexturePass(Texture& target, std::optional<Color> clear, Texture* depth = nullptr, bool clearDepth = true) = 0;
+    // The next image of `surface`, to blit into (blitToSurface) rather than draw into, and its size. None as
+    // beginSurfacePass says.
+    virtual std::optional<PixelSize> acquireSurface(Surface& surface) = 0;
+    // All of `source` (made with TextureUsage::Sampled) onto all of `target` (made with TextureUsage::RenderTarget),
+    // scaled with linear filtering. Outside passes.
+    virtual void blit(const Texture& source, Texture& target) = 0;
+    // ... onto the image of `surface` acquired (acquireSurface), presented with it.
+    virtual void blitToSurface(const Texture& source, Surface& surface) = 0;
 
     // Sends the commands to the GPU and presents the surfaces drawn. Nothing can be added after.
     virtual void submit() = 0;

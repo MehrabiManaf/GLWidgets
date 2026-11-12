@@ -11,7 +11,8 @@ std::size_t bytesPerPixel(TextureFormat format) {
     case TextureFormat::BGRA8:
     case TextureFormat::RGBA8Srgb:
     case TextureFormat::BGRA8Srgb:
-    case TextureFormat::RGB10A2: return 4;
+    case TextureFormat::RGB10A2:
+    case TextureFormat::Depth32Float: return 4;
     case TextureFormat::R8: return 1;
     case TextureFormat::RGBA16Float: return 8;
     }

@@ -12,7 +12,7 @@
 // in the user's preferences (Settings). A status bar along the bottom says what happened; the window asks before it
 // closes; its colors may follow the system's, and its layout stay left to right in Persian.
 //
-//   widgets_demo [--frames N] [--language fa] [--style studio|fluid|plain|plastic|metal]
+//   widgets_demo [--frames N] [--language fa] [--style studio|fluid|plain|plastic|metal|solid|glass]
 //                [--colors dark|light|dusk|sand|turquoise] [--light]
 //
 // --light: the same as --colors light.
@@ -686,7 +686,8 @@ struct Page {
                               // the looks of the library: as a tool's, modern and moving, plain and still
                               ui::Label({.text = tr("Style")}).alignment(glw::Alignment::Start, glw::Alignment::Center),
                               ui::ComboBox({.items = {glw::LocalizedText("Studio"), glw::LocalizedText("Fluid"), glw::LocalizedText("Plain"),
-                                                      glw::LocalizedText("Plastic"), glw::LocalizedText("Metal")},
+                                                      glw::LocalizedText("Plastic"), glw::LocalizedText("Metal"), glw::LocalizedText("Solid"),
+                                                      glw::LocalizedText("Glass")},
                                             .current = 0,
                                             .onChanged = [this](std::size_t i) {
                                                 app.setStyle(static_cast<glw::ThemeStyle>(i));

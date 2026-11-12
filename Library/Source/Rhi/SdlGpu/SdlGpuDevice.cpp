@@ -44,6 +44,7 @@ SDL_GPUTextureFormat toSdl(TextureFormat format) {
     case TextureFormat::R8: return SDL_GPU_TEXTUREFORMAT_R8_UNORM;
     case TextureFormat::RGBA16Float: return SDL_GPU_TEXTUREFORMAT_R16G16B16A16_FLOAT;
     case TextureFormat::RGB10A2: return SDL_GPU_TEXTUREFORMAT_R10G10B10A2_UNORM;
+    case TextureFormat::Depth32Float: return SDL_GPU_TEXTUREFORMAT_D32_FLOAT;
     }
     return SDL_GPU_TEXTUREFORMAT_INVALID;
 }
@@ -169,6 +170,8 @@ std::unique_ptr<Texture> SdlGpuDevice::createTexture(const TextureDesc& desc) {
         info.usage |= SDL_GPU_TEXTUREUSAGE_SAMPLER;
     if (hasAny(desc.usage, TextureUsage::RenderTarget))
         info.usage |= SDL_GPU_TEXTUREUSAGE_COLOR_TARGET;
+    if (hasAny(desc.usage, TextureUsage::DepthTarget))
+        info.usage |= SDL_GPU_TEXTUREUSAGE_DEPTH_STENCIL_TARGET;
     info.width = static_cast<Uint32>(desc.size.width);
     info.height = static_cast<Uint32>(desc.size.height);
     info.layer_count_or_depth = 1;
@@ -262,6 +265,13 @@ std::unique_ptr<Pipeline> SdlGpuDevice::createPipeline(const PipelineDesc& desc)
     info.multisample_state.sample_count = SDL_GPU_SAMPLECOUNT_1;
     info.target_info.color_target_descriptions = &target;
     info.target_info.num_color_targets = 1;
+    if (desc.depthFormat != TextureFormat::Unknown) {
+        info.target_info.has_depth_stencil_target = true;
+        info.target_info.depth_stencil_format = toSdl(desc.depthFormat);
+        info.depth_stencil_state.enable_depth_test = desc.depthTest;
+        info.depth_stencil_state.enable_depth_write = desc.depthWrite;
+        info.depth_stencil_state.compare_op = SDL_GPU_COMPAREOP_LESS_OR_EQUAL;
+    }
     SDL_GPUGraphicsPipeline* pipeline = SDL_CreateGPUGraphicsPipeline(device_, &info);
     if (!pipeline)
         throw Error(sdlError("SDL_CreateGPUGraphicsPipeline"));
@@ -287,6 +297,8 @@ SdlGpuSurface::SdlGpuSurface(SdlGpuDevice& device, platform::sdl::SdlWindow& win
 SdlGpuSurface::~SdlGpuSurface() {
     // the swap chain goes with the claim: nothing the GPU has to do may still use it
     SDL_WaitForGPUIdle(device_.handle());
+    if (depth_)
+        SDL_ReleaseGPUTexture(device_.handle(), depth_);
     SDL_ReleaseWindowFromGPUDevice(device_.handle(), window_.handle());
     device_.surfaceDestroyed();
 }
@@ -305,6 +317,27 @@ void SdlGpuSurface::waitUntilReady() {
 
 SDL_Window* SdlGpuSurface::windowHandle() const {
     return window_.handle();
+}
+
+SDL_GPUTexture* SdlGpuSurface::depth(PixelSize size) {
+    if (depth_ && depthSize_ == size)
+        return depth_;
+    if (depth_)
+        SDL_ReleaseGPUTexture(device_.handle(), depth_);       // (released once the GPU is done with it)
+    SDL_GPUTextureCreateInfo info{};
+    info.type = SDL_GPU_TEXTURETYPE_2D;
+    info.format = SDL_GPU_TEXTUREFORMAT_D32_FLOAT;
+    info.usage = SDL_GPU_TEXTUREUSAGE_DEPTH_STENCIL_TARGET;
+    info.width = static_cast<Uint32>(size.width);
+    info.height = static_cast<Uint32>(size.height);
+    info.layer_count_or_depth = 1;
+    info.num_levels = 1;
+    info.sample_count = SDL_GPU_SAMPLECOUNT_1;
+    depth_ = SDL_CreateGPUTexture(device_.handle(), &info);
+    if (!depth_)
+        throw Error(sdlError("SDL_CreateGPUTexture (depth)"));
+    depthSize_ = size;
+    return depth_;
 }
 
 // ---- command list ----
@@ -376,18 +409,27 @@ void SdlGpuCommandList::upload(Texture& texture, PixelRect region, std::span<con
     SDL_ReleaseGPUTransferBuffer(device_.handle(), staging);
 }
 
-void SdlGpuCommandList::beginPass(SDL_GPUTexture* target, Color clear) {
+void SdlGpuCommandList::beginPass(SDL_GPUTexture* target, std::optional<Color> clear, SDL_GPUTexture* depth, bool clearDepth,
+                                  bool storeDepth) {
     SDL_GPUColorTargetInfo color{};
     color.texture = target;
-    color.clear_color = SDL_FColor{clear.r, clear.g, clear.b, clear.a};
-    color.load_op = SDL_GPU_LOADOP_CLEAR;
+    if (clear)
+        color.clear_color = SDL_FColor{clear->r, clear->g, clear->b, clear->a};
+    color.load_op = clear ? SDL_GPU_LOADOP_CLEAR : SDL_GPU_LOADOP_LOAD;
     color.store_op = SDL_GPU_STOREOP_STORE;
-    pass_ = SDL_BeginGPURenderPass(commands_, &color, 1, nullptr);
+    SDL_GPUDepthStencilTargetInfo depthTarget{};
+    depthTarget.texture = depth;
+    depthTarget.clear_depth = 1;
+    depthTarget.load_op = clearDepth ? SDL_GPU_LOADOP_CLEAR : SDL_GPU_LOADOP_LOAD;
+    depthTarget.store_op = storeDepth ? SDL_GPU_STOREOP_STORE : SDL_GPU_STOREOP_DONT_CARE;
+    depthTarget.stencil_load_op = SDL_GPU_LOADOP_DONT_CARE;
+    depthTarget.stencil_store_op = SDL_GPU_STOREOP_DONT_CARE;
+    pass_ = SDL_BeginGPURenderPass(commands_, &color, 1, depth ? &depthTarget : nullptr);
     if (!pass_)
         throw Error(sdlError("SDL_BeginGPURenderPass"));
 }
 
-std::optional<PixelSize> SdlGpuCommandList::beginSurfacePass(Surface& surface, Color clear) {
+std::optional<PixelSize> SdlGpuCommandList::beginSurfacePass(Surface& surface, Color clear, bool depth) {
     GLW_EXPECTS(commands_ && !pass_);
     auto& target = as<SdlGpuSurface>(surface);
     GLW_EXPECTS(&target.device() == &device_);
@@ -399,13 +441,57 @@ std::optional<PixelSize> SdlGpuCommandList::beginSurfacePass(Surface& surface, C
         throw Error(sdlError("SDL_WaitAndAcquireGPUSwapchainTexture"));
     if (!image)
         return std::nullopt;
-    beginPass(image, clear);
-    return PixelSize{static_cast<int>(width), static_cast<int>(height)};
+    const PixelSize size{static_cast<int>(width), static_cast<int>(height)};
+    beginPass(image, clear, depth ? target.depth(size) : nullptr);
+    return size;
 }
 
-void SdlGpuCommandList::beginTexturePass(Texture& target, Color clear) {
+void SdlGpuCommandList::beginTexturePass(Texture& target, std::optional<Color> clear, Texture* depth, bool clearDepth) {
     GLW_EXPECTS(commands_ && !pass_ && hasAny(target.usage(), TextureUsage::RenderTarget));
-    beginPass(as<SdlGpuTexture>(target).handle(), clear);
+    GLW_EXPECTS(!depth || hasAny(depth->usage(), TextureUsage::DepthTarget));
+    // (its depth buffer stored, whether cleared or not: the pass may go on in another)
+    beginPass(as<SdlGpuTexture>(target).handle(), clear, depth ? as<SdlGpuTexture>(*depth).handle() : nullptr, clearDepth, true);
+}
+
+std::optional<PixelSize> SdlGpuCommandList::acquireSurface(Surface& surface) {
+    GLW_EXPECTS(commands_ && !pass_);
+    auto& target = as<SdlGpuSurface>(surface);
+    GLW_EXPECTS(&target.device() == &device_);
+    SDL_GPUTexture* image = nullptr;
+    Uint32 width = 0, height = 0;
+    if (!SDL_WaitAndAcquireGPUSwapchainTexture(commands_, target.windowHandle(), &image, &width, &height))
+        throw Error(sdlError("SDL_WaitAndAcquireGPUSwapchainTexture"));
+    if (!image)
+        return std::nullopt;
+    const PixelSize size{static_cast<int>(width), static_cast<int>(height)};
+    acquired_.emplace_back(&surface, image, size);
+    return size;
+}
+
+void SdlGpuCommandList::blit(SDL_GPUTexture* source, PixelSize from, SDL_GPUTexture* target, PixelSize to) {
+    GLW_EXPECTS(commands_ && !pass_);
+    SDL_GPUBlitInfo info{};
+    info.source = {source, 0, 0, 0, 0, static_cast<Uint32>(from.width), static_cast<Uint32>(from.height)};
+    info.destination = {target, 0, 0, 0, 0, static_cast<Uint32>(to.width), static_cast<Uint32>(to.height)};
+    info.load_op = SDL_GPU_LOADOP_DONT_CARE;
+    info.filter = SDL_GPU_FILTER_LINEAR;
+    SDL_BlitGPUTexture(commands_, &info);
+}
+
+void SdlGpuCommandList::blit(const Texture& source, Texture& target) {
+    GLW_EXPECTS(hasAny(source.usage(), TextureUsage::Sampled) && hasAny(target.usage(), TextureUsage::RenderTarget));
+    blit(as<const SdlGpuTexture>(source).handle(), source.size(), as<SdlGpuTexture>(target).handle(), target.size());
+}
+
+void SdlGpuCommandList::blitToSurface(const Texture& source, Surface& surface) {
+    GLW_EXPECTS(hasAny(source.usage(), TextureUsage::Sampled));
+    for (const auto& [s, image, size] : acquired_) {
+        if (s == &surface) {
+            blit(as<const SdlGpuTexture>(source).handle(), source.size(), image, size);
+            return;
+        }
+    }
+    GLW_ASSERT(false);      // acquireSurface first
 }
 
 void SdlGpuCommandList::submit() {

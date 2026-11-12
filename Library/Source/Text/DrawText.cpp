@@ -72,4 +72,23 @@ void drawText(paint::Painter& painter, GlyphAtlas& atlas, const TextLayout& layo
     }
 }
 
+void drawTextOnBrick(paint::Painter& painter, GlyphAtlas& atlas, const TextLayout& layout, const paint::Brick& brick, Point origin,
+                     Color color) {
+    if (color.a <= 0 || !atlas.hasFields())
+        return;
+    const PixelSize fieldSize = atlas.fieldAtlasSize();
+    const float scale = layout.style().size / GlyphAtlas::fieldEm;      // dips of the face a pixel of the field
+    const Point range{GlyphAtlas::fieldRange / static_cast<float>(fieldSize.width), GlyphAtlas::fieldRange / static_cast<float>(fieldSize.height)};
+    for (const PositionedGlyph& g : layout.glyphs()) {
+        const GlyphAtlas::FieldGlyph& field = atlas.fieldGlyph(*g.font, g.glyph);
+        if (field.rect.empty())
+            continue;
+        const Point pen = origin + g.position;
+        const Rect rect{pen.x + field.left * scale, pen.y - field.top * scale, field.rect.width * scale, field.rect.height * scale};
+        const Rect uv{static_cast<float>(field.rect.x) / fieldSize.width, static_cast<float>(field.rect.y) / fieldSize.height,
+                      static_cast<float>(field.rect.width) / fieldSize.width, static_cast<float>(field.rect.height) / fieldSize.height};
+        painter.drawBrickDecal(brick, rect, atlas.fieldTexture(), uv, range, color);
+    }
+}
+
 } // namespace glw::text

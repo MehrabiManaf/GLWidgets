@@ -20,7 +20,7 @@
 // only their top ones (the rest as one of others). Each chart is a docked panel: moved, split, floated, closed by its
 // tab; the View menu hides and shows each (one closed by its tab too), back beside a neighbour of where it was.
 //
-//   chart_demo [--rate N] [--race N] [--style studio|fluid|plain|plastic|metal] [--colors dark|light|dusk|sand|turquoise]
+//   chart_demo [--rate N] [--race N] [--style studio|fluid|plain|plastic|metal|solid|glass] [--colors dark|light|dusk|sand|turquoise]
 //              [--language fa] [--frames N]
 //
 // In another language its numbers and times are written as it writes them (--language fa: Persian digits, the Solar

@@ -6,7 +6,7 @@
 // font (the system's); the log is read only and is appended to. Persian in strings and comments is shaped and ordered as
 // it is written, in lines that stay left to right.
 //
-//   code_editor [FILE] [--lines N] [--menu-below] [--frames N] [--style studio|fluid|plain|plastic|metal]
+//   code_editor [FILE] [--lines N] [--menu-below] [--frames N] [--style studio|fluid|plain|plastic|metal|solid|glass]
 //               [--colors dark|light|dusk|sand|turquoise]
 //
 // FILE: what to edit (a sample otherwise); --lines N: N more lines, to see that a long text costs what shows.

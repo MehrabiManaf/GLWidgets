@@ -120,6 +120,15 @@ struct TextEvent {
 };
 
 // What a widget paints with: the painter (in the widget's coordinates) and what is shared by the interface.
+// What a widget paints arriving (Widget::arrival): `progress` from 0 to 1, falling in from in front of the window or
+// rising from behind it; falling in from `from` when it was somewhere (the root's dips: a panel docked back from its
+// floating window, where it was in that window), moving from there to its place.
+struct Arrival {
+    float progress = 0;
+    bool fromBehind = false;
+    std::optional<Rect> from;
+};
+
 struct GLW_EXPORT PaintContext {
     paint::Painter& painter;
     const UiContext& ui;
@@ -315,6 +324,10 @@ protected:
     // Its children's coordinates to its own (they are painted, under the mouse and mapped through it): none by default, a
     // canvas's zoom and pan.
     virtual paint::Transform childrenTransform() const { return {}; }
+    // What it and its children paint arriving (none: where it is): drawn falling in from in front of the window
+    // (Painter::fallIn: a docked panel landing) or rising from behind it (Painter::riseIn: a panel floated), a brick at a
+    // time, cut by no clip meanwhile.
+    virtual std::optional<Arrival> arrival() const { return std::nullopt; }
     // `area` (its own coordinates), something in it that must show: a scroll area scrolls to it.
     virtual void revealArea(const Rect& area) {}
 

@@ -6,6 +6,10 @@
 
 #include <SDL3/SDL_gpu.h>
 
+#include <optional>
+#include <tuple>
+#include <vector>
+
 namespace glw::platform::sdl {
 class SdlWindow;
 } // namespace glw::platform::sdl
@@ -48,10 +52,14 @@ public:
     void waitUntilReady() override;
     SdlGpuDevice& device() const { return device_; }
     SDL_Window* windowHandle() const;
+    // Its depth buffer, as large as `size` (made again when it is not).
+    SDL_GPUTexture* depth(PixelSize size);
 
 private:
     SdlGpuDevice& device_;
     platform::sdl::SdlWindow& window_;
+    SDL_GPUTexture* depth_ = nullptr;
+    PixelSize depthSize_;
 };
 
 class SdlGpuBuffer final : public Buffer {
@@ -127,8 +135,11 @@ public:
 
     void upload(Buffer& buffer, std::size_t offset, std::span<const std::byte> data, bool discard) override;
     void upload(Texture& texture, PixelRect region, std::span<const std::byte> pixels) override;
-    std::optional<PixelSize> beginSurfacePass(Surface& surface, Color clear) override;
-    void beginTexturePass(Texture& target, Color clear) override;
+    std::optional<PixelSize> beginSurfacePass(Surface& surface, Color clear, bool depth) override;
+    void beginTexturePass(Texture& target, std::optional<Color> clear, Texture* depth, bool clearDepth) override;
+    std::optional<PixelSize> acquireSurface(Surface& surface) override;
+    void blit(const Texture& source, Texture& target) override;
+    void blitToSurface(const Texture& source, Surface& surface) override;
     void submit() override;
 
     void endPass() override;
@@ -146,9 +157,14 @@ public:
 private:
     // a transfer buffer holding `data`, released once recorded (SDL keeps it until the GPU is done with it)
     SDL_GPUTransferBuffer* stage(std::span<const std::byte> data);
-    void beginPass(SDL_GPUTexture* target, Color clear);
+    // (`clear` none: loaded; its depth loaded unless `clearDepth`, stored when `storeDepth`: for a pass that goes on)
+    void beginPass(SDL_GPUTexture* target, std::optional<Color> clear, SDL_GPUTexture* depth = nullptr, bool clearDepth = true,
+                   bool storeDepth = false);
+    void blit(SDL_GPUTexture* source, PixelSize from, SDL_GPUTexture* target, PixelSize to);
 
     SdlGpuDevice& device_;
+    // the images acquired to blit into (acquireSurface), by their surfaces
+    std::vector<std::tuple<const Surface*, SDL_GPUTexture*, PixelSize>> acquired_;
     SDL_GPUCommandBuffer* commands_ = nullptr;      // none once submitted
     SDL_GPURenderPass* pass_ = nullptr;
 };

@@ -106,6 +106,11 @@ private:
     Widget* bars_ = nullptr;
     paint::DrawList list_;
     paint::RenderBuffers buffers_;
+    // What it is drawn into first while it shows glass (Renderer::backdropCaptures): its image and depth, then copied
+    // onto it; and what the glass reads of it, at half its size.
+    std::unique_ptr<rhi::Texture> offscreen_;
+    std::unique_ptr<rhi::Texture> offscreenDepth_;
+    std::unique_ptr<rhi::Texture> backdrop_;
     Window* owner_ = nullptr;                           // a tool window's, a popup's
     bool popup_ = false;
     bool tooltip_ = false;                              // a popup that takes no input

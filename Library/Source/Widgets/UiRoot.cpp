@@ -285,6 +285,10 @@ void UiRoot::paint(paint::DrawList& list) {
         layout();
     list.clear();
     paint::Painter painter(list, {0, 0, size_.width, size_.height}, scale_);
+    // the theme's raised controls as bricks (a style's that has them), seen from its camera
+    painter.setReliefBricks(context_.theme.reliefBricks);
+    if (context_.theme.cameraDistance > 0)
+        painter.setCamera({{size_.width / 2, size_.height / 2, context_.theme.cameraDistance * std::max(size_.width, size_.height)}});
     PaintContext context{painter, context_};
     if (content_)
         paintTree(*content_, context, {0, 0, size_.width, size_.height});
@@ -306,6 +310,11 @@ void UiRoot::paintTree(Widget& widget, PaintContext& context, const Rect& visibl
     if (!widget.visible_ || !widget.bounds_.inflated(overhang).intersects(visible))
         return;
     paint::Painter& painter = context.painter;
+    // arriving: all of what it paints falls in (Painter::fallIn), its bricks tested by depth as they pass one another; or
+    // rises from behind (Painter::riseIn), drawn over what is already there as they come (not hidden behind it)
+    const std::optional<Arrival> arrival = widget.arrival();
+    const paint::Painter::Mark mark = arrival ? painter.mark() : paint::Painter::Mark{};
+    const Point corner = painter.transform().map(Point{widget.bounds_.x, widget.bounds_.y});
     painter.pushTransform({1, {widget.bounds_.x, widget.bounds_.y}});
     widget.paint(context);
     // what shows of it, in its coordinates: for its children
@@ -336,6 +345,16 @@ void UiRoot::paintTree(Widget& widget, PaintContext& context, const Rect& visibl
         painter.popClip();
     widget.paintOver(context);
     painter.popTransform();
+    if (arrival) {
+        const Rect area{corner.x, corner.y, widget.bounds_.width, widget.bounds_.height};
+        if (arrival->fromBehind) {
+            painter.riseIn(mark, arrival->progress, area);
+        } else {
+            // (from somewhere: moving together, drawn in their order; from nowhere: falling through one another)
+            painter.setDepthTest(!arrival->from);
+            painter.fallIn(mark, arrival->progress, area, arrival->from);
+        }
+    }
 }
 
 // ---- finding widgets ----

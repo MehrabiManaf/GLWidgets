@@ -3,12 +3,14 @@
 #include <GLWidgets/Paint/Renderer.hpp>
 
 #include "Paint/PainterShaders.hpp"
+#include "Paint/SceneShaders.hpp"
 
 #include <GLWidgets/Core/Assert.hpp>
 
 #include <algorithm>
 #include <cmath>
 #include <cstddef>
+#include <optional>
 
 namespace glw::paint {
 
@@ -20,6 +22,18 @@ constexpr rhi::VertexAttribute vertexAttributes[] = {
     {2, rhi::VertexFormat::Float2, offsetof(Vertex, halfSize)},
     {3, rhi::VertexFormat::Float4, offsetof(Vertex, radius)},       // radius, border, kind, blur
     {4, rhi::VertexFormat::UByte4Norm, offsetof(Vertex, color)},
+};
+
+constexpr rhi::VertexAttribute sceneAttributes[] = {
+    {0, rhi::VertexFormat::Float2, offsetof(SceneVertex, position)},
+    {1, rhi::VertexFormat::Float4, offsetof(SceneVertex, center)},          // center, corner radius
+    {2, rhi::VertexFormat::Float4, offsetof(SceneVertex, halfSize)},        // half size, bevel
+    {3, rhi::VertexFormat::Float4, offsetof(SceneVertex, rotation)},
+    {4, rhi::VertexFormat::Float4, offsetof(SceneVertex, material)},
+    {5, rhi::VertexFormat::Float4, offsetof(SceneVertex, eye)},             // eye, pixels per dip
+    {6, rhi::VertexFormat::Float4, offsetof(SceneVertex, decal)},
+    {7, rhi::VertexFormat::Float4, offsetof(SceneVertex, decalUv)},
+    {8, rhi::VertexFormat::UByte4Norm, offsetof(SceneVertex, color)},
 };
 
 // A buffer at least `needed` bytes big: `buffer` when it is, else a new one with room to grow.
@@ -62,6 +76,20 @@ Renderer::Renderer(rhi::Device& device) : device_(device) {
     fragment.uniformBuffers = 1;        // the light
     fragmentShader_ = device_.createShader(fragment);
 
+    rhi::ShaderDesc sceneVertex;
+    sceneVertex.stage = rhi::ShaderStage::Vertex;
+    sceneVertex.code = {shaders::sceneVertexSpirv, shaders::sceneVertexDxbc, shaders::sceneVertexMsl};
+    sceneVertex.entryPoint = "vertexMain";
+    sceneVertex.uniformBuffers = 1;
+    sceneVertexShader_ = device_.createShader(sceneVertex);
+    rhi::ShaderDesc sceneFragment;
+    sceneFragment.stage = rhi::ShaderStage::Fragment;
+    sceneFragment.code = {shaders::sceneFragmentSpirv, shaders::sceneFragmentDxbc, shaders::sceneFragmentMsl};
+    sceneFragment.entryPoint = "fragmentMain";
+    sceneFragment.samplers = 1;          // a decal's texture
+    sceneFragment.uniformBuffers = 1;    // the environment, and the light of reliefs
+    sceneFragmentShader_ = device_.createShader(sceneFragment);
+
     sampler_ = device_.createSampler({rhi::Filter::Linear, rhi::AddressMode::ClampToEdge});
     nearest_ = device_.createSampler({rhi::Filter::Nearest, rhi::AddressMode::ClampToEdge});
     white_ = device_.createTexture({{1, 1}, rhi::TextureFormat::RGBA8, rhi::TextureUsage::Sampled});
@@ -97,39 +125,61 @@ void Renderer::upload(rhi::CommandList& commands, const DrawList& list, RenderBu
     reserve(device_, buffers.vertices_, vertices.size(), rhi::BufferUsage::Vertex);
     reserve(device_, buffers.indices_, indices.size(), rhi::BufferUsage::Index);
     // the whole content is new: the frames in flight keep reading the old one
-    commands.upload(*buffers.vertices_, 0, vertices, true);
+    if (!vertices.empty())
+        commands.upload(*buffers.vertices_, 0, vertices, true);
     commands.upload(*buffers.indices_, 0, indices, true);
+    if (!list.sceneVertices.empty()) {
+        const auto scene = std::as_bytes(std::span(list.sceneVertices));
+        reserve(device_, buffers.sceneVertices_, scene.size(), rhi::BufferUsage::Vertex);
+        commands.upload(*buffers.sceneVertices_, 0, scene, true);
+    }
 }
 
 void Renderer::draw(rhi::CommandList& commands, const DrawList& list, const RenderBuffers& buffers, rhi::TextureFormat format,
-                    PixelSize size, float scale) {
+                    PixelSize size, float scale, bool depth, std::size_t first, std::size_t end, const rhi::Texture* backdrop) {
     if (list.empty() || size.empty())
         return;
     GLW_EXPECTS(buffers.vertices_ && buffers.indices_ && scale > 0);     // upload first
 
-    commands.setPipeline(pipeline(format));
     commands.setViewport({0, 0, size.width, size.height});
-    // dips to clip space (Painter.hlsl's Transform)
+    // dips to clip space (Painter.hlsl's Transform, Scene.hlsl's)
     const float transform[4] = {2.0f * scale / size.width, -2.0f * scale / size.height, -1.0f, 1.0f};
-    commands.setVertexUniforms(0, std::as_bytes(std::span(transform)));
-    // the light of reliefs (Painter.hlsl's Lighting)
+    // the light of reliefs (Painter.hlsl's Lighting); of bricks (Scene.hlsl's Environment, then the light of reliefs)
     const float lighting[12] = {lighting_.x,       lighting_.y,        lighting_.z,         lighting_.ambient,
                                 lighting_.diffuse, lighting_.specular, lighting_.shininess, lighting_.rimShadow,
                                 lighting_.metal,   lighting_.brushed,  0,                   0};
-    commands.setFragmentUniforms(0, std::as_bytes(std::span(lighting)));
-    commands.setVertexBuffer(*buffers.vertices_);
+    const float environment[16] = {environment_.exposure, environment_.dark ? 1.0f : 0.0f, 0, 0,
+                                   lighting_.x,           lighting_.y,                     lighting_.z, lighting_.ambient,
+                                   lighting_.diffuse,     lighting_.specular,              lighting_.shininess, 0,
+                                   lighting_.metal,       0,                               0, 0};
     commands.setIndexBuffer(*buffers.indices_, rhi::IndexType::UInt32);
 
+    // each command with its pipeline (the painter's, or the scene's for bricks), what it reads bound again when it changes
+    std::optional<bool> scene;
     const rhi::Texture* bound = nullptr;
     const rhi::Sampler* boundSampler = nullptr;
-    for (const DrawCommand& cmd : list.commands) {
-        if (cmd.indexCount == 0)
+    end = std::min(end, list.commands.size());
+    for (std::size_t c = first; c < end; ++c) {
+        const DrawCommand& cmd = list.commands[c];
+        if (cmd.indexCount == 0 || (cmd.scene && !buffers.sceneVertices_) || (!cmd.scene && list.vertices.empty()))
             continue;
+        if (scene != cmd.scene) {
+            scene = cmd.scene;
+            commands.setPipeline(cmd.scene ? scenePipeline(format, depth) : pipeline(format, depth));
+            commands.setVertexBuffer(cmd.scene ? *buffers.sceneVertices_ : *buffers.vertices_);
+            commands.setVertexUniforms(0, std::as_bytes(std::span(transform)));
+            if (cmd.scene)
+                commands.setFragmentUniforms(0, std::as_bytes(std::span(environment)));
+            else
+                commands.setFragmentUniforms(0, std::as_bytes(std::span(lighting)));
+            bound = nullptr;
+            boundSampler = nullptr;
+        }
         const PixelRect scissor = toPixels(cmd.clip, scale, size);
         if (scissor.empty())
             continue;
         commands.setScissor(scissor);
-        const Bound tex = texture(cmd.texture);
+        const Bound tex = cmd.texture == backdropTexture ? Bound{backdrop ? backdrop : white_.get(), rhi::Filter::Linear} : texture(cmd.texture);
         const rhi::Sampler* sampler = tex.filter == rhi::Filter::Nearest ? nearest_.get() : sampler_.get();
         if (tex.texture != bound || sampler != boundSampler) {
             commands.setTexture(0, *tex.texture, *sampler);
@@ -140,8 +190,8 @@ void Renderer::draw(rhi::CommandList& commands, const DrawList& list, const Rend
     }
 }
 
-const rhi::Pipeline& Renderer::pipeline(rhi::TextureFormat format) {
-    std::unique_ptr<rhi::Pipeline>& pipeline = pipelines_[format];
+const rhi::Pipeline& Renderer::pipeline(rhi::TextureFormat format, bool depth) {
+    std::unique_ptr<rhi::Pipeline>& pipeline = pipelines_[static_cast<int>(format) * 2 + (depth ? 1 : 0)];
     if (!pipeline) {
         rhi::PipelineDesc desc;
         desc.vertexShader = vertexShader_.get();
@@ -150,9 +200,62 @@ const rhi::Pipeline& Renderer::pipeline(rhi::TextureFormat format) {
         desc.vertexAttributes = vertexAttributes;
         desc.blend = rhi::BlendMode::PremultipliedAlpha;
         desc.colorFormat = format;
+        if (depth)
+            desc.depthFormat = rhi::TextureFormat::Depth32Float;     // (drawn over what came before: not tested)
         pipeline = device_.createPipeline(desc);
     }
     return *pipeline;
+}
+
+const rhi::Pipeline& Renderer::scenePipeline(rhi::TextureFormat format, bool depth) {
+    std::unique_ptr<rhi::Pipeline>& pipeline = scenePipelines_[static_cast<int>(format) * 2 + (depth ? 1 : 0)];
+    if (!pipeline) {
+        rhi::PipelineDesc desc;
+        desc.vertexShader = sceneVertexShader_.get();
+        desc.fragmentShader = sceneFragmentShader_.get();
+        desc.vertexStride = sizeof(SceneVertex);
+        desc.vertexAttributes = sceneAttributes;
+        desc.blend = rhi::BlendMode::PremultipliedAlpha;
+        desc.colorFormat = format;
+        if (depth) {
+            desc.depthFormat = rhi::TextureFormat::Depth32Float;
+            desc.depthTest = desc.depthWrite = true;
+        }
+        pipeline = device_.createPipeline(desc);
+    }
+    return *pipeline;
+}
+
+std::vector<std::size_t> Renderer::backdropCaptures(const DrawList& list) {
+    std::vector<std::size_t> captures;
+    // what a command covers: its vertices' bounds, cut to its clip
+    const auto bounds = [&](const DrawCommand& cmd) {
+        float left = 1e30f, top = 1e30f, right = -1e30f, bottom = -1e30f;
+        for (std::uint32_t i = cmd.firstIndex; i < cmd.firstIndex + cmd.indexCount; ++i) {
+            const Point p = cmd.scene ? list.sceneVertices[list.indices[i]].position : list.vertices[list.indices[i]].position;
+            left = std::min(left, p.x);
+            top = std::min(top, p.y);
+            right = std::max(right, p.x);
+            bottom = std::max(bottom, p.y);
+        }
+        return Rect{left, top, right - left, bottom - top}.intersected(cmd.clip);
+    };
+    std::optional<Rect> drawn;          // since the last capture (none before the first)
+    bool captured = false;
+    for (std::size_t c = 0; c < list.commands.size(); ++c) {
+        const DrawCommand& cmd = list.commands[c];
+        if (cmd.indexCount == 0)
+            continue;
+        const Rect covers = bounds(cmd);
+        if (cmd.texture == backdropTexture && (!captured || (drawn && drawn->intersects(covers)))) {
+            captures.push_back(c);
+            captured = true;
+            drawn.reset();
+        }
+        if (!covers.empty())
+            drawn = drawn ? drawn->united(covers) : covers;
+    }
+    return captures;
 }
 
 Renderer::Bound Renderer::texture(TextureId id) const {

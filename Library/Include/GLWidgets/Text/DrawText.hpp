@@ -14,6 +14,7 @@
 
 namespace glw::paint {
 class Painter;
+struct Brick;
 } // namespace glw::paint
 
 namespace glw::text {
@@ -34,5 +35,10 @@ GLW_EXPORT void drawText(paint::Painter& painter, GlyphAtlas& atlas, const TextL
 // highlighted (code). Glyphs out of the painter's clip are passed over.
 GLW_EXPORT void drawText(paint::Painter& painter, GlyphAtlas& atlas, const TextLayout& layout, Point origin, Color color,
                          std::span<const ColorSpan> spans);
+// ... printed on the top face of `brick` (as Painter::drawBrick takes it; drawn after it), from its glyphs' distance
+// fields: it turns, leans and moves with the brick, sharp however near. Its top left corner at `origin` on the face (dips
+// from its middle, x to the right and y down as the face's own). Nothing without the atlas's fields.
+GLW_EXPORT void drawTextOnBrick(paint::Painter& painter, GlyphAtlas& atlas, const TextLayout& layout, const paint::Brick& brick,
+                                Point origin, Color color);
 
 } // namespace glw::text

@@ -705,6 +705,33 @@ void DockTabs::setActive(std::size_t index) {
     }
 }
 
+void DockTabs::land(std::optional<Rect> from) {
+    if (const UiContext* ui = context())
+        arrive(ui->theme.dock.landing, false, from);
+}
+
+void DockTabs::rise() {
+    if (const UiContext* ui = context())
+        arrive(ui->theme.dock.rising, true);
+}
+
+void DockTabs::arrive(std::chrono::milliseconds duration, bool fromBehind, std::optional<Rect> from) {
+    const UiContext* ui = context();
+    if (!ui || !ui->scheduler || duration.count() <= 0)
+        return;
+    landed_ = false;
+    fromBehind_ = fromBehind;
+    from_ = from;
+    landing_.set(0);
+    landing_.animateTo(ui->scheduler, 1, Duration(duration), Easing::Linear);
+}
+
+std::optional<Arrival> DockTabs::arrival() const {
+    if (landed_ || landing_.value() >= 1)
+        return std::nullopt;
+    return Arrival{landing_.value(), fromBehind_, from_};
+}
+
 void DockTabs::rebuildTools() {
     while (!tools_->children().empty())
         tools_->removeChild(*tools_->children().back());
@@ -1188,11 +1215,21 @@ void DockArea::move(const std::string& id, Widget& target, DockSide side, bool r
     if (!source || (side == DockSide::Center && (!stack || stack == source)))
         return;
     DockArea* from = source->area();
+    // where it is on the screen: a panel docked from a floating window comes from there
+    const std::optional<Rect> was = screenRect(*source);
     DockPanel panel = source->take(*source->indexOf(id));
     if (side == DockSide::Center)
         stack->add(std::move(panel));
     else
         insertBeside(std::move(panel), target, side, 0.5f);
+    // from a floating window into a docked place: it lands there
+    DockArea* into = nullptr;
+    for (Widget* w = &target; w && !into; w = w->parent())
+        into = dynamic_cast<DockArea*>(w);
+    if (from->floating_ && into && !into->floating_) {
+        if (DockTabs* tabs = into->tabsOf(id))
+            tabs->land(inRoot(*tabs, was));
+    }
     prune(*source);         // after: a split it leaves may give way to the target
     from->closeIfEmpty();
     if (DockingHost* h = group_->host; raise && h && target.root() && target.root() != root())
@@ -1226,9 +1263,11 @@ void DockArea::toggleFloating(std::string_view id) {
             DockArea* to = homeFor();
             if (!to || !to->root())
                 return;
+            const std::optional<Rect> was = screenRect(*tabs);
             DockPanel panel = tabs->take(*tabs->indexOf(id));
             prune(*tabs);
-            to->addPanel(std::move(panel));
+            DockTabs& landed = to->addPanel(std::move(panel));
+            landed.land(inRoot(landed, was));
             from->closeIfEmpty();
             h->raiseWindow(*to->root());
             return;
@@ -1251,6 +1290,24 @@ void DockArea::move(const std::vector<std::string>& ids, Widget& target, DockSid
         if (DockTabs* into = tabsOf(ids.front()))
             move(ids[i], *into, DockSide::Center);
     }
+}
+
+std::optional<Rect> DockArea::screenRect(const Widget& widget) const {
+    const DockingHost* h = group_->host;
+    const UiRoot* r = widget.root();
+    if (!h || !r)
+        return std::nullopt;
+    const Point at = h->toScreen(*r, widget.mapToRoot({}));
+    return Rect{at.x, at.y, widget.size().width, widget.size().height};
+}
+
+std::optional<Rect> DockArea::inRoot(const Widget& widget, std::optional<Rect> screen) const {
+    const DockingHost* h = group_->host;
+    const UiRoot* r = widget.root();
+    if (!screen || !h || !r)
+        return std::nullopt;
+    const Point origin = h->toScreen(*r, {});
+    return Rect{screen->x - origin.x, screen->y - origin.y, screen->width, screen->height};
 }
 
 DockArea* DockArea::floatPanel(const std::string& id, Point position, Size size, bool focus) {
@@ -1277,6 +1334,9 @@ DockArea* DockArea::floatPanel(const std::string& id, Point position, Size size,
                    .owner = owner,
                    .titleBar = false,
                    .focus = focus});
+    // in its window now: rising into it from behind
+    if (DockTabs* tabs = floated->tabsOf(id))
+        tabs->rise();
     from->closeIfEmpty();
     return floated;
 }

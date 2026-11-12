@@ -60,12 +60,19 @@ struct StateColor {
 //           Glossy: sharp white highlights where they turn toward the light.
 //   Metal   ... of metal: its highlights of its own color, its surfaces brushed; gunmetal in the dark, aluminum in the
 //           light.
+//   Solid   Plastic in three dimensions: its raised controls solids (Theme::reliefBricks), their tops where Plastic's
+//           are, their sides showing as a camera above the window sees them; panels docked from a floating window fall
+//           into their places (DockStyle::landing), and floated, rise into their window from behind it.
+//   Glass   Solid of glass: its controls, and the slabs they stand on, panes of frosted glass, what is under them
+//           showing through, blurred (ReliefBricks::glass).
 enum class ThemeStyle : std::uint8_t {
     Studio,
     Fluid,
     Plain,
     Plastic,
     Metal,
+    Solid,
+    Glass,
 };
 
 // The colors a theme is made in, in any of the looks (Theme::of; Application::setColorScheme):
@@ -217,6 +224,11 @@ struct SplitterStyle {
 // Docked panels: each stack an island (a layer with rounded corners) on the window, gaps between them; the tab shown
 // raised and joined to its content as Fusion's; where a dragged tab would go.
 struct DockStyle {
+    // Panels docked from a floating window: what they paint falls into its place over this (Painter::fallIn), from in
+    // front of the window (zero: there at once). Floated: what they paint rises into their window over `rising`, from
+    // behind it (Painter::riseIn).
+    std::chrono::milliseconds landing{0};
+    std::chrono::milliseconds rising{0};
     Color background;               // of a stack: its tabs and the content of the panel shown
     Color border;                   // around a stack
     Color separator;                // between a stack's tabs and its content
@@ -491,6 +503,11 @@ struct Theme {
     WindowButtonStyle windowButton;
     WindowFrameStyle frame;
     paint::Lighting lighting;       // what lights reliefs (Bevel::relief): the renderer's, as the theme changes
+    // Raised reliefs drawn as bricks (Painter::setReliefBricks; none: as reliefs), seen from a camera `cameraDistance`
+    // times the window's longer side above its middle (0: the painter's own; nearer, their sides show more toward the
+    // window's edges).
+    std::optional<paint::ReliefBricks> reliefBricks;
+    float cameraDistance = 0;
 
     // The styles of every widget made from `palette`, in `style`.
     GLW_EXPORT static Theme fromPalette(const Palette& palette, ThemeStyle style = ThemeStyle::Studio);
@@ -512,6 +529,8 @@ private:
     static void reliefs(Theme& theme, bool dark);       // Plastic's and Metal's shapes
     static void plastic(Theme& theme, bool dark);
     static void metal(Theme& theme, bool dark);
+    static void solid(Theme& theme, bool dark);         // (SolidStyle.cpp)
+    static void glass(Theme& theme, bool dark);         // (SolidStyle.cpp)
 };
 
 } // namespace glw

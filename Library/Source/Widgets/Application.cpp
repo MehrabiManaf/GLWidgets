@@ -22,6 +22,7 @@
 #include <mutex>
 #include <string_view>
 #include <variant>
+#include <limits>
 #include <vector>
 
 namespace glw {
@@ -357,11 +358,42 @@ struct Application::Impl final : DockingHost {
         }
     }
 
+    // `w`'s list with glass in it: drawn into its own texture (its depth with it), cut at each capture (the texture
+    // copied at half its size, for the glass after it to read), then copied onto the image of its surface (`size`).
+    void drawWithGlass(Window& w, rhi::CommandList& commands, PixelSize size, const std::vector<std::size_t>& captures, bool depth) {
+        const rhi::TextureFormat format = w.surface_->format();
+        if (!w.offscreen_ || w.offscreen_->size() != size || w.offscreen_->format() != format) {
+            const auto both = rhi::TextureUsage::Sampled | rhi::TextureUsage::RenderTarget;
+            w.offscreen_ = device->createTexture({size, format, both});
+            w.offscreenDepth_.reset();
+            w.backdrop_ = device->createTexture({{std::max(1, (size.width + 1) / 2), std::max(1, (size.height + 1) / 2)}, format, both});
+        }
+        if (depth && !w.offscreenDepth_)
+            w.offscreenDepth_ = device->createTexture({size, rhi::TextureFormat::Depth32Float, rhi::TextureUsage::DepthTarget});
+        rhi::Texture* depthTexture = depth ? w.offscreenDepth_.get() : nullptr;
+        const float scale = w.root_.scale();
+        const rhi::Texture* backdrop = w.backdrop_.get();
+        commands.beginTexturePass(*w.offscreen_, context->theme.palette.window, depthTexture, true);
+        std::size_t from = 0;
+        for (const std::size_t at : captures) {
+            renderer->draw(commands, w.list_, w.buffers_, format, size, scale, depth, from, at, backdrop);
+            commands.endPass();
+            // what is under the glass that comes: halved (a linear blit)
+            commands.blit(*w.offscreen_, *w.backdrop_);
+            commands.beginTexturePass(*w.offscreen_, std::nullopt, depthTexture, false);
+            from = at;
+        }
+        renderer->draw(commands, w.list_, w.buffers_, format, size, scale, depth, from, std::numeric_limits<std::size_t>::max(), backdrop);
+        commands.endPass();
+        commands.blitToSurface(*w.offscreen_, *w.surface_);
+    }
+
     // Lays out, paints and presents `which`. False when one had no image to draw into (Vulkan remakes its swap chain after a
     // window is shown or resized): it stays to be drawn.
     bool draw(const std::vector<Window*>& which) {
         inFrame = true;
         renderer->setLighting(context->theme.lighting);     // what lights reliefs (a style's that has them)
+        renderer->setEnvironment({.exposure = 1, .dark = context->theme.isDark()});       // ... and bricks
         for (Window* w : which)
             w->root_.paint(w->list_);       // paint fills the glyph atlas: before the atlas goes to the GPU
         auto commands = device->beginCommands();
@@ -378,8 +410,20 @@ struct Application::Impl final : DockingHost {
         bool all = true;
         for (Window* w : which) {
             renderer->upload(*commands, w->list_, w->buffers_);
-            if (const auto size = commands->beginSurfacePass(*w->surface_, context->theme.palette.window)) {
-                renderer->draw(*commands, w->list_, w->buffers_, w->surface_->format(), *size, w->root_.scale());
+            // a depth buffer only for bricks that may pass through one another (falling into their places)
+            const bool depth = w->list_.depth && !w->list_.sceneVertices.empty();
+            // glass: drawn into a texture first, copied and blurred where the glass reads what is under it
+            if (const std::vector<std::size_t> captures = paint::Renderer::backdropCaptures(w->list_); !captures.empty()) {
+                if (const auto size = commands->acquireSurface(*w->surface_)) {
+                    drawWithGlass(*w, *commands, *size, captures, depth);
+                } else {
+                    w->root_.invalidatePaint();
+                    all = false;
+                }
+                continue;
+            }
+            if (const auto size = commands->beginSurfacePass(*w->surface_, context->theme.palette.window, depth)) {
+                renderer->draw(*commands, w->list_, w->buffers_, w->surface_->format(), *size, w->root_.scale(), depth);
                 commands->endPass();
             } else {
                 w->root_.invalidatePaint();

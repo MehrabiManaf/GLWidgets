@@ -35,6 +35,13 @@ SHADERS = [
         "namespace": "glw::paint::shaders",
         "stages": [("Vertex", "vertexMain", "vs"), ("Fragment", "fragmentMain", "ps")],
     },
+    {
+        "name": "scene",
+        "source": "Library/Shaders/Scene.hlsl",
+        "output": "Library/Source/Paint/SceneShaders.hpp",
+        "namespace": "glw::paint::shaders",
+        "stages": [("Vertex", "vertexMain", "vs"), ("Fragment", "fragmentMain", "ps")],
+    },
 ]
 
 

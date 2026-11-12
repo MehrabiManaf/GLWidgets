@@ -46,6 +46,8 @@ Painter::Painter(DrawList& list, Rect bounds, float pixelsPerDip) : list_(list),
     GLW_EXPECTS(pixelsPerDip > 0);
     clips_.push_back(bounds);
     transforms_.push_back(Transform{});
+    const Point middle = bounds.center();
+    camera_.eye = {middle.x, middle.y, std::max(1000.0f, 1.6f * std::max(bounds.width, bounds.height))};
 }
 
 Painter::~Painter() {
@@ -84,6 +86,16 @@ void Painter::drawShadow(const Rect& rect, float radius, float blur, Color color
 }
 
 void Painter::fillRelief(const Rect& rect, float radius, float height, float bevel, Color color) {
+    if (reliefBricks_ && height > 0 && !rect.empty()) {
+        // a solid: its top where the relief's is, its body down into what it is on
+        const float depth = std::min(height * reliefBricks_->depth, std::min(rect.width, rect.height) * 0.5f);
+        const Point c = rect.center();
+        drawBrick({.center = {c.x, c.y, -depth / 2}, .halfSize = {rect.width / 2, rect.height / 2, depth / 2}, .cornerRadius = radius,
+                   .bevel = reliefBricks_->bevel >= 0 ? reliefBricks_->bevel : bevel, .color = color,
+                   .roughness = reliefBricks_->roughness, .shadow = 0, .reliefLight = true,
+                   .glass = reliefBricks_->glass && height >= reliefBricks_->glassFrom});
+        return;
+    }
     const Transform& t = transform();
     const Rect r = t.map(rect);
     if (r.empty() || color.a <= 0)
@@ -601,20 +613,21 @@ void Painter::popTransform() {
     transforms_.pop_back();
 }
 
-DrawCommand& Painter::command(TextureId texture, bool anyTexture) {
+DrawCommand& Painter::command(TextureId texture, bool anyTexture, bool scene) {
     const Rect& clip = clips_.back();
     if (!list_.commands.empty()) {
         DrawCommand& last = list_.commands.back();
-        if (last.clip == clip && (anyTexture || last.texture == texture))
+        if (last.clip == clip && last.scene == scene && (anyTexture || last.texture == texture))
             return last;
         if (last.indexCount == 0) {     // nothing in it yet: it can still change
             last.clip = clip;
             last.texture = anyTexture ? whiteTexture : texture;
+            last.scene = scene;
             return last;
         }
     }
     list_.commands.push_back(
-        DrawCommand{static_cast<std::uint32_t>(list_.indices.size()), 0, clip, anyTexture ? whiteTexture : texture});
+        DrawCommand{static_cast<std::uint32_t>(list_.indices.size()), 0, clip, anyTexture ? whiteTexture : texture, scene});
     return list_.commands.back();
 }
 

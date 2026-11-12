@@ -6,6 +6,7 @@
 #include "Check.hpp"
 #include "TestUi.hpp"
 
+#include <GLWidgets/Paint/DrawList.hpp>
 #include <GLWidgets/Widgets/Docking.hpp>
 #include <GLWidgets/Widgets/DockingHost.hpp>
 #include <GLWidgets/Widgets/MajorTabs.hpp>
@@ -636,6 +637,48 @@ TEST(floatButtonFloatsAndDocksBack) {
     screen.release(floating, back);
     screen.closeWindows();
     CHECK(screen.all.size() == 1 && t.area->tabsOf("palette")->area() == t.area);
+}
+
+// Floated, a panel rises into its window from behind it, and docked back, it lands where its style says so
+// (DockStyle::rising, landing): what it paints comes into its place, tested by depth meanwhile, then is where it is; a
+// style without them shows it there at once.
+TEST(aPanelDockedBackLandsAsItsStyleSays) {
+    tests::testScheduler().setAnimationsEnabled(true);
+    for (const ThemeStyle style : {ThemeStyle::Studio, ThemeStyle::Solid, ThemeStyle::Glass}) {
+        Screen screen;
+        screen.context.theme = Theme::dark(style);
+        Tools t(screen, {0, 0});
+        const auto floatButton = [&](DockTabs& tabs) -> Point {
+            const Widget& button = *tabs.children()[1]->children().back();
+            return button.mapToRoot({12, 12}) + screen.windowPosition(*tabs.root());
+        };
+        screen.layout();
+        const Point out = floatButton(*t.area->tabsOf("palette"));
+        screen.press(*t.window, out);
+        screen.release(*t.window, out);
+        screen.closeWindows();
+        screen.layout();
+        const bool landing = style != ThemeStyle::Studio;
+        // floated: rising into its window from behind it (drawn over what is there as it comes: no depth test)
+        paint::DrawList floated;
+        screen.all.front()->root->paint(floated);
+        CHECK(!floated.depth && (!landing || floated.sceneVertices.front().center[2] < -10));
+        tests::advance(screen.context.theme.dock.rising + std::chrono::milliseconds(50));
+        const Point back = floatButton(*t.area->tabsOf("palette"));
+        screen.press(*screen.all.front(), back);
+        screen.release(*screen.all.front(), back);
+        screen.closeWindows();
+        CHECK(t.area->tabsOf("palette")->area() == t.area);
+        paint::DrawList list;
+        t.window->root->paint(list);
+        // landing from where it was in its floating window: lifted toward the camera, coming down from there together
+        CHECK(!list.depth && list.sceneVertices.empty() != landing && (!landing || list.sceneVertices.front().center[2] > 10));
+        // once it has landed: as it is
+        tests::advance(screen.context.theme.dock.landing + std::chrono::milliseconds(50));
+        t.window->root->paint(list);
+        CHECK(!list.depth);
+    }
+    tests::testScheduler().setAnimationsEnabled(false);
 }
 
 namespace {

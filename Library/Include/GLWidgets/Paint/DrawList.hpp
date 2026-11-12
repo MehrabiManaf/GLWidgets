@@ -4,8 +4,12 @@
 // What a Painter records and a Renderer draws: vertices, 32-bit indices of triangle lists, and commands that refer to
 // textures by id. No GPU object, so anything with the shader of Library/Shaders/Painter.hlsl and one pipeline (the vertex
 // layout below, premultiplied alpha blending) can draw it: GLWidgets' Renderer, or an engine's own renderer.
+//
+// Bricks (Scene.hpp) are commands of their own (DrawCommand::scene): their indices are of the scene's vertices, drawn
+// with Library/Shaders/Scene.hlsl and its layout. A list without them needs the first shader only.
 #include <GLWidgets/Core/Color.hpp>
 #include <GLWidgets/Core/Geometry.hpp>
+#include <GLWidgets/Paint/Scene.hpp>
 
 #include <algorithm>
 #include <cmath>
@@ -18,6 +22,9 @@ namespace glw::paint {
 // A texture as a draw list knows it: the renderer maps ids to textures. 0 is a white texel.
 using TextureId = std::uint64_t;
 inline constexpr TextureId whiteTexture = 0;
+// What was drawn under a glass brick (Brick::glass), blurred: no texture of its own, the renderer's copy of the target as
+// it is when the brick comes (Renderer::backdropCaptures).
+inline constexpr TextureId backdropTexture = ~TextureId{0};
 
 enum class VertexKind : std::uint8_t { Textured = 0, Box = 1, Mask = 2, Relief = 3, RingRelief = 4, Field = 5 };
 
@@ -56,17 +63,22 @@ struct DrawCommand {
     std::uint32_t indexCount = 0;
     Rect clip;                      // dips of the target
     TextureId texture = whiteTexture;
+    bool scene = false;             // of bricks: its indices are of sceneVertices, drawn with Scene.hlsl
 };
 
 struct DrawList {
     std::vector<Vertex> vertices;
     std::vector<std::uint32_t> indices;
     std::vector<DrawCommand> commands;
+    std::vector<SceneVertex> sceneVertices;
+    bool depth = false;             // its bricks tested against one another by depth (Painter::setDepthTest)
 
     void clear() {
         vertices.clear();
         indices.clear();
         commands.clear();
+        sceneVertices.clear();
+        depth = false;
     }
     bool empty() const { return indices.empty(); }
 };

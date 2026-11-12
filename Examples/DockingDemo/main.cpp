@@ -14,7 +14,7 @@
 // at the end of a stack's tab bar floats its panel (docks it back, in a floating window); the Search panel has one more,
 // which clears its field. Tabs that do not fit scroll: by the wheel, or by the thin bar along their bottom.
 //
-//   docking_demo [--frames N] [--language fa] [--workspace FILE] [--style studio|fluid|plain|plastic|metal]
+//   docking_demo [--frames N] [--language fa] [--workspace FILE] [--style studio|fluid|plain|plastic|metal|solid|glass]
 //                [--colors dark|light|dusk|sand|turquoise] [--light]
 //
 // --frames N draws N frames and exits: a smoke test. --workspace FILE starts with the windows FILE has (if it is there),
@@ -41,6 +41,35 @@
 #include <vector>
 
 namespace {
+
+// The window's area over a dark wallpaper: a deep gradient and a few soft glows of color, to see glass over (the Glass
+// style's panels and controls blur what is under them).
+class Wallpapered final : public glw::DockArea {
+public:
+    using glw::DockArea::DockArea;
+
+protected:
+    void paint(glw::PaintContext& context) override {
+        glw::paint::Painter& p = context.painter;
+        const glw::Size s = size();
+        p.fillRoundedRect({0, 0, s.width, s.height}, 0, glw::Color{0.05f, 0.06f, 0.09f, 1}, glw::Color{0.02f, 0.02f, 0.04f, 1});
+        // soft glows: blurred discs of color
+        const struct {
+            float x, y, r;
+            glw::Color color;
+        } glows[] = {{0.15f, 0.25f, 0.22f, {0.20f, 0.45f, 0.95f, 0.55f}}, {0.72f, 0.18f, 0.18f, {0.85f, 0.30f, 0.65f, 0.45f}},
+                     {0.55f, 0.75f, 0.25f, {0.10f, 0.75f, 0.60f, 0.40f}}, {0.90f, 0.80f, 0.16f, {0.95f, 0.65f, 0.15f, 0.40f}}};
+        for (const auto& g : glows) {
+            const float r = g.r * std::max(s.width, s.height);
+            p.drawShadow({g.x * s.width - r, g.y * s.height - r, 2 * r, 2 * r}, r, r * 0.8f, g.color);
+        }
+        // a fine grid of lines, faint
+        for (float x = 0; x < s.width; x += 24)
+            p.fillRect({x, 0, 1, s.height}, glw::Color{1, 1, 1, 0.025f});
+        for (float y = 0; y < s.height; y += 24)
+            p.fillRect({0, y, s.width, 1}, glw::Color{1, 1, 1, 0.025f});
+    }
+};
 
 namespace ui = glw::ui;
 using glw::tr;
@@ -236,7 +265,7 @@ struct Studio {
         addScript(*tabs);
         tabs->setActive(0);
         std::unique_ptr<glw::MajorTabStrip> strip = tabs->makeStrip();
-        auto window = std::make_unique<glw::DockArea>(glw::DockScope::Global);
+        auto window = std::make_unique<Wallpapered>(glw::DockScope::Global);
         window->setCenter(std::move(tabs));
         window->addPanel(*globalPanel("files"), nullptr, glw::DockSide::Start, 0.16f);
         window->addPanel(*globalPanel("log"), nullptr, glw::DockSide::Bottom, 0.2f);

@@ -187,7 +187,8 @@ Palette Palette::light(ThemeStyle style) {
 std::optional<ThemeStyle> themeStyleNamed(std::string_view name) {
     constexpr std::pair<std::string_view, ThemeStyle> names[] = {{"studio", ThemeStyle::Studio}, {"fluid", ThemeStyle::Fluid},
                                                                  {"plain", ThemeStyle::Plain}, {"plastic", ThemeStyle::Plastic},
-                                                                 {"metal", ThemeStyle::Metal}};
+                                                                 {"metal", ThemeStyle::Metal}, {"solid", ThemeStyle::Solid},
+                                                                 {"glass", ThemeStyle::Glass}};
     for (const auto& [n, style] : names)
         if (n == name)
             return style;
@@ -548,6 +549,10 @@ Theme Theme::fromPalette(const Palette& p, ThemeStyle style) {
         plastic(t, dark);
     else if (style == ThemeStyle::Metal)
         metal(t, dark);
+    else if (style == ThemeStyle::Solid)
+        solid(t, dark);
+    else if (style == ThemeStyle::Glass)
+        glass(t, dark);
     return t;
 }
 

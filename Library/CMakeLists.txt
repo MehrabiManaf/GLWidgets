@@ -34,6 +34,7 @@ add_library(GLWidgets ${GLW_LIB_TYPE}
     Source/Core/Assert.cpp
     Source/Core/Error.cpp
     Source/Paint/Painter.cpp
+    Source/Paint/PainterScene.cpp
     Source/Paint/Renderer.cpp
     Source/Platform/Platform.cpp
     Source/Platform/Sdl/SdlKeys.cpp
@@ -84,6 +85,7 @@ add_library(GLWidgets ${GLW_LIB_TYPE}
     Source/Widgets/SpinBox.cpp
     Source/Widgets/Splitter.cpp
     Source/Widgets/StatusBar.cpp
+    Source/Widgets/SolidStyle.cpp
     Source/Widgets/Theme.cpp
     Source/Widgets/ToolBar.cpp
     Source/Widgets/TableView.cpp

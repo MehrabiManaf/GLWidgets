@@ -6,12 +6,15 @@
 //
 // Boxes (rectangles, rounded rectangles, circles, their borders, shadows) are distance fields drawn by the shader: four
 // vertices each, anti-aliased at any scale. Lines and polygons are tessellated here with a one-pixel anti-aliasing fringe.
+// Bricks are solids in space (Scene.hpp), seen from a camera above the target: drawn, and what was drawn moved in space.
 #include <GLWidgets/Core/Color.hpp>
 #include <GLWidgets/Core/Geometry.hpp>
 #include <GLWidgets/Export.hpp>
 #include <GLWidgets/Paint/DrawList.hpp>
+#include <GLWidgets/Paint/Scene.hpp>
 #include <GLWidgets/Paint/Transform.hpp>
 
+#include <optional>
 #include <span>
 #include <vector>
 
@@ -41,7 +44,8 @@ public:
     // A blurred rounded rectangle: the shadow of something of that shape (offset the rectangle to cast it).
     void drawShadow(const Rect& rect, float radius, float blur, Color color);
     // A rounded rectangle as a relief: `height` dips above what it is on (below it when negative: sunk), its edge rounding
-    // down over `bevel` dips, lit by the light of the target (Lighting, the Renderer's): its flat top in `color`.
+    // down over `bevel` dips, lit by the light of the target (Lighting, the Renderer's): its flat top in `color`. Raised,
+    // a brick instead while the painter draws them so (setReliefBricks).
     void fillRelief(const Rect& rect, float radius, float height, float bevel, Color color);
     void fillCircle(Point center, float radius, Color color);
     void strokeCircle(Point center, float radius, float width, Color color);
@@ -90,6 +94,53 @@ public:
     // distances reach, in `uv`'s units (across, down). `rect` as drawMask's.
     void drawFieldMask(const Rect& targetRect, TextureId texture, Color color, const Rect& uv, Point range);
 
+    // ---- solids (Scene.hpp) ----
+
+    // A brick where it is in space (its center's x and y through the current transform, its sizes and z scaled with it),
+    // seen from the camera; its shadow on the target first (drawBrickShadow), unless its `shadow` is 0.
+    void drawBrick(const Brick& brick);
+    // Its shadow on the target, cast from the scene's light (above, to the upper left), softer as it is higher. Bricks of a
+    // group (that may stand over one another): all their shadows first, then the bricks with `shadow` 0, so that a shadow
+    // falls on the target and not on the bricks drawn before it.
+    void drawBrickShadow(const Brick& brick);
+    // A glyph's multi-channel distance field (GlyphAtlas::fieldGlyph) printed on a brick's top face (`brick` as drawBrick
+    // takes it): `rect` on the face, from its middle (dips of the brick, before the transform), `uv` the part of `texture`,
+    // `range` how far its distances reach in uv's units, in `color` lit as the face is. Drawn after its brick, it turns,
+    // leans and moves with it, sharp at any size (text::drawTextOnBrick).
+    void drawBrickDecal(const Brick& brick, const Rect& rect, TextureId texture, const Rect& uv, Point range, Color color);
+    // Raised reliefs (fillRelief with a height above 0) drawn as bricks (none: as reliefs).
+    void setReliefBricks(std::optional<ReliefBricks> bricks) { reliefBricks_ = bricks; }
+    const std::optional<ReliefBricks>& reliefBricks() const { return reliefBricks_; }
+    // Its bricks tested against one another by depth (they may pass through one another: a pile fallen); without it they
+    // are drawn in their order, as everything else.
+    void setDepthTest(bool depth) { list_.depth = depth; }
+
+    // What was drawn since a Mark (taken before it) can be moved in space afterwards.
+    struct Mark {
+        std::size_t vertices = 0, sceneVertices = 0, commands = 0;
+    };
+    Mark mark();
+    // What was drawn since `mark` falling in from in front of the target, `t` of the way (0 to 1): each brick (and what
+    // is printed on it) from near the camera, turning about an axis of its own, a little aside, down to where it is, one
+    // after another from the top of `area` down; its shadow coming as it does; the 2D of it (text, lines) showing at the
+    // end; bricks cut by no clip meanwhile.
+    // From `from` (the target's dips: where it was), each point of it starts where it was there (`area` stretched onto
+    // `from`), a little nearer the camera, and moves down to its place with a slight tilt, the 2D with it, one row a
+    // little after another.
+    void fallIn(const Mark& mark, float t, const Rect& area, std::optional<Rect> from = std::nullopt);
+    // ... rising from far behind the target instead (small, toward the camera's middle), nearer and nearer, slowing as it
+    // comes, one after another from the middle of `area` out; the 2D of each place showing as what is under it comes.
+    void riseIn(const Mark& mark, float t, const Rect& area);
+    // What was drawn since `mark` moved in three dimensions about `pivot` (dips of the target, on the target's plane): its
+    // 2D seen where it goes (its vertices projected), its bricks lifted and turned with it; shadows where they are.
+    void place(const Mark& mark, Point pivot, const Lifted& lifted);
+    // The camera bricks are seen from: by default above the middle of the target, as far above it as 1.6 times its longer
+    // side (at least 1000 dips).
+    void setCamera(Camera camera) { camera_ = camera; }
+    const Camera& camera() const { return camera_; }
+    // Where a point in space shows on the target, seen from the camera (the target's dips).
+    Point project(Float3 point) const;
+
     // ---- state ----
 
     // Cuts what follows to `rect` (intersected with the clip in effect) until popClip.
@@ -106,8 +157,17 @@ public:
 
 private:
     // The command what is added next goes into: the last one when its clip and texture fit. `anyTexture`: what is added
-    // does not read the texture (a box), so any command with the clip in effect will do.
-    DrawCommand& command(TextureId texture, bool anyTexture);
+    // does not read the texture (a box), so any command with the clip in effect will do. `scene`: of bricks.
+    DrawCommand& command(TextureId texture, bool anyTexture, bool scene = false);
+    // A scene quad: `v` at each corner of `quad`, into the command of `texture`.
+    void sceneQuad(const Rect& quad, SceneVertex v, TextureId texture, bool anyTexture);
+    // fallIn's and riseIn's.
+    void arrive(const Mark& mark, float t, const Rect& area, bool fromBehind);
+    void arriveFrom(const Mark& mark, float t, const Rect& area, const Rect& from);
+    // A brick's (a decal's) four scene vertices placed again around where it shows.
+    void placeQuad(SceneVertex* four) const;
+    // The scene vertex of `brick` through the current transform, of `kind` (its eye and pixels per dip set; no position).
+    SceneVertex sceneVertex(const Brick& brick, float kind) const;
     // A box in the target's dips.
     void box(const Rect& rect, float radius, float border, float blur, Color top, Color bottom);
     // A textured quad in the target's dips.
@@ -122,6 +182,8 @@ private:
     std::vector<Point> points_;         // scratch, so that a polyline does not allocate each time
     std::vector<Point> normals_;
     std::vector<Point> curve_;
+    Camera camera_;
+    std::optional<ReliefBricks> reliefBricks_;
 };
 
 } // namespace glw::paint
