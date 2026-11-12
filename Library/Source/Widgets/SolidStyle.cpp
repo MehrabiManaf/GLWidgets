@@ -41,6 +41,8 @@ void Theme::solid(Theme& t, bool dark) {
     t.menu.bevel = t.toolTip.bevel = t.dialog.bevel = {.relief = 0.8f, .roundness = 1.5f};
     t.motion.popupEntrance = PopupEntrance::Rise;
     t.motion.dialogEntrance = PopupEntrance::Land;
+    // and each time one of their ways, at random: a popup's, a dialog's, a panel's cascade, a check box's mark
+    t.motion.varied = true;
     // a table's column headers keys of their own; the selection moving from row to row (a brick sliding)
     for (ItemViewStyle* view : {&t.itemView, &t.table}) {
         view->headerGap = 2;

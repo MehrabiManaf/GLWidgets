@@ -780,8 +780,7 @@ void DockTabs::arrive(std::chrono::milliseconds duration, bool fromBehind, std::
     landingMotion_ = LandingMotion::Cascade;
     risingMotion_ = RisingMotion::FromBehind;
     if (ui->theme.dock.variedArrivals) {
-        static std::minstd_rand random(std::random_device{}());
-        const int pick = std::uniform_int_distribution<int>(0, 2)(random);
+        const int pick = randomWay(3);
         landingMotion_ = static_cast<LandingMotion>(pick);
         risingMotion_ = static_cast<RisingMotion>(pick);
     }

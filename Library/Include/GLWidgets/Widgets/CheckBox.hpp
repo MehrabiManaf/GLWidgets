@@ -62,6 +62,8 @@ private:
     ColorTransition glow_{[this] { invalidatePaint(); }};
     Animation mark_{[this] { invalidatePaint(); }};
     bool markShown_ = false;
+    // how the mark comes this time (MotionStyle::varied): dropping in, turning in as a coin, growing past its size
+    int markWay_ = 0;
 };
 
 } // namespace glw

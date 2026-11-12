@@ -3,8 +3,16 @@
 #include <GLWidgets/Widgets/Animation.hpp>
 
 #include <algorithm>
+#include <random>
 
 namespace glw {
+
+int randomWay(int ways) {
+    if (ways <= 1)
+        return 0;
+    static std::minstd_rand random(std::random_device{}());
+    return std::uniform_int_distribution<int>(0, ways - 1)(random);
+}
 
 // ---- scheduler ----
 

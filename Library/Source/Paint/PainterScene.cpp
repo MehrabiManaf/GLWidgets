@@ -660,4 +660,36 @@ void Painter::turnIn(const Mark& mark, float t, const Rect& area) {
     place(mark, area.center(), lifted);
 }
 
+void Painter::unfoldIn(const Mark& mark, float t, const Rect& area, Edge hinge) {
+    t = std::clamp(t, 0.0f, 1.0f);
+    if (t >= 1 || area.empty())
+        return;
+    // turned about its hinge, its far edge back into the window, opening toward the one looking (past flat a little, and
+    // back), the light catching it on the way
+    const float angle = 1.1f * (1 - outBack(t, 1.4f));
+    Point pivot;
+    Quaternion turn;
+    switch (hinge) {
+    case Edge::Top:
+        pivot = {area.center().x, area.y};
+        turn = Quaternion::axisAngle({1, 0, 0}, -angle);
+        break;
+    case Edge::Bottom:
+        pivot = {area.center().x, area.bottom()};
+        turn = Quaternion::axisAngle({1, 0, 0}, angle);
+        break;
+    case Edge::Left:
+        pivot = {area.x, area.center().y};
+        turn = Quaternion::axisAngle({0, 1, 0}, angle);
+        break;
+    case Edge::Right:
+        pivot = {area.right(), area.center().y};
+        turn = Quaternion::axisAngle({0, 1, 0}, -angle);
+        break;
+    }
+    const Lifted lifted{.turn = turn * towardLight(0.14f * std::sin(pi * outCubic(t))), .alpha = smooth01(t / 0.25f)};
+    placeClips(mark, pivot, lifted);
+    place(mark, pivot, lifted);
+}
+
 } // namespace glw::paint

@@ -24,6 +24,9 @@ CheckBox::CheckBox(Props props) : checked_(props.checked), onToggled_(std::move(
 void CheckBox::setChecked(bool checked) {
     if (checked != checked_) {
         checked_ = checked;
+        // which way its mark comes (a style's that varies it): one of three at random
+        const UiContext* ui = context();
+        markWay_ = ui && ui->theme.motion.varied ? randomWay(3) : 0;
         invalidatePaint();
     }
 }
@@ -111,7 +114,14 @@ void CheckBox::paint(PaintContext& context) {
         }
         if (dropping) {
             const float fall = 1 - m;
-            p.place(mark, p.transform().map(box_.center()), {.lift = s.checkDrop * fall * fall});
+            const Point middle = p.transform().map(box_.center());
+            constexpr float pi = 3.14159265f;
+            if (markWay_ == 1)          // turning in about its upright middle, from edge on, as a coin flipped onto it
+                p.place(mark, middle, {.lift = s.checkDrop * 0.5f * std::sin(pi * m), .turn = paint::Quaternion::axisAngle({0, 1, 0}, 1.5f * fall)});
+            else if (markWay_ == 2)     // growing out of a small one, a little past its size and back
+                p.place(mark, middle, {.lift = s.checkDrop * 0.3f * fall, .scale = 1 + 0.3f * std::sin(pi * m) - 0.6f * fall});
+            else
+                p.place(mark, middle, {.lift = s.checkDrop * fall * fall});
         }
     }
     // the text paints after this, in the color of the state

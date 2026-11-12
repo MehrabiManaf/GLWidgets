@@ -31,6 +31,9 @@ using Duration = Clock::duration;
 class Timer;
 class Animation;
 
+// One of `ways` (0 to ways - 1) at random: which way a motion that varies goes this time (MotionStyle::varied).
+GLW_EXPORT int randomWay(int ways);
+
 class GLW_EXPORT Scheduler {
 public:
     // `clock`: where the time comes from (a test's own); the steady clock by default.

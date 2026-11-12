@@ -289,6 +289,8 @@ void paintArriving(paint::Painter& painter, const paint::Painter::Mark& mark, co
             painter.popIn(mark, arrival.progress, area);
         else if (arrival.rising == RisingMotion::Turn)
             painter.turnIn(mark, arrival.progress, area);
+        else if (arrival.rising == RisingMotion::Unfold)
+            painter.unfoldIn(mark, arrival.progress, area, arrival.hinge);
         else
             painter.riseIn(mark, arrival.progress, area);
     } else if (arrival.from && arrival.landing == LandingMotion::Swing) {

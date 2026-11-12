@@ -91,11 +91,36 @@ std::optional<paint::Lifted> CollapsiblePanel::rowLifted(const Widget& child) co
     const float e = 1 - (1 - o) * (1 - o) * (1 - o);
     if (e >= 1)
         return std::nullopt;
+    constexpr float pi = 3.14159265f;
+    if (cascade_ == Cascade::Fall) {
+        // standing up on its top edge toward the one looking, falling flat onto its place (a little past, and back): the
+        // top edge stays where it is, the rest turns about it
+        const float v = o - 1;
+        const float fallen = 1 + 2.2f * v * v * v + 1.2f * v * v;
+        const float angle = 1.35f * (1 - fallen);
+        const float half = child.bounds().height / 2;
+        return paint::Lifted{.lift = half * std::sin(angle),
+                             .turn = paint::Quaternion::axisAngle({1, 0, 0}, angle),
+                             .shift = {0, half * (std::cos(angle) - 1)},
+                             .alpha = std::min(1.0f, o * 4)};
+    }
+    if (cascade_ == Cascade::Drop) {
+        // from in front: down faster and faster, a hair turned (one way, the next the other), a small bounce where it lands
+        constexpr float landed = 0.8f;
+        const float left = 1 - std::min(1.0f, o / landed);
+        float lift = 48 * left * left;
+        if (o > landed) {
+            const float b = (o - landed) / (1 - landed);
+            lift = 3 * std::sin(pi * b) * (1 - b);
+        }
+        const float lean = 0.16f * left * left * (index % 2 == 0 ? 1.0f : -1.0f);
+        return paint::Lifted{.lift = lift, .turn = paint::Quaternion::axisAngle({0, 1, 0}, lean), .alpha = std::min(1.0f, o * 3)};
+    }
     // from under the header (as far up as its bottom is below the content's top), a little nearer the one looking on
     // the way, turned toward the light (above, to the upper left): a highlight across it
     const float up = child.bounds().bottom();
     const float x = -0.42f, y = -0.62f, n = std::sqrt(x * x + y * y);
-    const float arc = std::sin(3.14159265f * e);
+    const float arc = std::sin(pi * e);
     return paint::Lifted{.lift = 6 * arc,
                          .turn = paint::Quaternion::axisAngle({-y / n, x / n, 0}, 0.22f * arc),
                          .shift = {0, -up * (1 - e)},
@@ -128,6 +153,9 @@ void CollapsiblePanel::setExpanded(bool expanded, bool animated) {
         content_->setVisible(true);
     else if (root() && inside(root()->focusWidget(), *content_))
         focus();                            // what had the focus goes: the header has it
+    // which way its widgets come (a style's that varies it): one of three at random
+    const UiContext* ui = context();
+    cascade_ = animated && ui && ui->theme.motion.varied && style().cascade ? static_cast<Cascade>(randomWay(3)) : Cascade::Slide;
     if (animated)
         progress_.animateTo(scheduler(), expanded ? 1.0f : 0.0f,
                             context() ? Duration(context()->theme.motion.slow) : Duration(std::chrono::milliseconds(300)), Easing::InOutCubic);

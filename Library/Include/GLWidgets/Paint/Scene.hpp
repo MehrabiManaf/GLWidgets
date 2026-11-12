@@ -131,6 +131,9 @@ struct ReliefBricks {
 
 // How something drawn is moved in three dimensions: made `scale` times as large and turned about its middle, lifted
 // `lift` dips toward the camera, moved `shift` across the target; `alpha` of it showing (Painter::place).
+// An edge of a rectangle: what something is hinged on (Painter::unfoldIn).
+enum class Edge : std::uint8_t { Top, Bottom, Left, Right };
+
 struct Lifted {
     float lift = 0;
     Quaternion turn;

@@ -413,6 +413,11 @@ struct MotionStyle {
     float popupSlide = 6;                       // dips a popup slides in from, out of its anchor
     PopupEntrance popupEntrance = PopupEntrance::Slide;     // a menu's, a tooltip's, a list's
     PopupEntrance dialogEntrance = PopupEntrance::Slide;    // a modal one's (a dialog)
+    // Each time something comes, one of its ways at random (a style's): a popup rising, growing, or unfolding from its
+    // anchor's side; a dialog falling into its place, gathering, or falling from nowhere; a collapsible panel's widgets (its cascade) sliding out
+    // from under its header, falling flat one after another, or dropping in; a check box's mark (its checkDrop) dropping
+    // in, turning in, or growing.
+    bool varied = false;
     // None of them: every motion at once (Plain).
     bool still() const { return fast.count() == 0 && normal.count() == 0 && slow.count() == 0 && scroll.count() == 0; }
 };

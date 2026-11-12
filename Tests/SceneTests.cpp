@@ -543,6 +543,7 @@ TEST(aCascadingPanelsWidgetsComeOutFromUnderItsHeaderInOrder) {
     tests::FakeHost host;
     UiContext context = tests::testContext();
     context.theme = Theme::dark(ThemeStyle::Solid);
+    context.theme.motion.varied = false;            // (its widgets out from under its header, each time)
     UiRoot root(context, &host);
     auto made = std::make_unique<CollapsiblePanel>(CollapsiblePanel::Props{.title = "Panel", .expanded = true});
     CollapsiblePanel& panel = *made;
@@ -601,6 +602,7 @@ TEST(everyWayToComeStartsAwayAndEndsWhereItIs) {
     const auto gather = [&](Painter& p, const Painter::Mark& m, float t) { p.gatherIn(m, t, area, from); };
     const auto pop = [&](Painter& p, const Painter::Mark& m, float t) { p.popIn(m, t, area); };
     const auto turn = [&](Painter& p, const Painter::Mark& m, float t) { p.turnIn(m, t, area); };
+    const auto unfold = [&](Painter& p, const Painter::Mark& m, float t) { p.unfoldIn(m, t, area, Edge::Top); };
     const DrawList still = drawn([](Painter&, const Painter::Mark&, float) {}, 1);
     const auto check = [&](auto&& motion, bool moves) {
         const DrawList early = drawn(motion, 0.2f), end = drawn(motion, 1);
@@ -619,4 +621,23 @@ TEST(everyWayToComeStartsAwayAndEndsWhereItIs) {
     check(gather, true);
     check(pop, true);
     check(turn, true);
+    check(unfold, true);
+    // unfolding from its top edge: what is below it still turned up toward it (the text's bottom higher than it is)
+    const DrawList early = drawn(unfold, 0.1f);
+    float bottom = -1e9f;
+    for (std::size_t i = early.vertices.size() - 4; i < early.vertices.size(); ++i)
+        bottom = std::max(bottom, early.vertices[i].position.y);
+    CHECK(bottom < 174 && bottom > 140);
+}
+
+TEST(theSolidStyleVariesHowThingsCome) {
+    CHECK(Theme::dark(ThemeStyle::Solid).motion.varied && !Theme::dark(ThemeStyle::Plastic).motion.varied);
+    // one of the ways each time: all of them, in a while
+    bool seen[3] = {};
+    for (int i = 0; i < 200; ++i) {
+        const int way = randomWay(3);
+        CHECK(way >= 0 && way < 3);
+        seen[std::clamp(way, 0, 2)] = true;
+    }
+    CHECK(seen[0] && seen[1] && seen[2] && randomWay(1) == 0);
 }

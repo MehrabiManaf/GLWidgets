@@ -126,6 +126,8 @@ private:
     Animation entrance_{[this] { entering(); }};
     Point slide_;
     PopupEntrance entranceKind_ = PopupEntrance::Slide;
+    int entranceWay_ = 0;                               // which of its kind's ways (a style's that varies them)
+    paint::Edge hinge_ = paint::Edge::Top;              // its side toward its anchor: what it unfolds from
 };
 
 class GLW_EXPORT Application {

@@ -86,6 +86,10 @@ private:
     bool headerHovered_ = false;
     bool pressed_ = false;
     Animation progress_{[this] { stepped(); }};
+    // how its widgets come this time (MotionStyle::varied): out from under its header; falling flat, one after another, as
+    // dominoes; dropping in from in front
+    enum class Cascade : std::uint8_t { Slide, Fall, Drop };
+    Cascade cascade_ = Cascade::Slide;
     ColorTransition headerColor_{[this] { invalidatePaint(); }};
     std::function<void(bool)> onToggled_;
 };

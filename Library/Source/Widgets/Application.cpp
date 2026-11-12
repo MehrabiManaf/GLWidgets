@@ -840,6 +840,13 @@ Window::Window(Application& app, PopupRequest request, Window& parent)
     if (ui.scheduler && ui.scheduler->animationsEnabled()) {
         // or (a style's) rising into its window, or landing in it
         entranceKind_ = request.modal ? ui.theme.motion.dialogEntrance : ui.theme.motion.popupEntrance;
+        // which way (a style's that varies them): one of three at random; unfolding from the side toward its anchor
+        entranceWay_ = ui.theme.motion.varied && entranceKind_ != PopupEntrance::Slide ? randomWay(3) : 0;
+        hinge_ = paint::Edge::Top;
+        if (request.placement == PopupPlacement::Below)
+            hinge_ = at.y >= request.anchor.y ? paint::Edge::Top : paint::Edge::Bottom;
+        else if (request.placement == PopupPlacement::After)
+            hinge_ = at.x >= request.anchor.x ? paint::Edge::Left : paint::Edge::Right;
         const float distance = ui.theme.motion.popupSlide;
         if (entranceKind_ != PopupEntrance::Slide)
             slide_ = {};
@@ -885,12 +892,22 @@ void Window::entering() {
     // its window there at once, nearly (what is in it comes in)
     window_->setOpacity(std::min(1.0f, shown * 4));
     const Rect all{0, 0, root_.size().width, root_.size().height};
-    if (shown >= 1)
+    if (shown >= 1) {
         root_.setContentArrival(std::nullopt);
-    else if (entranceKind_ == PopupEntrance::Rise)
-        root_.setContentArrival(Arrival{shown, true});
-    else
-        root_.setContentArrival(Arrival{shown, false, all});
+    } else if (entranceKind_ == PopupEntrance::Rise) {
+        // rising from behind, growing out of a smaller one, or unfolding from its anchor's side
+        Arrival arrival{shown, true};
+        arrival.rising = entranceWay_ == 1 ? RisingMotion::Pop : entranceWay_ == 2 ? RisingMotion::Unfold : RisingMotion::FromBehind;
+        arrival.hinge = hinge_;
+        root_.setContentArrival(arrival);
+    } else {
+        // falling into its place, its pieces gathering into their places, or its pieces falling from nowhere through one
+        // another (each of them covering its window from the first: nothing of the window's own background shows)
+        Arrival arrival{shown, false, all, entranceWay_ == 1 ? LandingMotion::Gather : LandingMotion::Cascade};
+        if (entranceWay_ == 2)
+            arrival.from.reset();
+        root_.setContentArrival(arrival);
+    }
 }
 
 UiRoot* Window::openPopup(PopupRequest request) {

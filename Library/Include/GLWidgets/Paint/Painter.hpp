@@ -146,6 +146,8 @@ public:
     void popIn(const Mark& mark, float t, const Rect& area);
     // ... turned to face the one looking from nearly edge on, about its upright middle, as a card turns.
     void turnIn(const Mark& mark, float t, const Rect& area);
+    // ... folded back on its `hinge` edge (away from the one looking), opening out onto its place, a little past it.
+    void unfoldIn(const Mark& mark, float t, const Rect& area, Edge hinge);
     // What was drawn since `mark` moved in three dimensions about `pivot` (dips of the target, on the target's plane): its
     // 2D seen where it goes (its vertices projected), its bricks lifted and turned with it; shadows where they are.
     void place(const Mark& mark, Point pivot, const Lifted& lifted);
