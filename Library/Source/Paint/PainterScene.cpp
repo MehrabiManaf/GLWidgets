@@ -256,8 +256,12 @@ void Painter::arriveFrom(const Mark& mark, float t, const Rect& area, const Rect
     if (t >= 1)
         return;
     // where a point of the area was: the area stretched onto `from`
-    const float sx = from.width / area.width, sy = from.height / area.height;
-    const auto was = [&](Point p) { return Point{from.x + (p.x - area.x) * sx, from.y + (p.y - area.y) * sy}; };
+    // where a point of the area was: the area made as small as fits in `from` (the same both ways: nothing stretched, text
+    // as it is, smaller), in its middle
+    const float fit = std::min(from.width / area.width, from.height / area.height);
+    const float sx = fit, sy = fit;
+    const Point fromMiddle = from.center(), areaMiddle = area.center();
+    const auto was = [&](Point p) { return Point{fromMiddle.x + (p.x - areaMiddle.x) * fit, fromMiddle.y + (p.y - areaMiddle.y) * fit}; };
     const Float3& eye = camera_.eye;
     // where a point `z` high must be to show at `seen` from the camera: each starts exactly where it was showing
     const auto under = [&](Point seen, float z) {
@@ -304,27 +308,15 @@ void Painter::arriveFrom(const Mark& mark, float t, const Rect& area, const Rect
         return m;
     };
 
-    // the 2D of it: with what it is on, seen where it is on the way, stretched as it is (a line, a box); a glyph (a quad of
-    // a mask or a field) moved as one, its own size kept
+    // the 2D of it: with what it is on, seen where it is on the way (its text as small as the rest); a shadow (a blurred
+    // box) not shown on the way, coming as what casts it lands
     for (std::size_t i = mark.vertices; i < list_.vertices.size(); ++i) {
         Vertex& v = list_.vertices[i];
-        const bool glyph = (v.kind == static_cast<float>(VertexKind::Mask) || v.kind == static_cast<float>(VertexKind::Field)) &&
-                           i + 3 < list_.vertices.size() && list_.vertices[i + 3].kind == v.kind;
-        if (glyph) {
-            const Point middle{(list_.vertices[i].position.x + list_.vertices[i + 2].position.x) / 2,
-                               (list_.vertices[i].position.y + list_.vertices[i + 2].position.y) / 2};
-            const Motion m = motion(pieces.stageOf(middle.y), middle.y, 0);
-            const Point at = along(under(was(middle), lifted), middle, m.e);
-            for (std::size_t k = i; k < i + 4; ++k) {
-                const Point p = list_.vertices[k].position;
-                list_.vertices[k].position = project({at.x + p.x - middle.x, at.y + p.y - middle.y, m.z});
-            }
-            i += 3;
-            continue;
-        }
         const Motion m = motion(pieces.stageOf(v.position.y), v.position.y, 0);
         const Point at = along(under(was(v.position), lifted), v.position, m.e);
         v.position = project({at.x, at.y, m.z});
+        if (v.kind == static_cast<float>(VertexKind::Box) && v.blur > 0.5f)
+            scaleAlpha(v.color, std::clamp((m.e - 0.9f) / 0.1f, 0.0f, 1.0f));
     }
     float order = 0;
     for (std::size_t i = mark.sceneVertices; i + 3 < list_.sceneVertices.size(); i += 4) {

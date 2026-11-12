@@ -341,7 +341,8 @@ TEST(aGlassReliefReadsWhatIsUnderItAndIsJoinedAsABrickIs) {
 
 TEST(whatFallsInFromSomewhereStartsWhereItWasShowing) {
     // a brick and a text at their places in `area`; from `from` (twice as wide, elsewhere): at the start, seen from the
-    // camera, where they were there; at the end where they are
+    // camera, where they were there (the area as small as fits in it, in its middle: here as large); at the end where
+    // they are
     const Rect area{100, 100, 200, 100}, from{400, 300, 400, 100};
     const auto landed = [&](float t) {
         DrawList list;
@@ -358,13 +359,13 @@ TEST(whatFallsInFromSomewhereStartsWhereItWasShowing) {
     const float topZ = brick.center[2] + brick.halfSize[2];
     const float k = camera.eye.z / (camera.eye.z - topZ);
     const Point seen{camera.eye.x + (brick.center[0] - camera.eye.x) * k, camera.eye.y + (brick.center[1] - camera.eye.y) * k};
-    CHECK(near(seen.x, 400 + (200 - 100) * 2, 0.5f) && near(seen.y, 300 + 50, 0.5f));
+    CHECK(near(seen.x, 600, 0.5f) && near(seen.y, 350, 0.5f));
     // a little nearer the camera than where it lands, then where it is
     CHECK(brick.center[2] > 10);
     const auto [end, unused] = landed(1);
     // its text's first corner (as it is at the end) where it was too
     const Point corner = end.vertices[0].position;
-    CHECK(near(start.vertices[0].position.x, 400 + (corner.x - 100) * 2, 0.5f) && near(start.vertices[0].position.y, 300 + (corner.y - 100), 0.5f));
+    CHECK(near(start.vertices[0].position.x, 600 + (corner.x - 200), 0.5f) && near(start.vertices[0].position.y, 350 + (corner.y - 150), 0.5f));
     CHECK(near(end.sceneVertices[0].center[0], 200) && near(end.sceneVertices[0].center[2], -5));
 }
 

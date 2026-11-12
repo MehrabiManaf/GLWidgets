@@ -127,9 +127,9 @@ public:
     // is printed on it) from near the camera, turning about an axis of its own, a little aside, down to where it is, one
     // after another from the top of `area` down; its shadow coming as it does; the 2D of it (text, lines) showing at the
     // end; bricks cut by no clip meanwhile.
-    // From `from` (the target's dips: where it was), each point of it starts where it was there (`area` stretched onto
-    // `from`), a little nearer the camera, and moves down to its place with a slight tilt, the 2D with it, one row a
-    // little after another.
+    // From `from` (the target's dips: where it was), each point of it starts where it was there (`area` made as small as
+    // fits in `from`, in its middle), a little nearer the camera, and moves down to its place with a slight tilt, the 2D
+    // with it (its shadows coming as it lands), its slab first, then its tab, then the rest a row after another.
     void fallIn(const Mark& mark, float t, const Rect& area, std::optional<Rect> from = std::nullopt);
     // ... rising from far behind the target instead (small, toward the camera's middle), nearer and nearer, slowing as it
     // comes, one after another from the middle of `area` out; the 2D of each place showing as what is under it comes.

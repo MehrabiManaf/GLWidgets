@@ -1221,10 +1221,11 @@ TEST(aFloatingWindowLetGoOnAGuideLandsFromWhereItWas) {
     t.window->root->paint(list);
     const paint::SceneVertex landed = list.sceneVertices.front();
     CHECK(std::abs(landed.halfSize[0] - t.graph->size().width / 2) < 1);
-    // at the start, seen from the camera: its part of the stack where that part was in the floating window, as large
+    // at the start, seen from the camera: its part of the stack where that part was in the floating window (the stack made
+    // as small as fits in it, in its middle), as large
     const Rect area{t.graph->mapToRoot({}).x, t.graph->mapToRoot({}).y, t.graph->size().width, t.graph->size().height};
-    const float sx = was.width / area.width, sy = was.height / area.height;
-    const Point expected{was.x + (landed.center[0] - area.x) * sx, was.y + (landed.center[1] - area.y) * sy};
+    const float sx = std::min(was.width / area.width, was.height / area.height), sy = sx;
+    const Point expected{was.center().x + (landed.center[0] - area.center().x) * sx, was.center().y + (landed.center[1] - area.center().y) * sy};
     const float eye = 0.9f * std::max(t.window->root->size().width, t.window->root->size().height);
     const float k = eye / (eye - (first.center[2] + first.halfSize[2]));
     const Point middle{t.window->root->size().width / 2, t.window->root->size().height / 2};
