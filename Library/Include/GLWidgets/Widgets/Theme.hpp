@@ -163,6 +163,9 @@ struct LineEditStyle {
     float focusLineWidth = 0;
     Insets padding{10, 3, 10, 3};
     float width = 220;              // what it asks for: fields are usually stretched
+    // A spin box's arrows raised as keys in its field (relief above 0, of the button's colors), pressed as they are;
+    // flat (0): lit under the mouse.
+    Bevel stepperBevel;
 };
 
 struct CheckBoxStyle {
@@ -228,6 +231,17 @@ struct SplitterStyle {
     Color handle;                   // the line between the panes
     Color active;                   // under the mouse, or dragged
     float thickness = 6;            // what can be dragged
+    // Above 0: a groove this wide sunk along it (as deep as `groove` says, its relief), raised (a bar, as high) under the
+    // mouse and while it is dragged, in the line's colors; 0: a line.
+    float grooveWidth = 0;
+    Bevel groove;
+};
+
+// A window's status bar: a groove along the bottom of the window (relief above 0: sunk as deep, `inset` dips in from its
+// edges, of the tool bar's color); flat (0): a bar of the tool bar's color under a line.
+struct StatusBarStyle {
+    Bevel bevel;
+    float inset = 0;
 };
 
 // Docked panels: each stack an island (a layer with rounded corners) on the window, gaps between them; the tab shown
@@ -433,6 +447,8 @@ struct NodeStyle {
     Bevel bevel;                    // its header's
     Bevel bodyBevel;                // its body's
     float cornerRadius = 8;
+    // Dragged: lifted this many dips nearer the one looking (Painter::place), back down as it is let go (0: none).
+    float dragLift = 0;
 };
 
 // Charts (Charts/*.hpp): their data, axes, labels, legends. The series' colors in order, from the scheme: the first its
@@ -517,6 +533,7 @@ struct Theme {
     CollapsiblePanelStyle collapsiblePanel;
     MenuBarStyle menuBar;
     ToolBarStyle toolBar;
+    StatusBarStyle statusBar;
     TextEditStyle textEdit;
     ToolTipStyle toolTip;
     MotionStyle motion;

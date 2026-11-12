@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: MIT
 #include <GLWidgets/Widgets/StatusBar.hpp>
 
+#include <GLWidgets/Widgets/Bevel.hpp>
+
 #include <GLWidgets/Paint/Painter.hpp>
 #include <GLWidgets/Widgets/Label.hpp>
 #include <GLWidgets/Widgets/Layout.hpp>
@@ -51,6 +53,13 @@ void StatusBar::addPermanentWidget(std::unique_ptr<Widget> widget) {
 
 void StatusBar::paint(PaintContext& context) {
     const Theme& t = context.ui.theme;
+    const StatusBarStyle& s = t.statusBar;
+    if (s.bevel.relief > 0) {
+        // a groove along the bottom of the window
+        const Rect groove = Rect{0, 0, size().width, size().height}.inflated(-s.inset);
+        paintSunken(context.painter, groove, t.cornerRadius, t.toolBar.background, {0, 0, 0, 0}, s.bevel);
+        return;
+    }
     context.painter.fillRect({0, 0, size().width, size().height}, t.toolBar.background);
     context.painter.fillRect({0, 0, size().width, 1}, t.palette.border);
 }

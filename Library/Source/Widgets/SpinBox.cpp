@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: MIT
 #include <GLWidgets/Widgets/SpinBox.hpp>
 
+#include <GLWidgets/Widgets/Bevel.hpp>
+
 #include <GLWidgets/Paint/Painter.hpp>
 #include <GLWidgets/Widgets/LineEdit.hpp>
 #include <GLWidgets/Widgets/Localization.hpp>
@@ -230,10 +232,19 @@ void SpinBox::paintOver(PaintContext& context) {
     const bool enabled = enabledInTree();
     const float x0 = rightToLeft() ? 0.0f : size().width - arrowRoom;
     const float half = size().height / 2;
+    const ButtonStyle& keys = context.ui.theme.button;
     for (const Arrow arrow : {Arrow::Up, Arrow::Down}) {
         const Rect area{x0, arrow == Arrow::Up ? 0.0f : half, arrowRoom, half};
-        if (enabled && (pressed_ == arrow || (pressed_ == Arrow::None && hovered_ == arrow)))
+        const bool hot = enabled && (pressed_ == arrow || (pressed_ == Arrow::None && hovered_ == arrow));
+        if (s.stepperBevel.relief > 0) {
+            // a key in the field, pressed as it is
+            const Rect key{area.x + 2, area.y + (arrow == Arrow::Up ? 2.0f : 0.5f), area.width - 4, area.height - 2.5f};
+            const VisualState state{.hovered = hot, .pressed = pressed_ == arrow, .disabled = !enabled};
+            paintRaised(p, key, std::min(2.0f, key.height / 2), keys.background.resolve(state), {0, 0, 0, 0}, s.stepperBevel,
+                        pressed_ == arrow ? 1.0f : 0.0f);
+        } else if (hot) {
             p.fillRect(Rect{area.x + 2, area.y + 2, area.width - 4, area.height - 4}, withAlpha(s.text, pressed_ == arrow ? 0.22f : 0.12f));
+        }
         const float cx = area.x + arrowRoom / 2, cy = area.y + half / 2 + (arrow == Arrow::Up ? 1.0f : -1.0f);
         const float d = arrow == Arrow::Up ? -1.0f : 1.0f;
         const Point points[] = {{cx - 3.5f, cy - 1.75f * d}, {cx, cy + 1.75f * d}, {cx + 3.5f, cy - 1.75f * d}};

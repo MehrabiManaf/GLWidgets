@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: MIT
 #include <GLWidgets/Widgets/Splitter.hpp>
 
+#include <GLWidgets/Widgets/Bevel.hpp>
+
 #include <GLWidgets/Paint/Painter.hpp>
 #include <GLWidgets/Widgets/UiRoot.hpp>
 
@@ -132,6 +134,17 @@ void Splitter::paint(PaintContext& context) {
     for (std::size_t i = 0; i < handles_.size(); ++i) {
         const bool active = static_cast<int>(i) == dragging_ || static_cast<int>(i) == hoveredHandle_;
         const Rect& h = handles_[i];
+        if (s.grooveWidth > 0 && s.groove.relief > 0) {
+            // a groove along it; under the mouse or dragged, a bar raised out of it
+            const float w = std::min(s.grooveWidth, orientation_ == Orientation::Horizontal ? h.width : h.height);
+            const Rect bar = orientation_ == Orientation::Horizontal ? Rect{h.center().x - w / 2, h.y + 2, w, h.height - 4}
+                                                                     : Rect{h.x + 2, h.center().y - w / 2, h.width - 4, w};
+            if (active)
+                paintRaised(context.painter, bar, w / 2, s.active, {0, 0, 0, 0}, s.groove);
+            else
+                paintSunken(context.painter, bar, w / 2, s.handle, {0, 0, 0, 0}, s.groove);
+            continue;
+        }
         // a line in the middle of the handle, thicker while it is under the mouse
         const float width = active ? 2.0f : 1.0f;
         const Rect line = orientation_ == Orientation::Horizontal ? Rect{h.center().x - width / 2, h.y, width, h.height}

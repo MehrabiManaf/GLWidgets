@@ -308,6 +308,8 @@ public:
         for (NodeView* node : gone) {
             unlinkIf([&](const Link& l) { return &l.out->node() == node || &l.in->node() == node; });
             std::erase(nodes_, node);
+            std::erase(lifted_, node);
+            std::erase_if(moving_, [node](const auto& m) { return m.first == node; });
             removeItem(*node);
         }
         changed();
@@ -349,6 +351,10 @@ public:
         for (Widget* item : items)
             moving_.push_back({item, itemPosition(*item)});
         moveFrom_ = at;
+        // lifted while they move (a style's: NodeStyle::dragLift)
+        lifted_ = std::move(items);
+        if (const UiContext* ui = context())
+            lift_.animateTo(scheduler(), 1, ui->theme.motion.fast, Easing::OutCubic);
     }
     void beginMoveSelection(NodeView& pressed, Point at) {
         std::vector<Widget*> items;
@@ -364,7 +370,12 @@ public:
         for (const auto& [item, from] : moving_)
             setItemPosition(*item, from + by);
     }
-    void endMove() { moving_.clear(); }
+    void endMove() {
+        moving_.clear();
+        // back down, a little bounce as they land
+        if (const UiContext* ui = context())
+            lift_.animateTo(scheduler(), 0, ui->theme.motion.normal, Easing::OutBack);
+    }
 
     // ---- linking ----
 
@@ -423,6 +434,14 @@ public:
     const std::vector<NodeView*>& nodes() const { return nodes_; }
 
 protected:
+    std::optional<paint::Lifted> childLifted(const Widget& child) const override {
+        const UiContext* ui = context();
+        const float lift = ui ? ui->theme.node.dragLift * lift_.value() : 0.0f;
+        if (lift == 0 || std::find(lifted_.begin(), lifted_.end(), &child) == lifted_.end())
+            return std::nullopt;
+        return paint::Lifted{.lift = lift};
+    }
+
     void paintUnderItems(PaintContext& context) override {
         const Rect shown = visibleArea();
         for (const Link& l : links_)
@@ -584,6 +603,8 @@ private:
     std::vector<Link> links_;
     std::vector<Fading> fading_;
     std::vector<std::pair<Widget*, Point>> moving_;
+    std::vector<Widget*> lifted_;           // those moved last, lifted while they move
+    Animation lift_{[this] { invalidatePaint(); }};
     Point moveFrom_;
     PinRow* linkFrom_ = nullptr;
     Point linkTo_;

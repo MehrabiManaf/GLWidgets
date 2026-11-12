@@ -574,3 +574,11 @@ TEST(aCascadingPanelsWidgetsComeOutFromUnderItsHeaderInOrder) {
     tests::advance(context.theme.motion.slow);
     tests::testScheduler().setAnimationsEnabled(false);
 }
+
+TEST(theSolidStylesGroovesAndKeys) {
+    const Theme solid = Theme::dark(ThemeStyle::Solid), plastic = Theme::dark(ThemeStyle::Plastic);
+    CHECK(solid.lineEdit.stepperBevel.relief > 0 && solid.splitter.grooveWidth > 0 && solid.splitter.groove.relief > 0);
+    CHECK(solid.statusBar.bevel.relief > 0 && solid.node.dragLift > 0);
+    CHECK(plastic.lineEdit.stepperBevel.relief == 0 && plastic.splitter.grooveWidth == 0 && plastic.statusBar.bevel.relief == 0 &&
+          plastic.node.dragLift == 0);
+}

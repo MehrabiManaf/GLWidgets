@@ -48,6 +48,14 @@ void Theme::solid(Theme& t, bool dark) {
     }
     // a collapsible panel's widgets coming out from under its header, one after another
     t.collapsiblePanel.cascade = true;
+    // a spin box's arrows keys in its field; a splitter's handle a groove (a bar raised out of it as it is taken); the
+    // status bar a groove along the bottom of the window
+    t.lineEdit.stepperBevel = {.relief = 1.0f, .roundness = 1};
+    t.splitter.grooveWidth = 3;
+    t.splitter.groove = {.relief = 0.8f, .roundness = 1};
+    t.statusBar = {.bevel = {.relief = 1.0f, .roundness = 1.5f}, .inset = 2};
+    // a node lifted while it is dragged
+    t.node.dragLift = 10;
     // a check box's brick falling into its box as it is checked
     t.checkBox.checkDrop = 14;
     // a scroll bar's thumb a brick in a groove
