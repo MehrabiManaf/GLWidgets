@@ -438,6 +438,21 @@ void TextEdit::setLineNumbers(bool shown) {
     invalidateLayout();
 }
 
+void TextEdit::setCurrentLineHighlighted(bool highlighted) {
+    if (highlighted == currentLine_)
+        return;
+    currentLine_ = highlighted;
+    invalidatePaint();
+}
+
+void TextEdit::setFramed(bool framed) {
+    if (framed == framed_)
+        return;
+    framed_ = framed;
+    invalidateLayout();
+    invalidatePaint();
+}
+
 void TextEdit::setHighlighter(std::unique_ptr<Highlighter> highlighter) {
     highlighter_ = std::move(highlighter);
     statesKnown_ = 0;
@@ -644,10 +659,17 @@ Size TextEdit::measureContent(Size available) {
 
 void TextEdit::arrangeContent(const Rect& content) {
     area_ = content;
+    if (framed_) {
+        // inside its border, a little room around the text
+        const float border = context() ? context()->theme.lineEdit.borderWidth : 1.0f;
+        const float x = 4 + border, y = 3 + border;
+        area_ = {content.x + x, content.y + y, std::max(0.0f, content.width - 2 * x), std::max(0.0f, content.height - 2 * y)};
+    }
+    const Rect inner = area_;
     const float gutter = gutterWidth();
     const float barWidth = context() ? context()->theme.scrollBar.width : 8.0f;
-    text_ = {content.x + gutter, content.y, std::max(0.0f, content.width - gutter), content.height};
-    showBar_ = static_cast<double>(lines_.size()) * lineHeight_ > content.height + 0.5;
+    text_ = {inner.x + gutter, inner.y, std::max(0.0f, inner.width - gutter), inner.height};
+    showBar_ = static_cast<double>(lines_.size()) * lineHeight_ > inner.height + 0.5;
     if (showBar_)
         text_.width = std::max(0.0f, text_.width - barWidth);
     // a bar across under the lines when one laid out so far is longer than shows
@@ -663,7 +685,25 @@ void TextEdit::arrangeContent(const Rect& content) {
 void TextEdit::paint(PaintContext& context) {
     const TextEditStyle& s = style();
     paint::Painter& p = context.painter;
-    p.fillRect(area_, s.background);
+    if (framed_) {
+        const LineEditStyle& f = context.ui.theme.lineEdit;
+        const VisualState state{.hovered = hovered(), .focused = hasFocus(), .disabled = !enabledInTree()};
+        const Rect r{0, 0, size().width, size().height};
+        frameBorder_.to(scheduler(), f.borderWidth > 0 ? f.border.resolve(state) : Color{0, 0, 0, 0}, context.ui.theme.motion.fast);
+        frameGlow_.to(scheduler(), state.focused ? f.focusRing : withAlpha(f.focusRing, 0), context.ui.theme.motion.normal);
+        paintFocusGlow(p, r, f.cornerRadius, frameGlow_.value());
+        paintSunken(p, r, f.cornerRadius, f.background.resolve(state), frameBorder_.value(), f.bevel);
+        if (state.focused && f.focusLineWidth > 0) {
+            // along the bottom, within the rounded corners
+            p.pushClip(r);
+            p.fillRoundedRect({r.x, r.bottom() - f.focusLineWidth - f.cornerRadius, r.width, f.focusLineWidth + f.cornerRadius},
+                              f.cornerRadius, f.focusLine);
+            p.fillRect({r.x, r.bottom() - f.focusLineWidth - f.cornerRadius, r.width, f.cornerRadius}, f.background.resolve(state));
+            p.popClip();
+        }
+    } else {
+        p.fillRect(area_, s.background);
+    }
     if (lineNumbers_)
         p.fillRect({area_.x, area_.y, text_.x - area_.x, area_.height}, s.gutter);
     trimCache();
@@ -677,7 +717,7 @@ void TextEdit::paint(PaintContext& context) {
         const float y = text_.y + static_cast<float>(static_cast<double>(line) * lineHeight_ - offsetY_);
         const Laid& l = laid(line);
         const Point origin{text_.x + textPad - offsetX_, y};
-        if (line == caret_.line && !hasSelection() && !readOnly_)
+        if (currentLine_ && line == caret_.line && !hasSelection() && !readOnly_)
             p.fillRect({text_.x, y, text_.width, lineHeight_}, s.currentLine);
         // the selection: its part of the line, and the line's end when it goes on past it
         if (!sel.empty() && line >= sel.from.line && line <= sel.to.line) {
@@ -794,6 +834,8 @@ std::optional<platform::Cursor> TextEdit::cursorAt(Point point) const {
 }
 
 void TextEdit::onHoverChanged(bool hovered) {
+    if (framed_)
+        invalidatePaint();          // its frame as hovered
     if (!hovered) {
         bar_.leave();
         barAcross_.leave();
@@ -981,6 +1023,8 @@ void TextEdit::onText(TextEvent& event) {
 }
 
 void TextEdit::onFocusChanged(bool focused) {
+    if (framed_)
+        invalidatePaint();          // its frame's focus ring
     if (UiHost* host = root() ? root()->host() : nullptr) {
         if (focused && !readOnly_) {
             host->startTextInput();

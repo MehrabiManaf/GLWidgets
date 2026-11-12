@@ -99,6 +99,14 @@ public:
     bool readOnly() const { return readOnly_; }
     // Line numbers in a gutter at its start (on by default).
     void setLineNumbers(bool shown);
+    // The line of the caret lit behind (on by default: code); off, a field of a few lines of text (a form's).
+    void setCurrentLineHighlighted(bool highlighted);
+    bool currentLineHighlighted() const { return currentLine_; }
+    // Drawn as a field of the theme (its LineEditStyle: sunken, its border, corners and focus ring, its background as it is
+    // hovered, focused or disabled), its text inside: a form's field of several lines. Off by default: a code editor's
+    // flat area.
+    void setFramed(bool framed);
+    bool framed() const { return framed_; }
     // What colors it (none by default).
     void setHighlighter(std::unique_ptr<Highlighter> highlighter);
     // The fonts of its text, tried in order for each character (a monospace font for code); the default font is tried
@@ -202,6 +210,10 @@ private:
 
     bool readOnly_ = false;
     bool lineNumbers_ = true;
+    bool currentLine_ = true;
+    bool framed_ = false;
+    ColorTransition frameBorder_{[this] { invalidatePaint(); }};
+    ColorTransition frameGlow_{[this] { invalidatePaint(); }};
     std::unique_ptr<Highlighter> highlighter_;
     std::vector<int> states_;               // the highlighter's state at each line's start, known up to statesKnown_
     std::size_t statesKnown_ = 0;

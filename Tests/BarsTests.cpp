@@ -18,6 +18,7 @@
 #include <GLWidgets/Widgets/WindowFrame.hpp>
 
 #include <chrono>
+#include <cmath>
 #include <cstring>
 #include <memory>
 #include <string>
@@ -180,6 +181,34 @@ TEST(aToolBarsButtonsFollowTheirActionsAndWhatDoesNotFitIsInItsMenu) {
     b.root.layout();
     const auto hidden = tools.overflow();
     CHECK(!hidden.empty() && hidden.back() == actions[5]);
+}
+
+// A toolbar's buttons as big as it says (those there, and those added after), it as tall as they are with its padding.
+TEST(aToolBarsButtonsTakeTheSizesItIsGiven) {
+    const auto near = [](float a, float b) { return std::abs(a - b) < 0.01f; };
+    Barred b;
+    auto bar = std::make_unique<ToolBar>();
+    ToolBar& tools = *bar;
+    auto first = std::make_shared<Action>(LocalizedText("One"), [] {});
+    first->setIcon(dot());
+    tools.addAction(first);
+    tools.setButtonSizes(40.0f, 24.0f);
+    auto second = std::make_shared<Action>(LocalizedText("Two"), [] {});
+    second->setIcon(dot());
+    tools.addAction(second);
+    b.root.setContent(std::move(bar));
+    b.root.setSize({400, 60});
+    b.root.layout();
+    const ToolBarStyle& s = b.root.context().theme.toolBar;
+    for (std::size_t i : {0u, 1u}) {
+        const Widget& button = *tools.children()[i];
+        CHECK(near(button.size().width, 40) && near(button.size().height, 40));
+    }
+    CHECK(near(tools.buttonSize(), 40) && near(tools.measure({unbounded, unbounded}).height, 40 + 2 * s.padding));
+    // back to the style's
+    tools.setButtonSizes(std::nullopt, std::nullopt);
+    b.root.layout();
+    CHECK(near(tools.children()[0]->size().width, s.buttonSize));
 }
 
 TEST(svgIconsAreRasterizedOnceAtEachSize) {

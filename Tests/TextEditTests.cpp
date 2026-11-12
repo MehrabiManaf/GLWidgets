@@ -141,6 +141,28 @@ TEST(theCaretMovesByTheKeysAndTheMouse) {
     CHECK(e.edit->line(2) == "xreturn");
 }
 
+// Framed: drawn as a field, its text inside the frame (where a click puts the caret too); its current line not lit at will.
+TEST(aFramedTextEditHasItsTextInsideItsFrame) {
+    Edited e("first\nsecond");
+    const Point flat = e.edit->pointOf({1, 2});
+    e.edit->setFramed(true);
+    e.edit->setCurrentLineHighlighted(false);
+    e.root.layout();
+    CHECK(e.edit->framed() && !e.edit->currentLineHighlighted());
+    const Point inside = e.edit->pointOf({1, 2});
+    CHECK(inside.x > flat.x && inside.y > flat.y);
+    const Point at = e.edit->mapToRoot(inside);
+    e.click({at.x + 1, at.y + 4});
+    CHECK(e.edit->caret() == (TextPosition{1, 2}));
+    paint::DrawList list;
+    e.root.paint(list);
+    // flat again: where it was
+    e.edit->setFramed(false);
+    e.root.layout();
+    const Point back = e.edit->pointOf({1, 2});
+    CHECK(back.x == flat.x && back.y == flat.y);
+}
+
 TEST(aMillionLinesAreLaidOutAsFarAsTheyShow) {
     std::string big;
     for (int i = 0; i < 1'000'000; ++i)

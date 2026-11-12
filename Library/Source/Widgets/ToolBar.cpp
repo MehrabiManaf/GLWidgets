@@ -120,7 +120,9 @@ void ToolButton::paint(PaintContext& context) {
         // its icon, in the middle (or at the start, before its text)
         const float button = buttonSize(), icon = iconSize();
         const float x = label_ ? (rightToLeft() ? r.width - (button + icon) / 2 : (button - icon) / 2) : (r.width - icon) / 2;
-        action_->icon().draw(context, {x, (r.height - icon) / 2, icon, icon}, ink);
+        // a monochrome one in the ink; one of its own colors faded when disabled
+        const Color tint = action_->icon().monochrome() ? ink : Color{1, 1, 1, enabled ? 1.0f : s.disabledIconOpacity};
+        action_->icon().draw(context, {x, (r.height - icon) / 2, icon, icon}, tint);
     }
     if (label_)
         label_->setColor(ink);
@@ -174,6 +176,7 @@ const ToolBarStyle& ToolBar::style() const {
 
 ToolButton& ToolBar::addAction(std::shared_ptr<Action> action, bool showText) {
     auto button = std::make_unique<ToolButton>(action, showText);
+    button->setSizes(buttonSize_, iconSize_);
     ToolButton& added = *button;
     addItem(std::move(button), std::move(action));
     return added;
@@ -225,9 +228,18 @@ void ToolBar::registerShortcuts() {
     now->addShortcuts(this, std::move(actions));
 }
 
+void ToolBar::setButtonSizes(std::optional<float> buttonSize, std::optional<float> iconSize) {
+    buttonSize_ = buttonSize;
+    iconSize_ = iconSize;
+    for (const auto& child : children())
+        if (auto* button = dynamic_cast<ToolButton*>(child.get()))
+            button->setSizes(buttonSize, iconSize);
+    invalidateLayout();
+}
+
 Size ToolBar::measureContent(Size) {
     const ToolBarStyle& s = style();
-    float width = 0, height = s.buttonSize;
+    float width = 0, height = buttonSize();
     for (const Item& item : items_) {
         const Size size = item.widget ? item.widget->measure({unbounded, unbounded}) : Size{separatorWidth, 0};
         width += size.width + s.spacing;
@@ -252,7 +264,7 @@ void ToolBar::arrangeContent(const Rect& content) {
         const Size size = item.widget ? item.widget->desiredSize() : Size{separatorWidth, 0};
         fits = fits && x + size.width <= limit;
         item.shown = fits;
-        const float h = std::min(size.height > 0 ? size.height : s.buttonSize, content.height - 2 * s.padding);
+        const float h = std::min(size.height > 0 ? size.height : buttonSize(), content.height - 2 * s.padding);
         const float left = rtl ? content.width - x - size.width : x;
         if (item.widget) {
             if (fits)
@@ -265,10 +277,10 @@ void ToolBar::arrangeContent(const Rect& content) {
             x += size.width + s.spacing;
     }
     if (all) {
-        more_->arrange({parkedAt, 0, moreWidth, s.buttonSize});
+        more_->arrange({parkedAt, 0, moreWidth, buttonSize()});
     } else {
         const float left = rtl ? s.padding : content.width - s.padding - moreWidth;
-        more_->arrange({content.x + left, content.y + (content.height - s.buttonSize) / 2, moreWidth, s.buttonSize});
+        more_->arrange({content.x + left, content.y + (content.height - buttonSize()) / 2, moreWidth, buttonSize()});
     }
 }
 

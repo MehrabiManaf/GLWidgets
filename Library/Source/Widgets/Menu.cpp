@@ -125,7 +125,9 @@ protected:
                 const float x = rtl ? width - textInset - markRoom / 2 : textInset + markRoom / 2 - 2;
                 if (item.checked.value_or(false))
                     p.fillRoundedRect({x - 10, middle - 10, 20, 20}, s.cornerRadius, chosen ? withAlpha(s.highlightText, 0.22f) : withAlpha(s.highlight, 0.30f));
-                item.icon.draw(context, {x - 8, middle - 8, 16, 16}, mark);
+                // a monochrome one in the mark's color; one of its own colors faded when disabled
+                item.icon.draw(context, {x - 8, middle - 8, 16, 16},
+                               item.icon.monochrome() ? mark : Color{1, 1, 1, item.enabled ? 1.0f : 0.35f});
             } else if (item.checked.value_or(false)) {
                 const float x = rtl ? width - textInset - markRoom / 2 + 2 : textInset + markRoom / 2 - 2;
                 const Point points[] = {{x - 5, middle}, {x - 1.5f, middle + 3.5f}, {x + 5, middle - 4}};

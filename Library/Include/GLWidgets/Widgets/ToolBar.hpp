@@ -74,6 +74,9 @@ public:
     }
     // The actions that do not fit, now (in its menu at its end).
     std::vector<std::shared_ptr<Action>> overflow() const;
+    // How big its buttons (square) and their icons are, those there and those added; none: the style's.
+    void setButtonSizes(std::optional<float> buttonSize, std::optional<float> iconSize);
+    float buttonSize() const { return buttonSize_.value_or(style().buttonSize); }
 
 protected:
     Size measureContent(Size available) override;
@@ -95,6 +98,7 @@ private:
 
     std::vector<Item> items_;
     ToolButton* more_ = nullptr;            // the menu of what does not fit
+    std::optional<float> buttonSize_, iconSize_;
     std::shared_ptr<Action> moreAction_;
     UiRoot* registered_ = nullptr;
 };

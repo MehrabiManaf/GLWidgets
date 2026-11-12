@@ -309,6 +309,7 @@ struct ToolBarStyle {
     Bevel bevel;                    // ... raised (pressed, sunk)
     Color icon;                     // a monochrome icon's color
     Color disabledIcon;
+    float disabledIconOpacity = 0.35f;  // an icon of its own colors, disabled: faded so much
     float buttonSize = 28;          // its buttons are square
     float iconSize = 16;
     float padding = 4;              // around its buttons
