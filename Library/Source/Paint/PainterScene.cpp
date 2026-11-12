@@ -219,8 +219,8 @@ void Painter::arriveFrom(const Mark& mark, float t, const Rect& area, const Rect
     const auto was = [&](Point p) { return Point{from.x + (p.x - area.x) * sx, from.y + (p.y - area.y) * sy}; };
     // a row a little after the one above it; each eased from where it was to its place, coming down from a little nearer
     // the camera as it goes
-    const auto delayAt = [&](float y) { return 0.12f * std::clamp((y - area.y) / area.height, 0.0f, 1.0f); };
-    constexpr float span = 0.85f;
+    const auto delayAt = [&](float y) { return 0.06f * std::clamp((y - area.y) / area.height, 0.0f, 1.0f); };
+    constexpr float span = 0.94f;
     const auto eased = [&](float delay) {
         const float u = std::clamp((t - delay) / span, 0.0f, 1.0f);
         return u < 0.5f ? 4 * u * u * u : 1 - std::pow(-2 * u + 2, 3.0f) / 2;      // in and out, cubic
@@ -234,9 +234,25 @@ void Painter::arriveFrom(const Mark& mark, float t, const Rect& area, const Rect
         return Point{eye.x + (seen.x - eye.x) * k, eye.y + (seen.y - eye.y) * k};
     };
 
-    // the 2D of it: with what it is on, seen where it is on the way
+    // the 2D of it: with what it is on, seen where it is on the way, stretched as it is (a line, a box); a glyph (a quad of
+    // a mask or a field) moved as one, its own size kept
     for (std::size_t i = mark.vertices; i < list_.vertices.size(); ++i) {
         Vertex& v = list_.vertices[i];
+        const bool glyph = (v.kind == static_cast<float>(VertexKind::Mask) || v.kind == static_cast<float>(VertexKind::Field)) &&
+                           i + 3 < list_.vertices.size() && list_.vertices[i + 3].kind == v.kind;
+        if (glyph) {
+            const Point middle{(list_.vertices[i].position.x + list_.vertices[i + 2].position.x) / 2,
+                               (list_.vertices[i].position.y + list_.vertices[i + 2].position.y) / 2};
+            const float e = eased(delayAt(middle.y));
+            const float z = height * (1 - e);
+            const Point at = along(under(was(middle), height), middle, e);
+            for (std::size_t k = i; k < i + 4; ++k) {
+                const Point p = list_.vertices[k].position;
+                list_.vertices[k].position = project({at.x + p.x - middle.x, at.y + p.y - middle.y, z});
+            }
+            i += 3;
+            continue;
+        }
         const float e = eased(delayAt(v.position.y));
         const float z = height * (1 - e);
         const Point at = along(under(was(v.position), height), v.position, e);
@@ -265,6 +281,17 @@ void Painter::arriveFrom(const Mark& mark, float t, const Rect& area, const Rect
             continue;
         }
         const Point at = along(under(start, height), c, e);           // (its top face, as its 2D, where it was)
+        // as large as it was showing there (the area stretched onto `from`; nearer the camera, it shows larger), growing to
+        // its own size as it comes
+        const float nearer = (eye.z - height) / eye.z;
+        const float fromX = sx * nearer, fromY = sy * nearer;
+        const float wide = four[0].halfSize[0] * (fromX + (1 - fromX) * e), tall = four[0].halfSize[1] * (fromY + (1 - fromY) * e);
+        for (int k = 0; k < 4; ++k) {
+            four[k].halfSize[0] = wide;
+            four[k].halfSize[1] = tall;
+            four[k].cornerRadius = std::min(four[k].cornerRadius, std::min(wide, tall));
+            four[k].bevel = std::min(four[k].bevel, four[k].cornerRadius);
+        }
         // a slight tilt of its own, undone as it lands
         const Float3 axis{next() * 2 - 1, next() * 2 - 1, 0};
         const Quaternion tilt = Quaternion::axisAngle(length(axis) > 0.01f ? axis : Float3{1, 0, 0}, 0.07f * (1 - e));

@@ -162,7 +162,7 @@ protected:
             paint::Brick brick;
             brick.halfSize = {cellWidth / 2, cellHeight / 2, thickness / 2};
             brick.cornerRadius = 7;
-            brick.bevel = 3;
+            brick.bevel = 0;            // faces flat to a sharp edge, its corners round
             const auto column = i % static_cast<std::size_t>(columns);
             brick.color = theme.chart.series[column % theme.chart.series.size()];
             brick.roughness = material_.roughness;

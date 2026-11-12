@@ -15,6 +15,7 @@
 #include <GLWidgets/Widgets/Workspace.hpp>
 
 #include <algorithm>
+#include <cmath>
 #include <memory>
 #include <optional>
 #include <string>
@@ -1185,4 +1186,50 @@ TEST(whereTheSystemCarriesDragsSomethingGoesIntoAnotherWindow) {
     CHECK((t.target->dropped == std::vector<std::string>{"A"}) && t.target->droppedAt == Point{60, 110});
     CHECK((t.source->finished == std::vector<DropAction>{DropAction::Copy}));
     CHECK(!t.from->root->dragging() && t.screen.captures == 0);
+}
+
+// Its floating window dragged by its title and let go on a guide: what lands starts where the window was when it was let
+// go, as large as it was showing there (seen from the camera), and grows to its place.
+TEST(aFloatingWindowLetGoOnAGuideLandsFromWhereItWas) {
+    tests::testScheduler().setAnimationsEnabled(true);
+    Screen screen;
+    screen.context.theme = Theme::dark(ThemeStyle::Solid);
+    Tools t(screen, {0, 0});
+    screen.layout();
+    screen.drag(*t.window, panelTab(screen, *t.area, "palette"), {1200, 300});
+    Screen::Win& floating = *screen.all.front();
+    tests::advance(std::chrono::milliseconds(2000));
+    screen.layout();
+    DockTabs& stack = *t.area->tabsOf("palette");
+    const Widget& tab = *stack.children()[0]->children()[0];
+    const Point title = tab.mapToRoot({tab.size().width + 15, tab.size().height / 2}) + floating.position;
+    screen.press(floating, title);
+    screen.moveTo(floating, {title.x + 10, title.y});
+    const Point graphMiddle = t.graph->mapToRoot(t.graph->guide(DockSide::Center).center()) + t.window->position;
+    screen.moveTo(floating, graphMiddle);
+    // where its stack is on the screen as it is let go
+    const Point corner = stack.mapToRoot({}) + floating.position;
+    const Rect was{corner.x, corner.y, stack.size().width, stack.size().height};
+    screen.release(floating, graphMiddle);
+    screen.closeWindows();
+    screen.layout();
+    paint::DrawList list;
+    t.window->root->paint(list);
+    const paint::SceneVertex first = list.sceneVertices.front();
+    // landed: the stack's slab (its first brick) where it is, as large as the stack is wide
+    tests::advance(screen.context.theme.dock.landing + std::chrono::milliseconds(50));
+    t.window->root->paint(list);
+    const paint::SceneVertex landed = list.sceneVertices.front();
+    CHECK(std::abs(landed.halfSize[0] - t.graph->size().width / 2) < 1);
+    // at the start, seen from the camera: its part of the stack where that part was in the floating window, as large
+    const Rect area{t.graph->mapToRoot({}).x, t.graph->mapToRoot({}).y, t.graph->size().width, t.graph->size().height};
+    const float sx = was.width / area.width, sy = was.height / area.height;
+    const Point expected{was.x + (landed.center[0] - area.x) * sx, was.y + (landed.center[1] - area.y) * sy};
+    const float eye = 0.9f * std::max(t.window->root->size().width, t.window->root->size().height);
+    const float k = eye / (eye - (first.center[2] + first.halfSize[2]));
+    const Point middle{t.window->root->size().width / 2, t.window->root->size().height / 2};
+    const Point seen{middle.x + (first.center[0] - middle.x) * k, middle.y + (first.center[1] - middle.y) * k};
+    CHECK(std::abs(seen.x - expected.x) < 1 && std::abs(seen.y - expected.y) < 1);
+    CHECK(std::abs(first.halfSize[0] * k - landed.halfSize[0] * sx) < 1 && std::abs(first.halfSize[1] * k - landed.halfSize[1] * sy) < 1);
+    tests::testScheduler().setAnimationsEnabled(false);
 }
