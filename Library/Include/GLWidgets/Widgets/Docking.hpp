@@ -129,6 +129,8 @@ public:
     Rect revealCorner() const;
     // Takes the panel at `index` out: the caller has it now.
     DockPanel take(std::size_t index);
+    // Its panel at `from` put at `to` among its tabs (shown).
+    void moveTab(std::size_t from, std::size_t to);
 
 protected:
     Size measureContent(Size available) override;
@@ -288,6 +290,7 @@ private:
         std::string shown;                  // of them, the one shown: shown still where they go
         Widget* target = nullptr;           // a stack, or a center (on one of its sides)
         DockSide side = DockSide::Center;
+        float share = 0.5f;                 // of the target's room, beside it (an edge's: as much as it showed)
         DockArea* shownArea = nullptr;      // the one showing guides (and where it would go)
         const UiRoot* window = nullptr;     // the window following the mouse: a floating one, or the one torn off
         Point grab{};                       // the mouse on the screen less that window's position
@@ -316,9 +319,9 @@ private:
     // `tabs` without panels goes; a split left with one pane gives way to it.
     static void prune(DockTabs& tabs);
     // (Its window raised when it is another: not while a drag goes on, which would lose the mouse.)
-    void move(const std::string& id, Widget& target, DockSide side, bool raise = true);
+    void move(const std::string& id, Widget& target, DockSide side, bool raise = true, float share = 0.5f);
     // All of them: the first as `move`, the others in its stack.
-    void move(const std::vector<std::string>& ids, Widget& target, DockSide side);
+    void move(const std::vector<std::string>& ids, Widget& target, DockSide side, float share = 0.5f);
     // The panel `id` into a floating window at `position` (the screen) of `size` (dips); its area.
     DockArea* floatPanel(const std::string& id, Point position, Size size, bool focus = true);
     // All of them, in one stack of one floating window, `shown` shown; its area.
@@ -361,9 +364,10 @@ private:
     Animation indicatorMove_{[this] { invalidatePaint(); }};
     Animation indicatorShown_{[this] { invalidatePaint(); }};
     struct Guides {
-        Widget* node = nullptr;             // the stack (or the center) under the mouse
+        Widget* node = nullptr;             // the stack (or the center) under the mouse (none: only the edges' guides)
         std::optional<DockSide> hovered;
         bool center = true;                 // a stack the tab is not dragged from: the middle guide too
+        std::optional<DockSide> edge;       // the guide at that edge of all of the area under the mouse
     };
     std::optional<Guides> guides_;
     Widget* buttons_ = nullptr;             // a floating area's window buttons, over its node
@@ -372,6 +376,14 @@ private:
     friend class DockTabs;
     // A stack of the group, but its center stack: where a panel goes by default.
     DockTabs* firstSideTabs() const;
+    // Where panel `id` of `source` (a stack of this area) is, kept as it floats: docked back (its window's dock button), it
+    // goes there again (placeBack): its stack, if another panel is still in it; beside what was beside its stack
+    // otherwise. As addPanel puts it where there is no such place.
+    void rememberPlace(const DockTabs& source, const std::string& id);
+    DockTabs& placeBack(DockPanel panel);
+    // A tab dragged along its stack's tab bar (`point`, the root's dips): put where it is among the others. False when
+    // the mouse is out of the bar.
+    bool reorderTo(Point point);
     // Where `widget` is on the screen (none without a host or a window); a rect of the screen in `widget`'s root's dips.
     std::optional<Rect> screenRect(const Widget& widget) const;
     std::optional<Rect> inRoot(const Widget& widget, std::optional<Rect> screen) const;

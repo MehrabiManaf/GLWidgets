@@ -31,6 +31,18 @@ struct DockGroup {
     DockArea* home = nullptr;               // where floating windows go above (none once no area is left for it)
     std::vector<DockArea*> areas;           // with the floating windows' and, for Global, every window's
     DockingHost* host = nullptr;            // the last one the areas were shown with
+    // Where a floating panel was docked (DockArea::rememberPlace), by its id: in a stack with `stackmate` at `index`; or
+    // on `side` of the stack of `beside` (or of the center), with `share` of their room.
+    struct Place {
+        std::string stackmate;
+        std::size_t index = 0;
+        std::string beside;
+        bool besideCenter = false;
+        DockSide side = DockSide::End;
+        float share = 0.3f;
+        float stretch = 0;      // its stretch, where its split stayed (with others): all of it as it was again
+    };
+    std::map<std::string, Place, std::less<>> places;
 };
 
 namespace {
@@ -360,7 +372,10 @@ private:
     std::unordered_map<std::string, float> targets_;
     std::unordered_map<std::string, float> shown_;
     std::vector<float> shifts_;
-    Animation slide_{[this] { rearrange(); }};
+    Animation slide_{[this] {
+        rearrange();
+        invalidatePaint();      // (the tabs moved: what the row painted, painted again)
+    }};
 };
 
 // A button after a stack's tabs: an icon, a background while the mouse is over it; clicked, its handler after the event.
@@ -590,6 +605,34 @@ Rect guideIn(const Rect& content, bool rtl, DockSide side) {
     return {c.x - g / 2 + dx * (g + gap), c.y - g / 2 + dy * (g + gap), g, g};
 }
 
+// The guide at the middle of an area's edge (its coordinates), to dock along that edge of all of it; and where what is
+// dropped there goes.
+Rect edgeGuide(Size area, bool rtl, DockSide side) {
+    constexpr float g = 28, margin = 10;
+    const bool left = (side == DockSide::Start) != rtl;
+    switch (side) {
+    case DockSide::Start:
+    case DockSide::End: return {left ? margin : area.width - margin - g, area.height / 2 - g / 2, g, g};
+    case DockSide::Top: return {area.width / 2 - g / 2, margin, g, g};
+    case DockSide::Bottom: return {area.width / 2 - g / 2, area.height - margin - g, g, g};
+    case DockSide::Center: break;
+    }
+    return {};
+}
+
+Rect edgeZone(Size area, bool rtl, DockSide side) {
+    const float across = std::min(area.width * 0.3f, 280.0f), down = std::min(area.height * 0.3f, 220.0f);
+    const bool left = (side == DockSide::Start) != rtl;
+    switch (side) {
+    case DockSide::Start:
+    case DockSide::End: return {left ? 0.0f : area.width - across, 0, across, area.height};
+    case DockSide::Top: return {0, 0, area.width, down};
+    case DockSide::Bottom: return {0, area.height - down, area.width, down};
+    case DockSide::Center: break;
+    }
+    return {};
+}
+
 // Where a dropped tab goes in a stack (below its tabs) or a center (all of it), in its coordinates.
 Rect dropRoom(const Widget& node) {
     const auto* tabs = dynamic_cast<const DockTabs*>(&node);
@@ -684,6 +727,16 @@ DockPanel DockTabs::take(std::size_t index) {
     else
         rebuildTools();
     return DockPanel{std::move(entry.id), std::move(entry.title), std::move(content), entry.closable, std::move(entry.buttons), entry.scope};
+}
+
+void DockTabs::moveTab(std::size_t from, std::size_t to) {
+    if (from >= entries_.size() || to >= entries_.size() || from == to)
+        return;
+    Entry entry = std::move(entries_[from]);
+    entries_.erase(entries_.begin() + static_cast<std::ptrdiff_t>(from));
+    entries_.insert(entries_.begin() + static_cast<std::ptrdiff_t>(to), std::move(entry));
+    rebuildBar();
+    setActive(to);
 }
 
 void DockTabs::setActive(std::size_t index) {
@@ -1219,7 +1272,7 @@ void DockArea::closePanel(std::string_view id) {
         close();
 }
 
-void DockArea::move(const std::string& id, Widget& target, DockSide side, bool raise) {
+void DockArea::move(const std::string& id, Widget& target, DockSide side, bool raise, float share) {
     DockTabs* source = tabsOf(id);
     auto* stack = dynamic_cast<DockTabs*>(&target);
     if (!source || (side == DockSide::Center && (!stack || stack == source)))
@@ -1231,7 +1284,7 @@ void DockArea::move(const std::string& id, Widget& target, DockSide side, bool r
     if (side == DockSide::Center)
         stack->add(std::move(panel));
     else
-        insertBeside(std::move(panel), target, side, 0.5f);
+        insertBeside(std::move(panel), target, side, share);
     // from a floating window into a docked place: it lands there
     DockArea* into = nullptr;
     for (Widget* w = &target; w && !into; w = w->parent())
@@ -1269,14 +1322,14 @@ void DockArea::toggleFloating(std::string_view id) {
             return;
         DockArea* from = tabs->area();
         if (from->floating_) {
-            // back to the area its window belongs to, in its first stack
+            // back to the area its window belongs to, where it was there (its first stack, where that is gone)
             DockArea* to = homeFor();
             if (!to || !to->root())
                 return;
             const std::optional<Rect> was = screenRect(*tabs);
             DockPanel panel = tabs->take(*tabs->indexOf(id));
             prune(*tabs);
-            DockTabs& landed = to->addPanel(std::move(panel));
+            DockTabs& landed = to->placeBack(std::move(panel));
             landed.land(inRoot(landed, was));
             from->closeIfEmpty();
             h->raiseWindow(*to->root());
@@ -1292,14 +1345,117 @@ void DockArea::toggleFloating(std::string_view id) {
         apply();
 }
 
-void DockArea::move(const std::vector<std::string>& ids, Widget& target, DockSide side) {
+void DockArea::move(const std::vector<std::string>& ids, Widget& target, DockSide side, float share) {
     if (ids.empty())
         return;
-    move(ids.front(), target, side);
+    move(ids.front(), target, side, true, share);
     for (std::size_t i = 1; i < ids.size(); ++i) {
         if (DockTabs* into = tabsOf(ids.front()))
             move(ids[i], *into, DockSide::Center);
     }
+}
+
+void DockArea::rememberPlace(const DockTabs& source, const std::string& id) {
+    const std::optional<std::size_t> index = source.indexOf(id);
+    if (!index)
+        return;
+    DockGroup::Place place;
+    if (source.count() > 1) {
+        // in its stack, by a panel staying in it
+        place.stackmate = source.panelId(*index > 0 ? *index - 1 : *index + 1);
+        place.index = *index;
+    } else if (const auto* split = dynamic_cast<const DockSplit*>(source.parent()); split && split->children().size() > 1) {
+        // alone in its stack, which goes: beside what is beside it in its split (before it or after it), its share kept
+        const std::size_t at = indexIn(*split, source);
+        const std::size_t other = at > 0 ? at - 1 : at + 1;
+        Widget& sibling = *split->children()[other];
+        const bool after = at > other;
+        place.side = split->orientation() == Orientation::Horizontal ? (after ? DockSide::End : DockSide::Start)
+                                                                     : (after ? DockSide::Bottom : DockSide::Top);
+        // as much of their room as it showed (by their stretches, where they were not laid out)
+        const bool across = split->orientation() == Orientation::Horizontal;
+        float mine = across ? source.size().width : source.size().height, theirs = across ? sibling.size().width : sibling.size().height;
+        if (mine <= 0 || theirs <= 0) {
+            mine = source.stretch() > 0 ? source.stretch() : 1.0f;
+            theirs = sibling.stretch() > 0 ? sibling.stretch() : 1.0f;
+        }
+        place.share = mine / (mine + theirs);
+        if (split->children().size() > 2)
+            place.stretch = source.stretch() > 0 ? source.stretch() : 1.0f;
+        bool holdsCenter = false;
+        for (const Widget* w = center_; w && !holdsCenter; w = w->parent())
+            holdsCenter = w == &sibling;
+        if (holdsCenter) {
+            place.besideCenter = true;
+        } else {
+            forEachTabs(sibling, [&](DockTabs& tabs) {
+                if (place.beside.empty() && tabs.count() > 0)
+                    place.beside = tabs.panelId(0);
+            });
+            if (place.beside.empty())
+                return;
+        }
+    } else {
+        return;         // alone in its area: wherever it goes
+    }
+    group_->places[id] = std::move(place);
+}
+
+DockTabs& DockArea::placeBack(DockPanel panel) {
+    const auto it = group_->places.find(panel.id);
+    if (it == group_->places.end())
+        return addPanel(std::move(panel));
+    const DockGroup::Place place = it->second;
+    group_->places.erase(it);
+    if (!place.stackmate.empty()) {
+        if (DockTabs* mate = tabsOf(place.stackmate)) {
+            mate->add(std::move(panel), place.index);
+            return *mate;
+        }
+    }
+    Widget* target = place.besideCenter ? center_ : place.beside.empty() ? nullptr : tabsOf(place.beside);
+    if (!target || target->root() != root())
+        return addPanel(std::move(panel));
+    // what was beside it: out of the splits across its way it went into since
+    const Orientation way = place.side == DockSide::Start || place.side == DockSide::End ? Orientation::Horizontal : Orientation::Vertical;
+    while (auto* split = dynamic_cast<DockSplit*>(target->parent())) {
+        if (split->orientation() == way)
+            break;
+        target = split;
+    }
+    const float kept = target->stretch();
+    DockTabs& placed = insertBeside(std::move(panel), *target, place.side, place.share);
+    if (place.stretch > 0 && placed.parent() == target->parent()) {
+        // into the split it left, which stayed: as it was there, the others too (their room not shared again)
+        target->setStretch(kept);
+        placed.setStretch(place.stretch);
+    }
+    return placed;
+}
+
+bool DockArea::reorderTo(Point point) {
+    if (!drag_ || drag_->window || drag_->ids.size() != 1 || !drag_->source)
+        return false;
+    DockTabs& source = *drag_->source;
+    const Point o = source.mapToRoot({});
+    if (!Rect{o.x, o.y - tearReach, source.size().width, source.barHeight() + 2 * tearReach}.contains(point))
+        return false;
+    // after the tabs whose middle it is past (along the bar's way)
+    const std::optional<std::size_t> from = source.indexOf(drag_->ids.front());
+    if (!from || source.count() < 2)
+        return true;
+    const bool rtl = source.rightToLeft();
+    std::size_t to = 0;
+    const auto& tabs = source.bar_->children();
+    for (std::size_t i = 0; i < tabs.size(); ++i) {
+        if (i == *from)
+            continue;
+        const float middle = tabs[i]->mapToRoot({tabs[i]->size().width / 2, 0}).x;
+        if (rtl ? point.x < middle : point.x > middle)
+            ++to;
+    }
+    source.moveTab(*from, std::min(to, source.count() - 1));
+    return true;
 }
 
 std::optional<Rect> DockArea::screenRect(const Widget& widget) const {
@@ -1326,6 +1482,8 @@ DockArea* DockArea::floatPanel(const std::string& id, Point position, Size size,
     if (!h || !source)
         return nullptr;
     DockArea* from = source->area();
+    if (!from->floating_)
+        from->rememberPlace(*source, id);       // docked back by its window's button: there again
     DockPanel panel = source->take(*source->indexOf(id));
     prune(*source);
     std::unique_ptr<DockArea> area = makeSibling(nullptr);
@@ -1469,6 +1627,8 @@ std::pair<Widget*, DockArea*> DockArea::nodeAt(const UiRoot& root, Point point) 
         for (DockArea* area : group_->areas) {
             if (area->center_ == w)
                 return {w, area};
+            if (area == w)
+                return {nullptr, area};     // between its stacks (a splitter's handle): its edges' guides only
         }
     }
     return {nullptr, nullptr};
@@ -1643,6 +1803,7 @@ void DockArea::dragTo(Point point) {
     if (!drag_ || drag_->tearing)
         return;
     drag_->target = nullptr;
+    drag_->share = 0.5f;
     DockArea* shown = std::exchange(drag_->shownArea, nullptr);
     UiRoot* r = root();
     if (!r)
@@ -1659,15 +1820,16 @@ void DockArea::dragTo(Point point) {
         over = hit.root;
         at = hit.point;
     } else if (h && h->placesWindows()) {
-        // a tab along its stack's tab bar stays there; out of it, it floats now
-        const DockTabs& source = *drag_->source;
-        const Point o = source.mapToRoot({});
-        const float bar = source.barHeight();
-        if (!Rect{o.x, o.y - tearReach, source.size().width, bar + 2 * tearReach}.contains(point)) {
+        // a tab along its stack's tab bar stays there, put among the others where it is; out of it, it floats now
+        if (!reorderTo(point)) {
             if (shown)
                 shown->clearDrop();
             tearOff(point);
         }
+        return;
+    } else if (reorderTo(point)) {
+        if (shown)
+            shown->clearDrop();
         return;
     }
     // in its window only: out of it, it would float in a window the system places; or, where the system carries drags
@@ -1692,16 +1854,47 @@ void DockArea::showDrop(const UiRoot* over, Point at, DockArea* shown) {
     auto [node, area] = over ? nodeAt(*over, at) : std::pair<Widget*, DockArea*>{};
     if (shown && shown != area)
         shown->clearDrop();
+    if (!area)
+        return;
+
+    // the guides at the area's edges: on one, along that edge of all of it (on a stack's tabs: into the stack, first)
+    const auto* barOf = dynamic_cast<const DockTabs*>(node);
+    const Point onNode = node ? node->mapFromRoot(at) : Point{};
+    const bool onBar = barOf && onNode.y >= 0 && onNode.y < barOf->barHeight() && onNode.x >= 0 && onNode.x < barOf->size().width;
+    if (area->node() && !onBar) {
+        const Point inArea = area->mapFromRoot(at);
+        const bool areaRtl = area->rightToLeft();
+        for (DockSide s : {DockSide::Start, DockSide::End, DockSide::Top, DockSide::Bottom}) {
+            if (!edgeGuide(area->size(), areaRtl, s).contains(inArea))
+                continue;
+            area->guides_.emplace();
+            area->guides_->node = node;
+            area->guides_->center = false;
+            area->guides_->edge = s;
+            area->indicator_ = edgeZone(area->size(), areaRtl, s);
+            drag_->target = area->node();
+            drag_->side = s;
+            drag_->share = s == DockSide::Start || s == DockSide::End ? area->indicator_->width / std::max(1.0f, area->size().width)
+                                                                      : area->indicator_->height / std::max(1.0f, area->size().height);
+            area->invalidatePaint();
+            drag_->shownArea = area;
+            return;
+        }
+    }
 
     // the guides of the stack (or of the center); on one of them (or on the stack's tabs), where the tab would go
     auto* tabs = dynamic_cast<DockTabs*>(node);
     const bool own = tabs && tabs == drag_->source && !drag_->window;
-    if (own && tabs->count() <= drag_->ids.size()) {
-        area->clearDrop();      // all its tabs dragged: nothing they could do there
-        node = nullptr;
-    }
-    if (!node)
+    if (own && tabs->count() <= drag_->ids.size())
+        node = nullptr;         // all its tabs dragged: nothing they could do there
+    if (!node) {
+        // the edges' guides only
+        area->guides_.emplace();
+        area->indicator_.reset();
+        area->invalidatePaint();
+        drag_->shownArea = area;
         return;
+    }
     const Point local = node->mapFromRoot(at);
     const float bar = tabs ? tabs->barHeight() : 0.0f;
     std::optional<DockSide> side;
@@ -1745,6 +1938,7 @@ void DockArea::systemDragMoved(const UiRoot* over, Point at) {
     if (!drag_ || !drag_->system)
         return;
     drag_->target = nullptr;
+    drag_->share = 0.5f;
     DockArea* shown = std::exchange(drag_->shownArea, nullptr);
     if (!over) {
         if (shown)
@@ -1770,8 +1964,8 @@ void DockArea::systemDragEnded(const UiRoot* over, Point at) {
         h->captureMouse(false);
     std::function<void()> apply;
     if (done.target) {
-        apply = [this, ids = done.ids, shown = done.shown, target = done.target, side = done.side] {
-            move(ids, *target, side);
+        apply = [this, ids = done.ids, shown = done.shown, target = done.target, side = done.side, share = done.share] {
+            move(ids, *target, side, share);
             if (DockTabs* tabs = tabsOf(shown))
                 tabs->setActive(*tabs->indexOf(shown));
         };
@@ -1810,8 +2004,8 @@ void DockArea::endDrag(Point point, bool drop) {
         return;
     std::function<void()> apply;
     if (done.target) {
-        apply = [this, ids = done.ids, shown = done.shown, target = done.target, side = done.side] {
-            move(ids, *target, side);
+        apply = [this, ids = done.ids, shown = done.shown, target = done.target, side = done.side, share = done.share] {
+            move(ids, *target, side, share);
             if (DockTabs* tabs = tabsOf(shown))
                 tabs->setActive(*tabs->indexOf(shown));
         };
@@ -1863,17 +2057,33 @@ void DockArea::paintOver(PaintContext& context) {
     }
     if (!guides_)
         return;
-    // the cross: each guide a small picture of where the tab would go, the one under the mouse lit
-    const Widget& node = *guides_->node;
-    const Point offset = node.mapToRoot({}) - mapToRoot({});
-    const bool rtl = node.rightToLeft();
+    // the cross (each guide a small picture of where the tab would go, the one under the mouse lit) and the guides at the
+    // area's edges (along that edge of all of it)
     const Palette& palette = context.ui.theme.palette;
-    for (DockSide side : {DockSide::Center, DockSide::Start, DockSide::End, DockSide::Top, DockSide::Bottom}) {
-        if (side == DockSide::Center && !guides_->center)
-            continue;
-        const Rect local = guideOf(node, side);
-        const Rect g{local.x + offset.x, local.y + offset.y, local.width, local.height};
-        const bool lit = guides_->hovered == side;
+    struct Shown {
+        Rect rect;
+        DockSide side;
+        bool lit;
+        bool rtl;
+    };
+    std::vector<Shown> shownGuides;
+    for (DockSide side : {DockSide::Start, DockSide::End, DockSide::Top, DockSide::Bottom})
+        shownGuides.push_back({edgeGuide(size(), rightToLeft(), side), side, guides_->edge == side, rightToLeft()});
+    if (const Widget* node = guides_->node; node && !guides_->edge) {
+        const Point offset = node->mapToRoot({}) - mapToRoot({});
+        for (DockSide side : {DockSide::Center, DockSide::Start, DockSide::End, DockSide::Top, DockSide::Bottom}) {
+            if (side == DockSide::Center && !guides_->center)
+                continue;
+            const Rect local = guideOf(*node, side);
+            shownGuides.push_back({{local.x + offset.x, local.y + offset.y, local.width, local.height}, side, guides_->hovered == side,
+                                   node->rightToLeft()});
+        }
+    }
+    for (const Shown& shownGuide : shownGuides) {
+        const Rect& g = shownGuide.rect;
+        const DockSide side = shownGuide.side;
+        const bool lit = shownGuide.lit;
+        const bool rtl = shownGuide.rtl;
         p.fillRoundedRect(g, s.cornerRadius, lit ? s.activeLine : palette.surface);
         p.strokeRoundedRect(g, s.cornerRadius, 1, s.activeLine);
         const Color ink = lit ? palette.window : s.activeLine;

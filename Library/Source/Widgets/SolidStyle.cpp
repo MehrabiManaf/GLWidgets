@@ -73,8 +73,8 @@ void Theme::solid(Theme& t, bool dark) {
     // seen from a little nearer than by default: their sides show toward the window's edges
     t.cameraDistance = 0.9f;
     // panels docked from a floating window fall into their places; floated, they rise into their window from behind it
-    t.dock.landing = std::chrono::milliseconds(520);
-    t.dock.rising = std::chrono::milliseconds(320);
+    t.dock.landing = std::chrono::milliseconds(750);
+    t.dock.rising = std::chrono::milliseconds(500);
     t.dock.variedArrivals = true;           // each one of three ways, at random
 }
 

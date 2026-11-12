@@ -674,7 +674,8 @@ TEST(aPanelDockedBackLandsAsItsStyleSays) {
         paint::DrawList list;
         t.window->root->paint(list);
         // landing from where it was in its floating window: lifted toward the camera, coming down from there together
-        CHECK(!list.depth && list.sceneVertices.empty() != landing && (!landing || list.sceneVertices.front().center[2] > 10));
+        CHECK(!list.depth && list.sceneVertices.empty() != landing &&
+              (!landing || std::any_of(list.sceneVertices.begin(), list.sceneVertices.end(), [](const paint::SceneVertex& v) { return v.center[2] > 10; })));
         // once it has landed: as it is
         tests::advance(screen.context.theme.dock.landing + std::chrono::milliseconds(50));
         t.window->root->paint(list);
@@ -1235,4 +1236,104 @@ TEST(aFloatingWindowLetGoOnAGuideLandsFromWhereItWas) {
     CHECK(std::abs(seen.x - expected.x) < 1 && std::abs(seen.y - expected.y) < 1);
     CHECK(std::abs(first.halfSize[0] * k - landed.halfSize[0] * sx) < 1 && std::abs(first.halfSize[1] * k - landed.halfSize[1] * sy) < 1);
     tests::testScheduler().setAnimationsEnabled(false);
+}
+
+namespace {
+
+// The float button of `tabs` (last on its bar), on the screen.
+Point floatButtonOf(const Screen& screen, DockTabs& tabs) {
+    const Widget& button = *tabs.children()[1]->children().back();
+    return button.mapToRoot({12, 12}) + screen.windowPosition(*tabs.root());
+}
+
+// Floated by its button, then docked back by its window's.
+void floatAndDockBack(Screen& screen, Screen::Win& window, DockArea& area, const std::string& id) {
+    screen.layout();
+    const Point out = floatButtonOf(screen, *area.tabsOf(id));
+    screen.press(window, out);
+    screen.release(window, out);
+    screen.closeWindows();
+    screen.layout();
+    const Point back = floatButtonOf(screen, *area.tabsOf(id));
+    screen.press(*screen.all.front(), back);
+    screen.release(*screen.all.front(), back);
+    screen.closeWindows();
+    screen.layout();
+}
+
+} // namespace
+
+TEST(aPanelDockedBackByItsButtonGoesWhereItWas) {
+    // alone in its stack, at the start of the graph's: there again, a stack of its own, its share kept
+    {
+        Screen screen;
+        Tools t(screen, {0, 0});
+        screen.layout();
+        const float before = t.area->tabsOf("palette")->size().width;
+        floatAndDockBack(screen, *t.window, *t.area, "palette");
+        DockTabs* palette = t.area->tabsOf("palette");
+        CHECK(palette && palette != t.graph && palette->count() == 1);
+        const auto* split = palette ? dynamic_cast<const DockSplit*>(palette->parent()) : nullptr;
+        CHECK(split && split->children().size() == 2 && split->children()[0].get() == palette && split->children()[1].get() == t.graph);
+        CHECK(palette && std::abs(palette->size().width - before) < 2);
+    }
+    // with another panel in its stack, in the middle: in that stack again, where it was among its tabs
+    {
+        Screen screen;
+        Tools t(screen, {0, 0});
+        t.area->addPanel(panel("props"), t.area->tabsOf("palette"), DockSide::Center);
+        t.area->addPanel(panel("notes"), t.area->tabsOf("palette"), DockSide::Center);
+        DockTabs& stack = *t.area->tabsOf("palette");
+        CHECK(stack.indexOf("props") == 1u);
+        stack.setActive(1);         // (the float button floats the panel shown)
+        floatAndDockBack(screen, *t.window, *t.area, "props");
+        CHECK(t.area->tabsOf("props") == &stack && stack.indexOf("props") == 1u && stack.count() == 3);
+    }
+    // one of three side by side, the others not as their stretches would share them: each as wide as it was again
+    {
+        Screen screen;
+        Tools t(screen, {0, 0});
+        t.area->addPanel(panel("props"), t.graph, DockSide::End, 0.2f);
+        screen.layout();
+        const float palette = t.area->tabsOf("palette")->size().width, graph = t.graph->size().width,
+                    props = t.area->tabsOf("props")->size().width;
+        floatAndDockBack(screen, *t.window, *t.area, "props");
+        CHECK(t.area->tabsOf("props") && t.area->tabsOf("props")->area() == t.area);
+        CHECK(std::abs(t.area->tabsOf("palette")->size().width - palette) < 2 && std::abs(t.graph->size().width - graph) < 2);
+        CHECK(t.area->tabsOf("props") && std::abs(t.area->tabsOf("props")->size().width - props) < 2);
+    }
+}
+
+TEST(aPanelDroppedOnAWindowsEdgeGoesAlongAllOfIt) {
+    Screen screen;
+    Tools t(screen, {0, 0});
+    t.area->addPanel(panel("log"), t.graph, DockSide::Bottom, 0.3f);
+    screen.layout();
+    // the guide at the middle of the window's end edge (the area's coordinates: the area at the window's content)
+    const Point area = t.area->mapToRoot({});
+    const Point edge{area.x + t.area->size().width - 10 - 14, area.y + t.area->size().height / 2};
+    screen.drag(*t.window, panelTab(screen, *t.area, "log"), edge + t.window->position);
+    // its stack beside all of the rest, at the end: the area's node a split of the rest and it
+    DockTabs* log = t.area->tabsOf("log");
+    const Widget* top = log ? log->parent() : nullptr;
+    CHECK(log && top && top->parent() == t.area && top->children().back().get() == log);
+    // as wide as the room it showed (not half of the window)
+    CHECK(log && log->size().width < t.area->size().width * 0.32f && log->size().width > t.area->size().width * 0.2f);
+    CHECK(t.area->tabsOf("palette") && t.area->tabsOf("palette") != log && t.area->tabsOf("graph") != log);
+}
+
+TEST(aTabDraggedAlongItsBarMovesAmongTheOthers) {
+    Screen screen;
+    Tools t(screen, {0, 0});
+    t.area->addPanel(panel("props"), t.graph, DockSide::Center);
+    t.area->addPanel(panel("notes"), t.graph, DockSide::Center);
+    screen.layout();
+    CHECK(t.graph->indexOf("graph") == 0u && t.graph->indexOf("notes") == 2u);
+    // the first tab dragged along the bar past the last one's middle: last; nothing floats
+    const Point from = panelTab(screen, *t.area, "graph");
+    const Widget& last = *t.graph->children()[0]->children()[2];
+    const Point to = last.mapToRoot({last.size().width - 4, 10}) + t.window->position;
+    screen.drag(*t.window, from, to);
+    CHECK(screen.all.size() == 1 && t.graph->count() == 3);
+    CHECK(t.graph->indexOf("graph") == 2u && t.graph->indexOf("props") == 0u && t.graph->indexOf("notes") == 1u);
 }
