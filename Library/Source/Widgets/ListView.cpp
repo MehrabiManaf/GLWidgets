@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: MIT
 #include <GLWidgets/Widgets/ListView.hpp>
 
+#include "Widgets/SortPaint.hpp"
+
 #include "Widgets/IndexSet.hpp"
 #include "Widgets/ItemEditor.hpp"
 #include "Widgets/ItemOrder.hpp"
@@ -352,7 +354,7 @@ void ListView::setSortOrder(std::optional<SortOrder> order, std::function<std::p
         if (const UiContext* ui = context()) {
             flipFrom_ = sortOrder_;
             flip_.set(0);
-            flip_.animateTo(scheduler(), 1, Duration(ui->theme.motion.slow), Easing::Linear);
+            flip_.animateTo(scheduler(), 1, sorting::moveTime(ui->theme.motion.slow), Easing::Linear);
         }
     }
     sortOrder_ = order;
@@ -841,14 +843,10 @@ void ListView::highlight(paint::Painter& p, const Rect& r, float radius, Color c
 }
 
 std::optional<paint::Lifted> ListView::headerFlipped() const {
-    if (!flipFrom_ || !flip_.running())
+    if (!flipFrom_ || !flip_.running() || !sortOrder_)
         return std::nullopt;
-    // over and back up (as a table's header: TableView::flipped)
-    const float t = flip_.value();
-    const float e = t < 0.5f ? 4 * t * t * t : 1 - std::pow(-2 * t + 2, 3.0f) / 2;
-    constexpr float quarter = 1.5707963f;
-    const float angle = e < 0.5f ? quarter * e * 2 : -quarter * (1 - e) * 2;
-    return paint::Lifted{.lift = headerRect_.height * 0.5f * std::abs(std::sin(angle)) + 1, .turn = paint::Quaternion::axisAngle({1, 0, 0}, angle)};
+    // popping up, rocking toward its new order's way (sorting::keyMoved, as a table's keys)
+    return sorting::keyMoved(flip_.value(), headerRect_.height, *sortOrder_);
 }
 
 std::optional<paint::Lifted> ListView::childLifted(const Widget& child) const {
@@ -862,22 +860,19 @@ void ListView::paint(PaintContext& context) {
     if (headerShown()) {
         // its header: a pill under the mouse, the arrow of the order, a line under it
         const Rect& h = headerRect_;
-        // turning over (its title with it: childLifted), the arrow it had until the middle of the turn
+        // its order changed: moving (its title with it: childLifted), its arrow turning round
         const std::optional<paint::Lifted> turning = headerFlipped();
         const paint::Painter::Mark mark = turning ? p.markHere() : paint::Painter::Mark{};
-        const std::optional<SortOrder> shownOrder = turning && flip_.value() < 0.5f ? *flipFrom_ : sortOrder_;
         if (s.headerBackground.a > 0)
             paintRaised(p, {h.x, h.y, h.width, h.height - 1}, s.cornerRadius, s.headerBackground, {0, 0, 0, 0}, s.headerBevel);
         if (headerHovered_) {
             const VisualState state{.hovered = true, .pressed = headerPressed_};
             highlight(p, {h.x + s.inset, h.y + 2, h.width - 2 * s.inset, h.height - 4}, s.cornerRadius, s.row.resolve(state), state.pressed);
         }
-        if (shownOrder) {
+        if (sortOrder_) {
             const bool rtl = rightToLeft();
-            const float ax = rtl ? h.x + 14 : h.right() - 14, ay = h.y + h.height / 2;
-            const float d = *shownOrder == SortOrder::Ascending ? -1.0f : 1.0f;
-            const Point arrow[] = {{ax - 4, ay - 2 * d}, {ax, ay + 2 * d}, {ax + 4, ay - 2 * d}};
-            p.drawPolyline(arrow, 1.4f, s.headerText);
+            sorting::paintArrow(p, {rtl ? h.x + 14 : h.right() - 14, h.y + h.height / 2}, *sortOrder_, s.headerText, turning ? flip_.value() : 1.0f,
+                                turning ? *flipFrom_ : std::nullopt);
         }
         if (turning)
             p.place(mark, p.transform().map(h.center()), *turning);
@@ -891,8 +886,9 @@ void ListView::paint(PaintContext& context) {
         // the selection on its way from the row it was on
         const auto [top, height] = selectionPill();
         const Rect full{viewport_.x, viewport_.y + static_cast<float>(top - offset_), viewport_.width, static_cast<float>(height)};
-        const Rect pill = grid ? full : Rect{full.x + s.inset, full.y + 1, full.width - 2 * s.inset, full.height - 2};
-        highlight(p, pill, grid ? 0.0f : s.cornerRadius, s.selected, false);
+        const bool flat = grid && s.rowBevel.relief <= 0;
+        const Rect pill = flat ? full : Rect{full.x + s.inset, full.y + 1, full.width - 2 * s.inset, full.height - 2};
+        highlight(p, pill, flat ? 0.0f : s.cornerRadius, s.selected, false);
     }
     for (const Row& row : rows_) {
         const std::optional<Rect> rect = itemRect(modelIndex(row.index));
@@ -910,9 +906,10 @@ void ListView::paint(PaintContext& context) {
                     p.popClip();
             }
         } uncut{p, cut};
-        // a pill; with the cells' borders, all of its cell
-        const Rect r = grid ? *rect : Rect{rect->x + s.inset, rect->y + 1, rect->width - 2 * s.inset, rect->height - 2};
-        const float radius = grid ? 0.0f : s.cornerRadius;
+        // a pill; with the cells' borders, all of its cell (raised, a key still: in from its sides)
+        const bool flat = grid && s.rowBevel.relief <= 0;
+        const Rect r = flat ? *rect : Rect{rect->x + s.inset, rect->y + 1, rect->width - 2 * s.inset, rect->height - 2};
+        const float radius = flat ? 0.0f : s.cornerRadius;
         const VisualState state{.hovered = hovered_ == row.index, .pressed = pressed_ == row.index && hovered_ == row.index};
         const bool selected = selectedAt(row.index);
         if (selected && !sliding)
@@ -923,7 +920,7 @@ void ListView::paint(PaintContext& context) {
             ripple_.paint(p, r, radius, s.ripple);
         // the current row ringed, unless the selection already shows it
         if (hasFocus() && current_ == row.index && !selected)
-            p.strokeRoundedRect(grid ? r.inflated(-1) : r, radius, 1.5f, s.focusRing);
+            p.strokeRoundedRect(flat ? r.inflated(-1) : r, radius, 1.5f, s.focusRing);
         // the line under it
         if (s.rowLines)
             p.fillRect({rect->x, rect->bottom() - s.gridLineWidth, rect->width, s.gridLineWidth}, s.gridLine);

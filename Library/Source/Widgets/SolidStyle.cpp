@@ -51,7 +51,12 @@ void Theme::solid(Theme& t, bool dark) {
     for (ItemViewStyle* view : {&t.itemView, &t.table}) {
         view->headerGap = 2;
         view->slideSelection = true;
-        view->flipSorted = true;            // a header turning over as its order changes
+        view->flipSorted = true;            // a header popping up and rocking as its order changes
+        // the rows' highlights keys raised on the view: solid colors (not tints of what is under them), the one selected
+        // of the accent, the one under the mouse a step above the view, down as it is pressed
+        const Palette& p = t.palette;
+        view->selected = mix(p.layer, p.accent, dark ? 0.78f : 0.55f);
+        view->row = {.normal = {0, 0, 0, 0}, .hovered = mix(p.layer, p.surface, 0.75f), .pressed = mix(p.layer, p.surface, 0.45f)};
     }
     // a collapsible panel's widgets coming out from under its header, one after another
     t.collapsiblePanel.cascade = true;
@@ -74,6 +79,7 @@ void Theme::solid(Theme& t, bool dark) {
     const Color shadow{0, 0, 0, dark ? 0.6f : 0.28f};
     t.button.bevel.shadow = t.toolBar.bevel.shadow = t.collapsiblePanel.bevel.shadow = t.checkBox.checkedBevel.shadow = shadow;
     t.itemView.headerBevel.shadow = t.table.headerBevel.shadow = shadow;
+    t.itemView.rowBevel.shadow = t.table.rowBevel.shadow = shadow;
     // its raised controls solids, thin: their bodies down into what they are on as deep as two and a half times Plastic's
     // reliefs are high; their tops flat to a sharp edge (only their corners round, as seen from above)
     t.reliefBricks = paint::ReliefBricks{.depth = 2.5f, .roughness = 0.32f, .bevel = 0};

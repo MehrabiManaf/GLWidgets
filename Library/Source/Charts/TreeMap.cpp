@@ -306,7 +306,7 @@ void TreeMap::paint(PaintContext& context) {
     if (!tiles_.empty())
         beginEntrance();
     const bool coming = entering();
-    liftPiece(hovered_ && *hovered_ < tiles_.size() && !tiles_[*hovered_].parent ? std::optional(tiles_[*hovered_].key) : std::nullopt);
+    liftPiece(hovered_ && *hovered_ < tiles_.size() && !tiles_[*hovered_].parent ? std::optional(tiles_[*hovered_].key) : std::nullopt, mouse_);
     const bool lifts = lifting();
     const auto paintTile = [&](std::size_t i, const Tile& t, const Rect& r) {
         const bool lit = hovered_ == i;
@@ -368,7 +368,7 @@ void TreeMap::paint(PaintContext& context) {
         const paint::Painter::Mark mark = coming || lifts ? p.markHere() : paint::Painter::Mark{};
         paintTile(i, t, r);
         if (lifts && !t.parent)
-            placeLifted(p, mark, pieceLift(t.key), r);
+            placeLifted(p, mark, pieceLift(t.key), r, piecePress(t.key));       // (leaning where the mouse is on it)
         if (coming && area.width > 0 && area.height > 0) {
             const float across = ((rtl ? area.right() - r.right() : r.x - area.x)) / area.width;
             const float order = (across + (r.y - area.y) / area.height) / 2;
