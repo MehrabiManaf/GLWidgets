@@ -471,7 +471,8 @@ void Painter::arrive(const Mark& mark, float t, const Rect& area, bool fromBehin
 void Painter::place(const Mark& mark, Point pivot, const Lifted& lifted) {
     const Float3 at{pivot.x, pivot.y, 0};
     const Float3 up{lifted.shift.x, lifted.shift.y, lifted.lift};
-    const auto moved = [&](Float3 p) { return at + up + lifted.turn.rotate(p - at); };
+    const float scale = lifted.scale;
+    const auto moved = [&](Float3 p) { return at + up + lifted.turn.rotate((p - at) * scale); };
     const bool faded = lifted.alpha < 1;
     for (std::size_t i = mark.vertices; i < list_.vertices.size(); ++i) {
         Vertex& v = list_.vertices[i];
@@ -492,11 +493,171 @@ void Painter::place(const Mark& mark, Point pivot, const Lifted& lifted) {
         const Quaternion q = lifted.turn * rotationOf(four[0]);
         for (int k = 0; k < 4; ++k) {
             setPlace(four[k], center, q);
+            if (scale != 1) {
+                for (float& h : four[k].halfSize)
+                    h *= scale;
+                four[k].cornerRadius *= scale;
+                four[k].bevel *= scale;
+                for (float& d : four[k].decal)
+                    d *= four[k].material[2] > 0.5f ? scale : 1.0f;      // (a decal's rectangle on its face)
+            }
             if (faded)
                 scaleAlpha(four[k].color, lifted.alpha);
         }
         placeQuad(four);
     }
+}
+
+void Painter::placeClips(const Mark& mark, Point pivot, const Lifted& lifted) {
+    const Float3 at{pivot.x, pivot.y, 0};
+    const Float3 up{lifted.shift.x, lifted.shift.y, lifted.lift};
+    const auto moved = [&](Point p) { return project(at + up + lifted.turn.rotate((Float3{p.x, p.y, 0} - at) * lifted.scale)); };
+    for (std::size_t c = mark.commands; c < list_.commands.size(); ++c) {
+        // (turned, a clip is a quadrilateral: halfway between the rectangle around it and the one within it, cutting what
+        // was cut nearly where it was, and what shows nearly none of it)
+        const Rect& r = list_.commands[c].clip;
+        const Point a = moved({r.left(), r.top()}), b = moved({r.right(), r.top()});
+        const Point d = moved({r.right(), r.bottom()}), e = moved({r.left(), r.bottom()});
+        const float left = (std::max(std::min(a.x, b.x), std::min(e.x, d.x)) + std::min({a.x, b.x, d.x, e.x})) / 2;
+        const float right = (std::min(std::max(a.x, b.x), std::max(e.x, d.x)) + std::max({a.x, b.x, d.x, e.x})) / 2;
+        const float top = (std::max(std::min(a.y, e.y), std::min(b.y, d.y)) + std::min({a.y, b.y, d.y, e.y})) / 2;
+        const float bottom = (std::min(std::max(a.y, e.y), std::max(b.y, d.y)) + std::max({a.y, b.y, d.y, e.y})) / 2;
+        list_.commands[c].clip = Rect{left, top, std::max(0.0f, right - left), std::max(0.0f, bottom - top)}.intersected(clips_.front());
+    }
+}
+
+void Painter::unclip(const Mark& mark) {
+    for (std::size_t c = mark.commands; c < list_.commands.size(); ++c)
+        list_.commands[c].clip = clips_.front();
+}
+
+namespace {
+
+constexpr float pi = 3.14159265f;
+
+float outCubic(float u) {
+    u = std::clamp(u, 0.0f, 1.0f);
+    const float v = 1 - u;
+    return 1 - v * v * v;
+}
+
+// Fast, past the end by about `over` (1.7: some 10%), back.
+float outBack(float u, float over) {
+    u = std::clamp(u, 0.0f, 1.0f);
+    const float v = u - 1;
+    return 1 + (over + 1) * v * v * v + over * v * v;
+}
+
+float smooth01(float x) {
+    x = std::clamp(x, 0.0f, 1.0f);
+    return x * x * (3 - 2 * x);
+}
+
+} // namespace
+
+void Painter::swingIn(const Mark& mark, float t, const Rect& area, const Rect& from) {
+    t = std::clamp(t, 0.0f, 1.0f);
+    if (t >= 1 || area.empty() || from.empty())
+        return;
+    // as small as fits where it was, in its middle; swung down about its top edge, from its bottom toward the one looking
+    const float fit = std::min(from.width / area.width, from.height / area.height);
+    const Point hinge{area.center().x, area.y};
+    const Point startHinge{from.center().x, from.center().y + (area.y - area.center().y) * fit};
+    const float e = outCubic(t);
+    const float swing = outBack(t, 1.6f);
+    const Lifted lifted{.lift = camera_.eye.z * 0.05f * (1 - e),
+                        .turn = Quaternion::axisAngle({1, 0, 0}, 0.95f * (1 - swing)) * towardLight(0.16f * std::sin(pi * e)),
+                        .shift = {(startHinge.x - hinge.x) * (1 - e), (startHinge.y - hinge.y) * (1 - e)},
+                        .alpha = std::min(1.0f, t * 8),
+                        .scale = fit + (1 - fit) * e};
+    placeClips(mark, hinge, lifted);
+    place(mark, hinge, lifted);
+}
+
+void Painter::gatherIn(const Mark& mark, float t, const Rect& area, const Rect& from) {
+    t = std::clamp(t, 0.0f, 1.0f);
+    if (t >= 1 || area.empty() || from.empty())
+        return;
+    const float fit = std::min(from.width / area.width, from.height / area.height);
+    const Point fromMiddle = from.center(), areaMiddle = area.center();
+    const auto was = [&](Point p) { return Point{fromMiddle.x + (p.x - areaMiddle.x) * fit, fromMiddle.y + (p.y - areaMiddle.y) * fit}; };
+    // its 2D where it is, showing as its pieces come (its shadows last)
+    for (std::size_t i = mark.vertices; i < list_.vertices.size(); ++i) {
+        Vertex& v = list_.vertices[i];
+        const bool shadow = v.kind == static_cast<float>(VertexKind::Box) && v.blur > 0.5f;
+        scaleAlpha(v.color, smooth01((t - (shadow ? 0.85f : 0.68f)) / (shadow ? 0.15f : 0.3f)));
+    }
+    float order = 0;
+    for (std::size_t i = mark.sceneVertices; i + 3 < list_.sceneVertices.size(); i += 4) {
+        SceneVertex* four = &list_.sceneVertices[i];
+        const Point c{four[0].center[0], four[0].center[1]};
+        std::uint32_t seed = static_cast<std::uint32_t>(std::lround(c.x * 7.0f)) * 73856093u ^ static_cast<std::uint32_t>(std::lround(c.y * 7.0f)) * 19349663u;
+        const auto next = [&] {
+            seed = seed * 1664525u + 1013904223u;
+            return static_cast<float>(seed >> 8) / static_cast<float>(1u << 24);       // 0 to 1
+        };
+        // the slab where it was, first; the rest scattered about there, coming one after another
+        const float large = largeIn(four[0], area);
+        const float free = large >= 0.5f ? 0.0f : 1.0f;
+        const float direction = next() * 2 * pi;
+        const float away = (35 + 55 * next()) * free;
+        const float high = (25 + 70 * next()) * free;
+        // tilted only (turned in its plane, a long one looks a stick thrown), the longer the less
+        const Float3 axis{next() * 2 - 1, next() * 2 - 1, 0};
+        const float aspect = std::max(four[0].halfSize[0], four[0].halfSize[1]) / std::max(1.0f, std::min(four[0].halfSize[0], four[0].halfSize[1]));
+        const float spin = (next() * 2 - 1) * 0.45f * std::min(1.0f, 3 / aspect) * free;
+        const float delay = 0.32f * next() * free;
+        const float u = std::clamp((t - delay) / 0.68f, 0.0f, 1.0f);
+        const float e = outCubic(u);
+        const Point start = was(c) + Point{std::cos(direction) * away, std::sin(direction) * away};
+        const Point at{start.x + (c.x - start.x) * e, start.y + (c.y - start.y) * e};
+        if (four[0].material[2] > 1.5f) {
+            for (int k = 0; k < 4; ++k) {
+                four[k].center[0] += at.x - c.x;
+                four[k].center[1] += at.y - c.y;
+                four[k].position = {four[k].position.x + at.x - c.x, four[k].position.y + at.y - c.y};
+                scaleAlpha(four[k].color, e * e);
+            }
+            continue;
+        }
+        const float size = fit + (1 - fit) * e;
+        const Quaternion turn = Quaternion::axisAngle(length(axis) > 0.01f ? axis : Float3{1, 0, 0}, spin * (1 - e)) *
+                                towardLight(0.2f * std::sin(pi * e) * free);
+        for (int k = 0; k < 4; ++k) {
+            four[k].halfSize[0] *= size;
+            four[k].halfSize[1] *= size;
+            four[k].cornerRadius = std::min(four[k].cornerRadius, std::min(four[k].halfSize[0], four[k].halfSize[1]));
+            four[k].bevel = std::min(four[k].bevel, four[k].cornerRadius);
+            setPlace(four[k], {at.x, at.y, four[k].center[2] + high * (1 - e) + order}, turn * rotationOf(four[k]));
+            scaleAlpha(four[k].color, smooth01(u / 0.2f));
+        }
+        placeQuad(four);
+        order += 0.01f;
+    }
+    unclip(mark);
+}
+
+void Painter::popIn(const Mark& mark, float t, const Rect& area) {
+    t = std::clamp(t, 0.0f, 1.0f);
+    if (t >= 1 || area.empty())
+        return;
+    const float grow = outBack(t, 1.7f);
+    const Lifted lifted{.lift = -60 * (1 - outCubic(t)),
+                        .turn = towardLight(0.18f * std::sin(pi * t)),
+                        .alpha = smooth01(t / 0.4f),
+                        .scale = 0.55f + 0.45f * grow};
+    placeClips(mark, area.center(), lifted);
+    place(mark, area.center(), lifted);
+}
+
+void Painter::turnIn(const Mark& mark, float t, const Rect& area) {
+    t = std::clamp(t, 0.0f, 1.0f);
+    if (t >= 1 || area.empty())
+        return;
+    const float turned = outBack(t, 1.3f);
+    const Lifted lifted{.lift = -40 * (1 - outCubic(t)), .turn = Quaternion::axisAngle({0, 1, 0}, 1.2f * (1 - turned)), .alpha = smooth01(t / 0.3f)};
+    placeClips(mark, area.center(), lifted);
+    place(mark, area.center(), lifted);
 }
 
 } // namespace glw::paint

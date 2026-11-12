@@ -75,6 +75,7 @@ void Theme::solid(Theme& t, bool dark) {
     // panels docked from a floating window fall into their places; floated, they rise into their window from behind it
     t.dock.landing = std::chrono::milliseconds(520);
     t.dock.rising = std::chrono::milliseconds(320);
+    t.dock.variedArrivals = true;           // each one of three ways, at random
 }
 
 void Theme::glass(Theme& t, bool dark) {

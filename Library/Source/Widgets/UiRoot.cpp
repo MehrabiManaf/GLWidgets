@@ -285,7 +285,16 @@ namespace {
 // What was drawn since `mark` arriving as `arrival` says, in `area` (the target's dips).
 void paintArriving(paint::Painter& painter, const paint::Painter::Mark& mark, const Arrival& arrival, const Rect& area) {
     if (arrival.fromBehind) {
-        painter.riseIn(mark, arrival.progress, area);
+        if (arrival.rising == RisingMotion::Pop)
+            painter.popIn(mark, arrival.progress, area);
+        else if (arrival.rising == RisingMotion::Turn)
+            painter.turnIn(mark, arrival.progress, area);
+        else
+            painter.riseIn(mark, arrival.progress, area);
+    } else if (arrival.from && arrival.landing == LandingMotion::Swing) {
+        painter.swingIn(mark, arrival.progress, area, *arrival.from);
+    } else if (arrival.from && arrival.landing == LandingMotion::Gather) {
+        painter.gatherIn(mark, arrival.progress, area, *arrival.from);
     } else {
         // (from somewhere: moving together, drawn in their order; from nowhere: falling through one another)
         painter.setDepthTest(!arrival.from);

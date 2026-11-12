@@ -180,6 +180,8 @@ private:
     bool landed_ = true;
     bool fromBehind_ = false;
     std::optional<Rect> from_;
+    LandingMotion landingMotion_ = LandingMotion::Cascade;
+    RisingMotion risingMotion_ = RisingMotion::FromBehind;
 };
 
 // Nodes side by side (horizontal) or one above the other, with handles between them.

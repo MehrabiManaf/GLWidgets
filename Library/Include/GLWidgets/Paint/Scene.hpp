@@ -129,13 +129,14 @@ struct ReliefBricks {
     friend bool operator==(const ReliefBricks&, const ReliefBricks&) = default;
 };
 
-// How something drawn is moved in three dimensions: turned about its middle, lifted `lift` dips toward the camera,
-// moved `shift` across the target; `alpha` of it showing (Painter::place).
+// How something drawn is moved in three dimensions: made `scale` times as large and turned about its middle, lifted
+// `lift` dips toward the camera, moved `shift` across the target; `alpha` of it showing (Painter::place).
 struct Lifted {
     float lift = 0;
     Quaternion turn;
     Point shift;
     float alpha = 1;
+    float scale = 1;
 };
 
 // The camera: where it is (in the target's dips; z its height above the target).

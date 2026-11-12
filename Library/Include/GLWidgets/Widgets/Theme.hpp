@@ -252,6 +252,8 @@ struct DockStyle {
     // behind it (Painter::riseIn).
     std::chrono::milliseconds landing{0};
     std::chrono::milliseconds rising{0};
+    // Each landing and rising one of their motions (LandingMotion, RisingMotion), at random; false: the first of each.
+    bool variedArrivals = false;
     Color background;               // of a stack: its tabs and the content of the panel shown
     Color border;                   // around a stack
     Color separator;                // between a stack's tabs and its content

@@ -17,6 +17,7 @@
 #include <GLWidgets/Widgets/WindowFrame.hpp>
 
 #include <algorithm>
+#include <random>
 #include <unordered_map>
 #include <cmath>
 #include <cstdio>
@@ -722,6 +723,15 @@ void DockTabs::arrive(std::chrono::milliseconds duration, bool fromBehind, std::
     landed_ = false;
     fromBehind_ = fromBehind;
     from_ = from;
+    // which way it comes: one of them at random, where the style varies them
+    landingMotion_ = LandingMotion::Cascade;
+    risingMotion_ = RisingMotion::FromBehind;
+    if (ui->theme.dock.variedArrivals) {
+        static std::minstd_rand random(std::random_device{}());
+        const int pick = std::uniform_int_distribution<int>(0, 2)(random);
+        landingMotion_ = static_cast<LandingMotion>(pick);
+        risingMotion_ = static_cast<RisingMotion>(pick);
+    }
     landing_.set(0);
     landing_.animateTo(ui->scheduler, 1, Duration(duration), Easing::Linear);
 }
@@ -729,7 +739,7 @@ void DockTabs::arrive(std::chrono::milliseconds duration, bool fromBehind, std::
 std::optional<Arrival> DockTabs::arrival() const {
     if (landed_ || landing_.value() >= 1)
         return std::nullopt;
-    return Arrival{landing_.value(), fromBehind_, from_};
+    return Arrival{landing_.value(), fromBehind_, from_, landingMotion_, risingMotion_};
 }
 
 void DockTabs::rebuildTools() {

@@ -648,6 +648,7 @@ TEST(aPanelDockedBackLandsAsItsStyleSays) {
     for (const ThemeStyle style : {ThemeStyle::Studio, ThemeStyle::Solid, ThemeStyle::Glass}) {
         Screen screen;
         screen.context.theme = Theme::dark(style);
+        screen.context.theme.dock.variedArrivals = false;      // (the first ways: cascading, from behind)
         Tools t(screen, {0, 0});
         const auto floatButton = [&](DockTabs& tabs) -> Point {
             const Widget& button = *tabs.children()[1]->children().back();
@@ -1194,6 +1195,7 @@ TEST(aFloatingWindowLetGoOnAGuideLandsFromWhereItWas) {
     tests::testScheduler().setAnimationsEnabled(true);
     Screen screen;
     screen.context.theme = Theme::dark(ThemeStyle::Solid);
+    screen.context.theme.dock.variedArrivals = false;          // (cascading)
     Tools t(screen, {0, 0});
     screen.layout();
     screen.drag(*t.window, panelTab(screen, *t.area, "palette"), {1200, 300});

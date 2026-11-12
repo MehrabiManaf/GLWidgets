@@ -583,3 +583,40 @@ TEST(theSolidStylesGroovesAndKeys) {
     CHECK(plastic.lineEdit.stepperBevel.relief == 0 && plastic.splitter.grooveWidth == 0 && plastic.statusBar.bevel.relief == 0 &&
           plastic.node.dragLift == 0);
 }
+
+TEST(everyWayToComeStartsAwayAndEndsWhereItIs) {
+    const Rect area{100, 100, 300, 200}, from{600, 400, 150, 100};
+    const auto drawn = [&](auto&& motion, float t) {
+        DrawList list;
+        Painter p(list, {0, 0, 1000, 800}, 1);
+        p.setReliefBricks(ReliefBricks{.depth = 2.5f, .bevel = 0});
+        const Painter::Mark mark = p.mark();
+        p.fillRelief({100, 130, 300, 170}, 4, 0.8f, 1.5f, {0.3f, 0.3f, 0.3f, 1});       // a slab
+        p.fillRelief({120, 160, 120, 26}, 4, 1.6f, 0, {0.5f, 0.5f, 0.5f, 1});           // a control on it
+        p.fillRect({130, 168, 40, 10}, {1, 1, 1, 1});                                    // its text
+        motion(p, mark, t);
+        return list;
+    };
+    const auto swing = [&](Painter& p, const Painter::Mark& m, float t) { p.swingIn(m, t, area, from); };
+    const auto gather = [&](Painter& p, const Painter::Mark& m, float t) { p.gatherIn(m, t, area, from); };
+    const auto pop = [&](Painter& p, const Painter::Mark& m, float t) { p.popIn(m, t, area); };
+    const auto turn = [&](Painter& p, const Painter::Mark& m, float t) { p.turnIn(m, t, area); };
+    const DrawList still = drawn([](Painter&, const Painter::Mark&, float) {}, 1);
+    const auto check = [&](auto&& motion, bool moves) {
+        const DrawList early = drawn(motion, 0.2f), end = drawn(motion, 1);
+        // at the end: as it is drawn still
+        CHECK(near(end.sceneVertices[4].center[0], still.sceneVertices[4].center[0]) &&
+              near(end.sceneVertices[4].center[2], still.sceneVertices[4].center[2]));
+        CHECK(near(end.vertices[0].position.x, still.vertices[0].position.x));
+        // on the way: the control elsewhere, or as large otherwise, or turned
+        const SceneVertex& a = early.sceneVertices[4];
+        const SceneVertex& b = still.sceneVertices[4];
+        const bool away = std::abs(a.center[0] - b.center[0]) + std::abs(a.center[1] - b.center[1]) + std::abs(a.center[2] - b.center[2]) > 2 ||
+                          std::abs(a.halfSize[0] - b.halfSize[0]) > 1 || std::abs(a.rotation[3] - 1) > 1e-3f;
+        CHECK(away == moves);
+    };
+    check(swing, true);
+    check(gather, true);
+    check(pop, true);
+    check(turn, true);
+}

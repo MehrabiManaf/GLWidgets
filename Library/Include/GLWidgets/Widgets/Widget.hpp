@@ -124,10 +124,17 @@ struct TextEvent {
 // What a widget paints arriving (Widget::arrival): `progress` from 0 to 1, falling in from in front of the window or
 // rising from behind it; falling in from `from` when it was somewhere (the root's dips: a panel docked back from its
 // floating window, where it was in that window), moving from there to its place.
+// How what lands from somewhere comes (Painter::fallIn from it, swingIn, gatherIn); how what rises comes (Painter::riseIn,
+// popIn, turnIn).
+enum class LandingMotion : std::uint8_t { Cascade, Swing, Gather };
+enum class RisingMotion : std::uint8_t { FromBehind, Pop, Turn };
+
 struct Arrival {
     float progress = 0;
     bool fromBehind = false;
     std::optional<Rect> from;
+    LandingMotion landing = LandingMotion::Cascade;
+    RisingMotion rising = RisingMotion::FromBehind;
 };
 
 struct GLW_EXPORT PaintContext {

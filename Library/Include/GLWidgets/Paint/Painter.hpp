@@ -134,6 +134,18 @@ public:
     // ... rising from far behind the target instead (small, toward the camera's middle), nearer and nearer, slowing as it
     // comes, one after another from the middle of `area` out; the 2D of each place showing as what is under it comes.
     void riseIn(const Mark& mark, float t, const Rect& area);
+    // Other ways to come, all of it eased by itself from `t` 0 to 1, cut by no clip meanwhile:
+    // from `from` (where it was, as fallIn takes it), swung down onto its place as a lid hinged on its top edge (a little
+    // past flat, and back), growing to its size;
+    void swingIn(const Mark& mark, float t, const Rect& area, const Rect& from);
+    // ... its pieces scattered about where they were, each a little turned and nearer the camera, gathering into their
+    // places one after another (its 2D showing as they come);
+    void gatherIn(const Mark& mark, float t, const Rect& area, const Rect& from);
+    // in its place, growing out of a smaller one a little behind the target, a little past its size and back, the light
+    // catching it on the way;
+    void popIn(const Mark& mark, float t, const Rect& area);
+    // ... turned to face the one looking from nearly edge on, about its upright middle, as a card turns.
+    void turnIn(const Mark& mark, float t, const Rect& area);
     // What was drawn since `mark` moved in three dimensions about `pivot` (dips of the target, on the target's plane): its
     // 2D seen where it goes (its vertices projected), its bricks lifted and turned with it; shadows where they are.
     void place(const Mark& mark, Point pivot, const Lifted& lifted);
@@ -166,6 +178,10 @@ private:
     void sceneQuad(const Rect& quad, SceneVertex v, TextureId texture, bool anyTexture);
     // fallIn's and riseIn's.
     void arrive(const Mark& mark, float t, const Rect& area, bool fromBehind);
+    // What was drawn since `mark` cut by no clip (moving out of its place).
+    void unclip(const Mark& mark);
+    // ... cut where its clips went, moved as place moves it (what was cut where it is, cut as it moves).
+    void placeClips(const Mark& mark, Point pivot, const Lifted& lifted);
     void arriveFrom(const Mark& mark, float t, const Rect& area, const Rect& from);
     // A brick's (a decal's) four scene vertices placed again around where it shows.
     void placeQuad(SceneVertex* four) const;
