@@ -62,8 +62,13 @@ enum class Cursor : std::uint8_t {
     NotAllowed,
     Wait,
     Crosshair,
+    // dragging something over where it would be taken (DropAction): copied (an arrow and a box with a plus), moved (an
+    // arrow and a box), linked (an arrow and a box with a bent arrow); drawn by the platform where the system has none
+    DragCopy,
+    DragMove,
+    DragLink,
 };
-inline constexpr std::size_t cursorCount = static_cast<std::size_t>(Cursor::Crosshair) + 1;
+inline constexpr std::size_t cursorCount = static_cast<std::size_t>(Cursor::DragLink) + 1;
 
 // Called by the system with a point of the window (dips), whenever it needs to know - often: it must be quick.
 using HitTest = std::function<HitArea(Point)>;

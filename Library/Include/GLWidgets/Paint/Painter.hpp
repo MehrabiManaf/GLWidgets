@@ -48,6 +48,8 @@ public:
     // a brick instead while the painter draws them so (setReliefBricks).
     // `joined`: as a brick, its sides joined to another (Scene.hpp's Joined).
     void fillRelief(const Rect& rect, float radius, float height, float bevel, Color color, const Joined& joined = {});
+    // ... a slab (a popup's): as a brick, as deep as it needs to be for the top's edge to round down over `edge` dips.
+    void fillSlab(const Rect& rect, float radius, float height, float bevel, float edge, Color color);
     void fillCircle(Point center, float radius, Color color);
     void strokeCircle(Point center, float radius, float width, Color color);
 

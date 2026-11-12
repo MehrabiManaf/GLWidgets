@@ -246,13 +246,18 @@ protected:
     // ---- the piece under the mouse ----
     // Where its pieces are solids, the one under the mouse (`key`, its own; none: none) is lifted toward the one looking,
     // eased up, catching the light; the one that was, eased down. Told by the chart's paint, each time.
-    void liftPiece(std::optional<std::string> key);
+    // `press`: where the mouse is on it, for a piece that leans there (placeLifted's).
+    void liftPiece(std::optional<std::string> key, std::optional<Point> press = {});
     // Some piece is lifted (or coming down): pieces are looked up (pieceLift).
     bool lifting() const { return !lifted_.empty() || lowering_.value() > 0; }
-    // How far `key` is lifted (0 to 1).
+    // How far `key` is lifted (0 to 1); where the mouse pressed it (the last it was, while it comes down).
     float pieceLift(std::string_view key) const;
-    // What was drawn of a piece since `mark` (Painter::markHere), `rect` its bounds, lifted `amount` (pieceLift).
-    void placeLifted(paint::Painter& painter, const paint::Painter::Mark& mark, float amount, const Rect& rect) const;
+    std::optional<Point> piecePress(std::string_view key) const;
+    // What was drawn of a piece since `mark` (Painter::markHere), `rect` its bounds, lifted `amount` (pieceLift); with
+    // `press`, leaning there, as if the mouse were a weight on it (that side lower, the far one higher), the more the
+    // further out it is from the middle.
+    void placeLifted(paint::Painter& painter, const paint::Painter::Mark& mark, float amount, const Rect& rect,
+                     std::optional<Point> press = {}) const;
 
     // A pixel's edge near `v`, at `pixelsPerDip`: thin lines drawn there are sharp.
     static float snap(float v, float pixelsPerDip);
@@ -280,6 +285,8 @@ private:
     mutable std::unordered_map<std::string, std::unique_ptr<text::TextLayout>> texts_;
     std::string lifted_;
     std::string lowered_;
+    std::optional<Point> liftedPress_;
+    std::optional<Point> loweredPress_;
     Animation lifting_{[this] { invalidatePaint(); }};
     Animation lowering_{[this] { invalidatePaint(); }};
     bool entered_ = false;

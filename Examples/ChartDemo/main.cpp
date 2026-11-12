@@ -679,7 +679,7 @@ struct Demo {
     }
 
     void replay() {
-        for (glw::Chart* chart : std::initializer_list<glw::Chart*>{pie, bars, tree, race, histogram, gauges[0], gauges[1], gauges[2]})
+        for (glw::Chart* chart : std::initializer_list<glw::Chart*>{pie, bars, tree, race, histogram, flame, candles, gauges[0], gauges[1], gauges[2]})
             chart->playEntrance();
     }
 

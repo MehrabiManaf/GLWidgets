@@ -21,15 +21,16 @@ constexpr Color hex(unsigned v, float alpha = 1) {
 // Studio's: neutral grays with a little blue in them, as Fusion's are gray; controls raised a step above the panels they
 // are on and lit from above, fields sunk into them, the edges of controls darker than what is around them. The accent: in
 // the dark, amber (a warm orange, a little toward mustard) with dark marks on it; in the light, azure with white ones.
-// Fluid's: deeper and smoother, the layers further apart, the accent brighter. Plain's: grays without a tint.
+// Fluid's: deeper and smoother, the layers further apart, the accent brighter. Plain's: grays without a tint. Their dark
+// ones deep: the window near black, the layers and controls a step apart above it.
 Palette Palette::dark(ThemeStyle style) {
     if (style == ThemeStyle::Fluid) {
         return {
-            .window = hex(0x18191C),
-            .layer = hex(0x222327),
-            .surface = hex(0x2D2F34),
-            .base = hex(0x141518),
-            .titleBar = hex(0x121315),
+            .window = hex(0x121315),
+            .layer = hex(0x1A1B1E),
+            .surface = hex(0x28292E),
+            .base = hex(0x0F1012),
+            .titleBar = hex(0x0E0E10),
             .text = hex(0xEDEEF0),
             .mutedText = hex(0x9DA1A8),
             .disabledText = hex(0x585C63),
@@ -45,11 +46,11 @@ Palette Palette::dark(ThemeStyle style) {
     }
     if (style == ThemeStyle::Metal) {
         return {
-            .window = hex(0x1C1E21),
-            .layer = hex(0x282B2F),
-            .surface = hex(0x4A4F57),
-            .base = hex(0x16181A),
-            .titleBar = hex(0x161719),
+            .window = hex(0x151719),
+            .layer = hex(0x1E2124),
+            .surface = hex(0x41464D),
+            .base = hex(0x111214),
+            .titleBar = hex(0x111113),
             .text = hex(0xE8EAED),
             .mutedText = hex(0x9AA0A8),
             .disabledText = hex(0x5C6168),
@@ -65,11 +66,11 @@ Palette Palette::dark(ThemeStyle style) {
     }
     if (style == ThemeStyle::Plain) {
         return {
-            .window = hex(0x2A2A2A),
-            .layer = hex(0x313131),
-            .surface = hex(0x3B3B3B),
-            .base = hex(0x242424),
-            .titleBar = hex(0x232323),
+            .window = hex(0x202020),
+            .layer = hex(0x252525),
+            .surface = hex(0x343434),
+            .base = hex(0x1B1B1B),
+            .titleBar = hex(0x1B1B1B),
             .text = hex(0xE6E6E6),
             .mutedText = hex(0x9E9E9E),
             .disabledText = hex(0x636363),
@@ -84,11 +85,11 @@ Palette Palette::dark(ThemeStyle style) {
         };
     }
     return {
-        .window = hex(0x232529),
-        .layer = hex(0x2B2E33),
-        .surface = hex(0x3A3E45),
-        .base = hex(0x1C1E22),
-        .titleBar = hex(0x1A1C1F),
+        .window = hex(0x1B1C1F),
+        .layer = hex(0x212327),
+        .surface = hex(0x33373D),
+        .base = hex(0x15171A),
+        .titleBar = hex(0x141518),
         .text = hex(0xE6E8EB),
         .mutedText = hex(0x9A9FA8),
         .disabledText = hex(0x5D626A),

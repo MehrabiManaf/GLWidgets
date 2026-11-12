@@ -109,6 +109,19 @@ public:
     }
 
 protected:
+    // a header's title turning over with its key (TableView::flipped)
+    std::optional<paint::Lifted> childLifted(const Widget& child) const override {
+        if (!header_ || !table_.flipColumn_)
+            return std::nullopt;
+        for (const Cell& cell : cells_)
+            if (cell.widget == &child)
+                return table_.flipped(cell.column);
+        return std::nullopt;
+    }
+
+public:
+
+protected:
     Size measureContent(Size available) override {
         sync();
         const float width = std::isfinite(available.width) ? available.width : 0.0f;
@@ -434,9 +447,41 @@ void TableView::rearrangeStrips() {
 
 // ---- sorting ----
 
+void TableView::flipTo(std::optional<std::size_t> column, SortOrder order) {
+    const UiContext* ui = context();
+    const bool changed = column != indicatorColumn_ || (column && order != indicatorOrder_);
+    if (!changed || !column || !ui || !style().flipSorted || !scheduler())
+        return;
+    // the arrow it showed before (none, when another column was sorted), over by the middle of the turn
+    flipFrom_ = indicatorColumn_ == column ? std::optional(indicatorOrder_) : std::nullopt;
+    flipColumn_ = column;
+    flip_.set(0);
+    flip_.animateTo(scheduler(), 1, Duration(ui->theme.motion.slow), Easing::Linear);
+    header_->invalidatePaint();
+}
+
+std::optional<paint::Lifted> TableView::flipped(std::size_t column) const {
+    if (!flipColumn_ || *flipColumn_ != column || !flip_.running())
+        return std::nullopt;
+    // over and back up: the old side going away (a quarter turn), the new one coming (from the other quarter), a little
+    // past flat and back; lifted off the header as it turns
+    const float t = flip_.value();
+    const float e = t < 0.5f ? 4 * t * t * t : 1 - std::pow(-2 * t + 2, 3.0f) / 2;
+    constexpr float quarter = 1.5707963f;
+    const float angle = e < 0.5f ? quarter * e * 2 : -quarter * (1 - e) * 2;
+    const Rect h = headerRect();
+    return paint::Lifted{.lift = h.height * 0.5f * std::abs(std::sin(angle)) + 1, .turn = paint::Quaternion::axisAngle({1, 0, 0}, angle)};
+}
+
+void TableView::flipStepped() {
+    invalidatePaint();
+    header_->invalidatePaint();
+}
+
 void TableView::sortBy(std::optional<std::size_t> column, SortOrder order) {
     if (column && (!model_ || *column >= model_->columnCount()))
         column.reset();
+    flipTo(column, order);
     sortColumn_ = column;
     sortOrder_ = order;
     indicatorColumn_ = column;
@@ -450,6 +495,7 @@ void TableView::sortBy(std::optional<std::size_t> column, SortOrder order) {
 }
 
 void TableView::setSortIndicator(std::optional<std::size_t> column, SortOrder order) {
+    flipTo(column, order);
     indicatorColumn_ = column;
     indicatorOrder_ = order;
     invalidatePaint();
@@ -732,6 +778,10 @@ void TableView::paint(PaintContext& context) {
     const auto [first, last] = shownColumns();
     for (std::size_t column = first; column < last; ++column) {
         const float x = h.x + columnX(column, h.width), w = shownWidth(column);
+        // turning over (its title with it: Strip::childLifted), the arrow it had until the middle of the turn
+        const std::optional<paint::Lifted> turning = flipped(column);
+        const paint::Painter::Mark mark = turning ? p.markHere() : paint::Painter::Mark{};
+        const bool before = turning && flip_.value() < 0.5f;
         if (keys) {
             // a key: lighter under the mouse, down as it is pressed
             const bool hot = hoveredHeader_ == column && !hoveredEdge_ && !resizing_;
@@ -749,12 +799,15 @@ void TableView::paint(PaintContext& context) {
                 p.fillRoundedRect(pill, s.cornerRadius, s.row.resolve(state));
         }
         // sorted by it: an arrow at its end side, up ascending, down descending
-        if (indicatorColumn_ == column) {
+        const std::optional<SortOrder> shownOrder = before ? flipFrom_ : indicatorColumn_ == column ? std::optional(indicatorOrder_) : std::nullopt;
+        if (shownOrder) {
             const float ax = rtl ? x + 14 : x + w - 14, ay = h.y + h.height / 2;
-            const float d = indicatorOrder_ == SortOrder::Ascending ? -1.0f : 1.0f;
+            const float d = *shownOrder == SortOrder::Ascending ? -1.0f : 1.0f;
             const Point arrow[] = {{ax - 4, ay - 2 * d}, {ax, ay + 2 * d}, {ax + 4, ay - 2 * d}};
             p.drawPolyline(arrow, 1.4f, s.headerText);
         }
+        if (turning)
+            p.place(mark, p.transform().map(Point{x + w / 2, h.y + h.height / 2}), *turning);
         // a short line at its end side, but for the last one stretched
         if (stretches(column) && column + 1 == widths_.size())
             continue;

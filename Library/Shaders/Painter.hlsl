@@ -246,16 +246,16 @@ float4 fragmentMain(VertexOutput input) : SV_Target {
         float bend = 1.0 - smoothstep(0.0, zone, max(-d, 0.0));
         bend *= bend;
         float2 dipsPerPixel = max(perPixel, 1e-4);
-        float2 shift = out2 * bend * min(zone * 0.8, 6.0) / dipsPerPixel;             // pixels, outward
+        float2 shift = out2 * bend * min(zone * 0.5, 3.0) / dipsPerPixel;             // pixels, outward
         float2 target = max(finish.zw, 1.0);
         float3 behind = float3(0.0, 0.0, 0.0);
         [unroll] for (int k = 0; k < 6; ++k) {
             float a = k * 1.0471976 + 0.5;
             float2 at = input.position.xy + float2(cos(a), sin(a)) * 1.2;
             // red bent the least, blue the most: a faint fringe where it bends
-            behind.r += image.SampleLevel(imageSampler, (at + shift * 0.94) / target, 0).r;
+            behind.r += image.SampleLevel(imageSampler, (at + shift * 0.97) / target, 0).r;
             behind.g += image.SampleLevel(imageSampler, (at + shift) / target, 0).g;
-            behind.b += image.SampleLevel(imageSampler, (at + shift * 1.08) / target, 0).b;
+            behind.b += image.SampleLevel(imageSampler, (at + shift * 1.04) / target, 0).b;
         }
         behind /= 6.0;
         float3 straight = input.color.rgb / max(input.color.a, 1e-3);
@@ -265,12 +265,12 @@ float4 fragmentMain(VertexOutput input) : SV_Target {
         float3 pane = lerp(behind * 0.97 + 0.03, straight, lerp(0.07, 0.62, colored));
         // its edge: a thin bright line, a little brighter toward the light; a highlight where its slope turns toward it
         float facing = 0.78 + 0.22 * saturate(dot(out2, -normalize(toward.xy + 1e-5)) * 0.5 + 0.5);
-        float rim = exp(-max(-d, 0.0) / 1.0) * 0.36 * facing;
+        float rim = exp(-max(-d, 0.0) / 1.0) * 0.22 * facing;
         float t = saturate(-d / bevel);
         float3 n = normalize(float3(input.shape.w * 1.5707963 * cos(t * 1.5707963) / bevel * out2, 1.0));
         float3 halfway = normalize(toward + float3(0.0, 0.0, 1.0));
         float shine = max(0.0, pow(saturate(dot(n, halfway)), 60.0) - pow(saturate(halfway.z), 60.0)) * 0.8;
-        float shade = bend * 0.08 * (1.0 - facing) / 0.22;
+        float shade = bend * 0.035 * (1.0 - facing) / 0.22;
         // glossy: a sheen over its upper part (fading down to its middle, inside its rim), and its lit edges glowing out
         // of it, added to what is under it
         bool glossy = frac(input.shape.z) > 0.1;
@@ -278,10 +278,10 @@ float4 fragmentMain(VertexOutput input) : SV_Target {
         float down = sector ? saturate((input.halfSize.y - length(input.uv)) / max(input.halfSize.y - input.halfSize.x, 1.0))
                             : saturate((input.uv.y + input.halfSize.y) / max(2.0 * input.halfSize.y, 1.0));
         float sheen = glossy ? (1.0 - smoothstep(0.0, 0.55, down)) * smoothstep(0.0, 2.5, -d) * 0.16 : 0.0;
-        float3 glass = saturate(pane * (1.0 - shade) + rim * (glossy ? 1.35 : 1.0) + shine * (glossy ? 1.4 : 1.0) + sheen);
+        float3 glass = saturate(pane * (1.0 - shade) + rim * (glossy ? 1.15 : 1.0) + shine * (glossy ? 1.4 : 1.0) + sheen);
         float alpha = input.color.a * inside;
         float lightSide = saturate(dot(out2, -normalize(toward.xy + 1e-5)) * 0.6 + 0.4);
-        float glow = glossy ? exp(-max(d, 0.0) / 3.2) * (1.0 - inside) * 0.30 * lightSide * input.color.a : 0.0;
+        float glow = glossy ? exp(-max(d, 0.0) / 3.2) * (1.0 - inside) * 0.22 * lightSide * input.color.a : 0.0;
         float3 glowColor = lerp(float3(1.0, 1.0, 1.0), straight, 0.35);
         return float4(glass * alpha + glowColor * glow, alpha);
     }

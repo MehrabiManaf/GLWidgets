@@ -236,6 +236,10 @@ private:
         Candle candle;
     };
     std::vector<Shown> shown_;
+    // the order its candles come in this time (Chart::beginEntrance): from the oldest, from the newest, from the middle
+    // out, scattered (one of them at random where the theme varies its motions)
+    int candleOrder_ = 0;
+    bool ordered_ = false;
     struct Button {
         Rect rect;
         CandlePeriod period;

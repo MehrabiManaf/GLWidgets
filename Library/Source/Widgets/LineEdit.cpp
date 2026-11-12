@@ -105,6 +105,16 @@ void LineEdit::onRootChanged() {
     onStyleChanged();
 }
 
+std::optional<platform::Cursor> LineEdit::cursorAt(Point point) const {
+    // the room left at its end side is another's (a spin box's arrows): its pointer, not the text's
+    if (endRoom_ > 0) {
+        const bool atEnd = rightToLeft() ? point.x < endRoom_ : point.x > size().width - endRoom_;
+        if (atEnd)
+            return std::nullopt;
+    }
+    return Widget::cursorAt(point);
+}
+
 void LineEdit::setEndRoom(float room) {
     if (room == endRoom_)
         return;

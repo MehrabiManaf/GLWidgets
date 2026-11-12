@@ -347,6 +347,14 @@ std::optional<std::size_t> ListView::position(std::size_t index) const {
 }
 
 void ListView::setSortOrder(std::optional<SortOrder> order, std::function<std::partial_ordering(std::size_t, std::size_t)> compare) {
+    // its own header turning over (a style's)
+    if (order != sortOrder_ && order && headerShown() && style().flipSorted && scheduler()) {
+        if (const UiContext* ui = context()) {
+            flipFrom_ = sortOrder_;
+            flip_.set(0);
+            flip_.animateTo(scheduler(), 1, Duration(ui->theme.motion.slow), Easing::Linear);
+        }
+    }
     sortOrder_ = order;
     compare_ = std::move(compare);
     reorder();
@@ -832,6 +840,21 @@ void ListView::highlight(paint::Painter& p, const Rect& r, float radius, Color c
         p.fillRoundedRect(r, radius, color);
 }
 
+std::optional<paint::Lifted> ListView::headerFlipped() const {
+    if (!flipFrom_ || !flip_.running())
+        return std::nullopt;
+    // over and back up (as a table's header: TableView::flipped)
+    const float t = flip_.value();
+    const float e = t < 0.5f ? 4 * t * t * t : 1 - std::pow(-2 * t + 2, 3.0f) / 2;
+    constexpr float quarter = 1.5707963f;
+    const float angle = e < 0.5f ? quarter * e * 2 : -quarter * (1 - e) * 2;
+    return paint::Lifted{.lift = headerRect_.height * 0.5f * std::abs(std::sin(angle)) + 1, .turn = paint::Quaternion::axisAngle({1, 0, 0}, angle)};
+}
+
+std::optional<paint::Lifted> ListView::childLifted(const Widget& child) const {
+    return &child == headerLabel_ ? headerFlipped() : std::nullopt;
+}
+
 void ListView::paint(PaintContext& context) {
     // behind the rows: under the mouse, pressed, selected (a pill of the accent's tint)
     const ItemViewStyle& s = style();
@@ -839,19 +862,25 @@ void ListView::paint(PaintContext& context) {
     if (headerShown()) {
         // its header: a pill under the mouse, the arrow of the order, a line under it
         const Rect& h = headerRect_;
+        // turning over (its title with it: childLifted), the arrow it had until the middle of the turn
+        const std::optional<paint::Lifted> turning = headerFlipped();
+        const paint::Painter::Mark mark = turning ? p.markHere() : paint::Painter::Mark{};
+        const std::optional<SortOrder> shownOrder = turning && flip_.value() < 0.5f ? *flipFrom_ : sortOrder_;
         if (s.headerBackground.a > 0)
             paintRaised(p, {h.x, h.y, h.width, h.height - 1}, s.cornerRadius, s.headerBackground, {0, 0, 0, 0}, s.headerBevel);
         if (headerHovered_) {
             const VisualState state{.hovered = true, .pressed = headerPressed_};
             highlight(p, {h.x + s.inset, h.y + 2, h.width - 2 * s.inset, h.height - 4}, s.cornerRadius, s.row.resolve(state), state.pressed);
         }
-        if (sortOrder_) {
+        if (shownOrder) {
             const bool rtl = rightToLeft();
             const float ax = rtl ? h.x + 14 : h.right() - 14, ay = h.y + h.height / 2;
-            const float d = *sortOrder_ == SortOrder::Ascending ? -1.0f : 1.0f;
+            const float d = *shownOrder == SortOrder::Ascending ? -1.0f : 1.0f;
             const Point arrow[] = {{ax - 4, ay - 2 * d}, {ax, ay + 2 * d}, {ax + 4, ay - 2 * d}};
             p.drawPolyline(arrow, 1.4f, s.headerText);
         }
+        if (turning)
+            p.place(mark, p.transform().map(h.center()), *turning);
         p.fillRect({h.x, h.bottom() - 1, h.width, 1}, s.headerLine);
         headerLabel_->setColor(s.headerText);
     }

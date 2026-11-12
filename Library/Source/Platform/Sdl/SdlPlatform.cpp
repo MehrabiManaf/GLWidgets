@@ -169,17 +169,107 @@ void SdlPlatform::captureMouse(bool capture) {
     SDL_CaptureMouse(capture);
 }
 
+namespace {
+
+// A drag's pointer (Cursor::DragCopy, DragMove, DragLink): the arrow, and by it a small box with its mark, drawn here (SDL's
+// system shapes have none of them) at `scale` times 32 pixels, smoothed (each pixel sampled four by four).
+SDL_Cursor* dragCursor(Cursor cursor, float scale) {
+    const int size = std::max(32, static_cast<int>(std::lround(32 * scale)));
+    const float k = static_cast<float>(size) / 32;
+    SDL_Surface* surface = SDL_CreateSurface(size, size, SDL_PIXELFORMAT_ARGB8888);
+    if (!surface)
+        return nullptr;
+    // the arrow: its outline (in 32-pixel units, its tip at the top left)
+    static constexpr float arrow[][2] = {{1, 1}, {1, 18}, {5.2f, 14.2f}, {8, 20.5f}, {10.8f, 19.3f}, {8.1f, 13.1f}, {13.6f, 13.1f}};
+    const auto inArrow = [](float x, float y, float grow) {
+        // inside the polygon grown by `grow` (its edges moved out): by the distance to each edge, its side by the winding
+        bool inside = false;
+        float nearest = 1e9f;
+        const int n = 7;
+        for (int i = 0, j = n - 1; i < n; j = i++) {
+            const float xi = arrow[i][0], yi = arrow[i][1], xj = arrow[j][0], yj = arrow[j][1];
+            if ((yi > y) != (yj > y) && x < (xj - xi) * (y - yi) / (yj - yi) + xi)
+                inside = !inside;
+            const float ex = xj - xi, ey = yj - yi;
+            const float t = std::clamp(((x - xi) * ex + (y - yi) * ey) / (ex * ex + ey * ey), 0.0f, 1.0f);
+            nearest = std::min(nearest, std::hypot(x - (xi + ex * t), y - (yi + ey * t)));
+        }
+        return inside || nearest <= grow;
+    };
+    // the box: lower right of the arrow; its mark in it
+    const float bx = 15, by = 17, bw = 13, bh = 12;
+    const auto inBox = [&](float x, float y, float grow) {
+        return x >= bx - grow && x <= bx + bw + grow && y >= by - grow && y <= by + bh + grow;
+    };
+    const auto inMark = [&](float x, float y) {
+        const float cx = bx + bw / 2, cy = by + bh / 2;
+        switch (cursor) {
+        case Cursor::DragCopy:      // a plus
+            return (std::abs(x - cx) <= 0.9f && std::abs(y - cy) <= 3.6f) || (std::abs(y - cy) <= 0.9f && std::abs(x - cx) <= 3.6f);
+        case Cursor::DragLink: {    // a bent arrow up to the right: its stem, its head
+            const bool stem = (std::abs(x - (bx + 4)) <= 0.9f && y >= cy - 1 && y <= by + bh - 2.5f) ||
+                              (std::abs(y - (cy - 1)) <= 0.9f && x >= bx + 4 && x <= bx + bw - 3.5f);
+            const bool head = x >= bx + bw - 6 && x <= bx + bw - 2.5f && std::abs(y - (cy - 1)) <= (bx + bw - 2.5f - x) * 0.9f;
+            return stem || head;
+        }
+        default:                    // moved: a smaller box in it
+            return (x >= cx - 3.2f && x <= cx + 3.2f && y >= cy - 2.6f && y <= cy + 2.6f) &&
+                   !(x >= cx - 1.8f && x <= cx + 1.8f && y >= cy - 1.2f && y <= cy + 1.2f);
+        }
+    };
+    auto* pixels = static_cast<std::uint32_t*>(surface->pixels);
+    for (int py = 0; py < size; ++py) {
+        for (int px = 0; px < size; ++px) {
+            float a = 0, white = 0;
+            for (int sy = 0; sy < 4; ++sy) {
+                for (int sx = 0; sx < 4; ++sx) {
+                    const float x = (static_cast<float>(px) + (static_cast<float>(sx) + 0.5f) / 4) / k;
+                    const float y = (static_cast<float>(py) + (static_cast<float>(sy) + 0.5f) / 4) / k;
+                    // white inside, a black edge around (the arrow's, the box's), the mark black
+                    const bool body = inArrow(x, y, 0) || inBox(x, y, -1);
+                    const bool edge = inArrow(x, y, 1.0f) || inBox(x, y, 0);
+                    if (body && !inMark(x, y)) {
+                        a += 1;
+                        white += 1;
+                    } else if (edge) {
+                        a += 1;
+                    }
+                }
+            }
+            a /= 16;
+            const float v = a > 0 ? white / 16 / a : 0;
+            const auto c = static_cast<std::uint32_t>(std::lround(v * 255));
+            pixels[py * (surface->pitch / 4) + px] = static_cast<std::uint32_t>(std::lround(a * 255)) << 24 | c << 16 | c << 8 | c;
+        }
+    }
+    SDL_Cursor* made = SDL_CreateColorCursor(surface, 1, 1);
+    SDL_DestroySurface(surface);
+    return made;
+}
+
+} // namespace
+
 void SdlPlatform::setCursor(Cursor cursor) {
     if (cursor == cursor_)
         return;
     static constexpr std::array<SDL_SystemCursor, cursorCount> system{
         SDL_SYSTEM_CURSOR_DEFAULT,     SDL_SYSTEM_CURSOR_TEXT,       SDL_SYSTEM_CURSOR_POINTER,     SDL_SYSTEM_CURSOR_MOVE,
         SDL_SYSTEM_CURSOR_EW_RESIZE,   SDL_SYSTEM_CURSOR_NS_RESIZE,  SDL_SYSTEM_CURSOR_NWSE_RESIZE, SDL_SYSTEM_CURSOR_NESW_RESIZE,
-        SDL_SYSTEM_CURSOR_NOT_ALLOWED, SDL_SYSTEM_CURSOR_WAIT,       SDL_SYSTEM_CURSOR_CROSSHAIR,
+        SDL_SYSTEM_CURSOR_NOT_ALLOWED, SDL_SYSTEM_CURSOR_WAIT,       SDL_SYSTEM_CURSOR_CROSSHAIR,  SDL_SYSTEM_CURSOR_DEFAULT,
+        SDL_SYSTEM_CURSOR_DEFAULT,     SDL_SYSTEM_CURSOR_DEFAULT,
     };
     const auto index = static_cast<std::size_t>(cursor);
-    if (!cursors_[index])
-        cursors_[index] = SDL_CreateSystemCursor(system[index]);
+    if (!cursors_[index]) {
+        if (cursor == Cursor::DragCopy || cursor == Cursor::DragMove || cursor == Cursor::DragLink) {
+            // as large as the system's own at the display's scale
+            float scale = 1;
+            if (const SDL_DisplayID display = SDL_GetPrimaryDisplay(); display != 0)
+                scale = std::max(1.0f, SDL_GetDisplayContentScale(display));
+            cursors_[index] = dragCursor(cursor, scale);
+        } else {
+            cursors_[index] = SDL_CreateSystemCursor(system[index]);
+        }
+    }
     // a system without that shape: the arrow
     SDL_Cursor* shown = cursors_[index] ? cursors_[index] : SDL_GetDefaultCursor();
     if (shown && SDL_SetCursor(shown))

@@ -361,7 +361,7 @@ void PieChart::paint(PaintContext& context) {
     if (total > 0)
         beginEntrance();
     const bool coming = entering();
-    liftPiece(hovered_);
+    liftPiece(hovered_, mouse_);
     const bool lifts = lifting();
     float swept = 1;
     if (coming && entranceWay() == 0 && !solidPieces()) {
@@ -443,9 +443,11 @@ void PieChart::paint(PaintContext& context) {
                 drawText(context, text, at + direction * r, textOn(color), 0, {0.5f, 0.5f});
         }
         if (lifts) {
+            // (leaning where the mouse is on it, as far as the slice is long around its ring)
             const Point middlePoint = at + direction * ((r0 + r1) / 2);
-            const float extent = r1 - r0;
-            placeLifted(p, mark, pieceLift(item.key), {middlePoint.x - extent / 2, middlePoint.y - extent / 2, extent, extent});
+            const float extent = std::max(r1 - r0, std::min(r1 * sweep, 2 * r1));
+            placeLifted(p, mark, pieceLift(item.key), {middlePoint.x - extent / 2, middlePoint.y - extent / 2, extent, extent},
+                        piecePress(item.key));
         }
         if (coming && (entranceWay() != 0 || solidPieces())) {
             const float order = static_cast<float>(((item.from + item.to) / 2 - low) / (high - low));

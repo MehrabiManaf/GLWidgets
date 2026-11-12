@@ -134,6 +134,9 @@ struct Bevel {
     // `roundness` dips; the gradient and the highlight then left to the light. 0: painted as above.
     float relief = 0;
     float roundness = 4;
+    // A slab of a popup (a menu's, a dialog's) drawn as a solid (where reliefs are, Theme::reliefBricks): its top's edge
+    // rounding down over this many dips, so that it shows as one; 0: as the solids' own.
+    float edge = 0;
 };
 
 struct ButtonStyle {
@@ -225,6 +228,9 @@ struct ItemViewStyle {
     // Above 0: a table's column headers each raised on its own (keys), this many dips apart; 0: one header across them.
     float headerGap = 0;
     Bevel rowBevel;                 // the rows' highlights (under the mouse, pressed, selected) raised as controls (reliefs)
+    // A header sorted by another order turning over about its long middle (the old one going over, the new one coming
+    // up): in a style of solids.
+    bool flipSorted = false;
 };
 
 struct SplitterStyle {
@@ -373,6 +379,7 @@ struct MenuStyle {
     float cornerRadius = 0;         // of the highlight
     float minimumWidth = 160;
     Bevel bevel;                    // its background raised as a slab (relief above 0: a style's of reliefs); flat
+    Bevel highlightBevel;           // the item under the mouse raised on it as a key (relief above 0); flat
 };
 
 // A multi-line text and code (TextEdit): its text, its gutter, and the colors of the kinds of tokens a highlighter finds.

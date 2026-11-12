@@ -4,6 +4,7 @@
 
 #include <GLWidgets/Charts/ChartAxis.hpp>
 #include <GLWidgets/Paint/Painter.hpp>
+#include <GLWidgets/Widgets/Bevel.hpp>
 #include <GLWidgets/Widgets/UiRoot.hpp>
 
 #include <algorithm>
@@ -217,8 +218,16 @@ void FlameGraph::paint(PaintContext& context) {
     const float hair = 1.0f / ppd;
     const double all = nodes_[0].value;
     const Color faint = s.plot.a > 0.5f ? s.plot : context.ui.theme.palette.layer;
-    // each frame where it is across what shows, its callees on it (or under it), those narrower than half a pixel left out
-    p.pushClip(plot);
+    // each frame where it is across what shows, its callees on it (or under it), those narrower than half a pixel left out;
+    // found first, then drawn as the style raises its bars: their shadows, then their reliefs, then their names (so that
+    // reliefs of glass read what is under them once, and solids are drawn together, not each between two names)
+    struct Frame {
+        Rect rect;
+        Color color;
+        int index;
+        std::uint32_t depth;
+    };
+    std::vector<Frame> frames;
     const std::function<void(int, double)> place = [&](int index, double start) {
         const Node& n = nodes_[static_cast<std::size_t>(index)];
         const double end = start + n.value / all;
@@ -236,19 +245,8 @@ void FlameGraph::paint(PaintContext& context) {
         const bool hovered = mouse_ && rect.contains(*mouse_);
         if (hovered)
             color = mix(color, Color{1, 1, 1, color.a}, 0.2f);
-        if (rect.width >= 3)
-            p.fillRoundedRect(rect, std::min(s.barRadius, rect.height / 4), color);
-        else
-            p.fillRect(rect, color);
+        frames.push_back({rect, color, index, n.depth});
         placed_.push_back({rect, index});
-        // its name in it, as much as fits
-        if (rect.width >= 24 && rh >= s.fontSize) {
-            const Rect visible = rect.intersected(plot);
-            p.pushClip({visible.x + 3, visible.y, std::max(0.0f, visible.width - 6), visible.height});
-            drawText(context, index == 0 ? translate(props_.rootName) : n.name, {visible.x + 4, rect.y + rect.height / 2}, textOn(color), 0,
-                     {0, 0.5f});
-            p.popClip();
-        }
         double at = start;
         for (const auto& [name, child] : n.children) {
             place(child, at);
@@ -256,7 +254,96 @@ void FlameGraph::paint(PaintContext& context) {
         }
     };
     place(0, 0);
-    p.popClip();
+
+    // coming in (Chart::beginEntrance): row after row out of its root, each row one piece; the frame under the mouse lifted
+    beginEntrance();
+    const bool coming = entering();
+    std::optional<std::string> under;
+    if (mouse_)
+        for (auto it = placed_.rbegin(); it != placed_.rend() && !under; ++it)
+            if (it->rect.contains(*mouse_))
+                under = std::to_string(it->node);
+    liftPiece(under);
+    const bool lifts = lifting();
+    const std::size_t levelCount = depth() + 1;
+    std::vector<std::vector<std::size_t>> byRow(levelCount);
+    for (std::size_t i = 0; i < frames.size(); ++i)
+        byRow[std::min<std::size_t>(frames[i].depth, levelCount - 1)].push_back(i);
+    const auto rowRect = [&](std::size_t row) {
+        const float y = props_.icicle ? plot.y + static_cast<float>(row) * rh : plot.bottom() - static_cast<float>(row + 1) * rh;
+        return Rect{plot.x, y, plot.width, rh};
+    };
+    const auto rowArrived = [&](std::size_t row) {
+        return arrived(levelCount > 1 ? static_cast<float>(row) / static_cast<float>(levelCount - 1) : 0.0f);
+    };
+    const Point out{0, props_.icicle ? 1.0f : -1.0f};
+    // each row (one piece coming in), each frame of it drawn by `draw`; the one under the mouse lifted
+    const auto rowsOf = [&](auto&& draw) {
+        for (std::size_t row = 0; row < levelCount; ++row) {
+            if (byRow[row].empty())
+                continue;
+            const paint::Painter::Mark mark = coming ? p.markHere() : paint::Painter::Mark{};
+            for (const std::size_t i : byRow[row]) {
+                const Frame& f = frames[i];
+                const float lift = lifts ? pieceLift(std::to_string(f.index)) : 0.0f;
+                const paint::Painter::Mark own = lift > 0 ? p.markHere() : paint::Painter::Mark{};
+                draw(f);
+                if (lift > 0)
+                    placeLifted(p, own, lift, f.rect);
+            }
+            if (coming) {
+                const Rect r = rowRect(row);
+                placeArriving(p, mark, rowArrived(row), r, Point{r.center().x, props_.icicle ? r.y : r.bottom()}, out);
+            }
+        }
+    };
+    const Bevel& bevel = s.barBevel;
+    const bool raised = bevel.relief > 0;
+    const auto radiusOf = [&](const Rect& r) { return std::min(s.barRadius, r.height / 4); };
+    // (solids on their way: not cut by the plot; across it, the frames are kept in it already)
+    const bool clipped = !((coming || lifts) && solidPieces());
+    if (clipped)
+        p.pushClip(plot);
+    if (raised && bevel.shadow.a > 0) {
+        rowsOf([&](const Frame& f) {
+            if (f.rect.width >= 3 && f.color.a >= 1)
+                p.drawShadow({f.rect.x, f.rect.y + bevel.relief * 0.5f, f.rect.width, f.rect.height}, radiusOf(f.rect), 1.5f + bevel.relief,
+                             bevel.shadow);
+        });
+    }
+    rowsOf([&](const Frame& f) {
+        if (f.rect.width < 3)
+            p.fillRect(f.rect, f.color);
+        else if (raised)
+            p.fillRelief(f.rect, radiusOf(f.rect), bevel.relief, bevel.roundness, f.color);
+        else
+            paintRaised(p, f.rect, radiusOf(f.rect), f.color, {0, 0, 0, 0}, bevel);
+    });
+    if (clipped)
+        p.popClip();
+    // their names, as much as fits in each (a row's as it lands; the one under the mouse's lifted with it)
+    if (rh >= s.fontSize) {
+        for (std::size_t row = 0; row < levelCount; ++row) {
+            const float shown = coming ? std::clamp((rowArrived(row) - 0.7f) / 0.3f, 0.0f, 1.0f) : 1.0f;
+            if (shown <= 0)
+                continue;
+            for (const std::size_t i : byRow[row]) {
+                const Frame& f = frames[i];
+                if (f.rect.width < 24)
+                    continue;
+                const float lift = lifts ? pieceLift(std::to_string(f.index)) : 0.0f;
+                const paint::Painter::Mark own = lift > 0 ? p.markHere() : paint::Painter::Mark{};
+                const Rect visible = f.rect.intersected(plot);
+                const Color ink = textOn(f.color);
+                p.pushClip({visible.x + 3, visible.y, std::max(0.0f, visible.width - 6), visible.height});
+                drawText(context, f.index == 0 ? translate(props_.rootName) : nodes_[static_cast<std::size_t>(f.index)].name,
+                         {visible.x + 4, f.rect.y + f.rect.height / 2}, withAlpha(ink, ink.a * shown), 0, {0, 0.5f});
+                p.popClip();
+                if (lift > 0)
+                    placeLifted(p, own, lift, f.rect);
+            }
+        }
+    }
 
     // the frame under the mouse: its samples, its share of all and of what shows
     if (mouse_) {

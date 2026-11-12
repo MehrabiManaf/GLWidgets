@@ -100,6 +100,8 @@ private:
     std::optional<LineEditStyle> style_;
     std::function<bool(std::string_view)> accepts_;
     float endRoom_ = 0;
+    // (in its end room, what is there's: a spin box's arrows)
+    std::optional<platform::Cursor> cursorAt(Point point) const override;
 
     std::size_t anchor_ = 0;
     std::size_t caret_ = 0;

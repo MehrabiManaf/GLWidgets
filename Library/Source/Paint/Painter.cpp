@@ -130,6 +130,19 @@ void Painter::fillRelief(const Rect& rect, float radius, float height, float bev
     cmd.indexCount += 6;
 }
 
+void Painter::fillSlab(const Rect& rect, float radius, float height, float bevel, float edge, Color color) {
+    if (!reliefBricks_ || height <= 0 || edge <= 0 || rect.empty()) {
+        fillRelief(rect, radius, height, bevel, color);
+        return;
+    }
+    // its top where the relief's is, its body down into what it is on, its edge rounding down over `edge` (a brick's
+    // bevel is no more than half as deep as it is)
+    const float depth = std::min(std::max(height * reliefBricks_->depth, edge * 2.4f), std::min(rect.width, rect.height) * 0.5f);
+    const Point c = rect.center();
+    drawBrick({.center = {c.x, c.y, -depth / 2}, .halfSize = {rect.width / 2, rect.height / 2, depth / 2}, .cornerRadius = std::max(radius, edge * 1.6f),
+               .bevel = edge, .color = color, .roughness = reliefBricks_->roughness, .shadow = 0, .reliefLight = true});
+}
+
 void Painter::fillBackdrop(const Rect& rect, const Backdrop& backdrop) {
     const Rect r = transform().map(rect);
     if (r.empty() || culled(r))

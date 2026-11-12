@@ -211,6 +211,7 @@ protected:
     void paintOver(PaintContext& context) override;
     Rect childrenClip() const override;
     std::optional<Rect> childClip(const Widget& child) const override;
+    std::optional<paint::Lifted> childLifted(const Widget& child) const override;
     void onMouse(MouseEvent& event) override;
     void onPreviewKey(KeyEvent& event) override;
     void onKey(KeyEvent& event) override;
@@ -292,6 +293,10 @@ private:
     std::optional<std::size_t> current_;   // a position
     double offset_ = 0;
     std::optional<SortOrder> sortOrder_;
+    // its header turning over as its order changes (ItemViewStyle::flipSorted): the arrow it showed before, how far
+    std::optional<std::optional<SortOrder>> flipFrom_;
+    Animation flip_{[this] { invalidatePaint(); }};
+    std::optional<paint::Lifted> headerFlipped() const;
     std::function<std::partial_ordering(std::size_t, std::size_t)> compare_;
     std::function<bool(std::size_t)> filter_;
     std::unique_ptr<ItemOrder> order_;      // while sorted or filtered: the items shown, in their order

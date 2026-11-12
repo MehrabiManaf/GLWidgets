@@ -14,33 +14,35 @@ namespace glw {
 
 void Theme::solid(Theme& t, bool dark) {
     plastic(t, dark);
-    // a little squarer than Plastic: its corners round over less, and the edges of its solids too (a solid's corner is no
-    // rounder than its edge: Painter::drawBrick)
-    t.cornerRadius = 3;
-    t.button.cornerRadius = 3.75f;
+    // its corners a little rounder than they were at first, about as round as Plastic's; the edges of its solids round
+    // over less (a solid's corner is no rounder than its edge: Painter::drawBrick)
+    t.cornerRadius = 4;
+    t.button.cornerRadius = 5;
     t.button.bevel.roundness = 2;
-    t.toolBar.cornerRadius = t.menuBar.cornerRadius = t.menu.cornerRadius = 3;
+    t.toolBar.cornerRadius = t.menuBar.cornerRadius = t.menu.cornerRadius = 4;
     t.toolBar.bevel.roundness = 1.6f;
-    t.collapsiblePanel.cornerRadius = 4.5f;
+    t.collapsiblePanel.cornerRadius = 6;
     t.collapsiblePanel.bevel.roundness = 2;
-    t.lineEdit.cornerRadius = 3;
+    t.lineEdit.cornerRadius = 4;
     t.lineEdit.bevel.roundness = 1.75f;
-    t.checkBox.cornerRadius = 2.25f;
+    t.checkBox.cornerRadius = 3;
     t.checkBox.bevel.roundness = t.checkBox.checkedBevel.roundness = 1.25f;
     for (ItemViewStyle* view : {&t.itemView, &t.table}) {
-        view->cornerRadius = 3;
+        view->cornerRadius = 4;
         view->headerBevel.roundness = view->rowBevel.roundness = 1.6f;
     }
-    t.dock.cornerRadius = t.card.cornerRadius = 3.75f;
-    t.dock.tabRadius = 3;
-    t.majorTab.cornerRadius = 4.5f;
-    t.node.cornerRadius = 6;
+    t.dock.cornerRadius = t.card.cornerRadius = 5;
+    t.dock.tabRadius = 4;
+    t.majorTab.cornerRadius = 6;
+    t.node.cornerRadius = 8;
     t.node.bevel.roundness = 2.75f;
     t.node.bodyBevel.roundness = 3;
-    t.chart.barRadius = 2.25f;
+    t.chart.barRadius = 3;
     t.chart.barBevel.roundness = 1.25f;
     // menus, tooltips, dialogs: slabs over the window; a menu, a tooltip rising into its window, a dialog landing in it
-    t.menu.bevel = t.toolTip.bevel = t.dialog.bevel = {.relief = 0.8f, .roundness = 1.5f};
+    t.menu.bevel = t.toolTip.bevel = t.dialog.bevel = {.relief = 0.8f, .roundness = 1.5f, .edge = 2};
+    // ... a menu's item under the mouse a key raised on its slab
+    t.menu.highlightBevel = {.shadow = {0, 0, 0, dark ? 0.5f : 0.22f}, .relief = 1.2f, .roundness = 1.5f};
     t.motion.popupEntrance = PopupEntrance::Rise;
     t.motion.dialogEntrance = PopupEntrance::Land;
     // and each time one of their ways, at random: a popup's, a dialog's, a panel's cascade, a check box's mark
@@ -49,6 +51,7 @@ void Theme::solid(Theme& t, bool dark) {
     for (ItemViewStyle* view : {&t.itemView, &t.table}) {
         view->headerGap = 2;
         view->slideSelection = true;
+        view->flipSorted = true;            // a header turning over as its order changes
     }
     // a collapsible panel's widgets coming out from under its header, one after another
     t.collapsiblePanel.cascade = true;

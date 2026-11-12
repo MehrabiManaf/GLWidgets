@@ -308,6 +308,14 @@ private:
     SortOrder sortOrder_ = SortOrder::Ascending;
     std::optional<std::size_t> indicatorColumn_;    // the arrow shown
     SortOrder indicatorOrder_ = SortOrder::Ascending;
+    // the header of the column sorted anew turning over (ItemViewStyle::flipSorted): its column, the arrow it showed
+    // before (none: none), how far it is
+    void flipTo(std::optional<std::size_t> column, SortOrder order);
+    std::optional<paint::Lifted> flipped(std::size_t column) const;
+    std::optional<std::size_t> flipColumn_;
+    std::optional<SortOrder> flipFrom_;
+    Animation flip_{[this] { flipStepped(); }};
+    void flipStepped();
     std::function<Rect(const Widget&, std::size_t)> editorArea_;
     bool sortingEnabled_ = true;
     EditTriggers editTriggers_ = EditTriggers::All;

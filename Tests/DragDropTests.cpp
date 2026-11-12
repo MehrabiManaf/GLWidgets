@@ -129,7 +129,7 @@ TEST(aDragGoesWhereItIsTakenAndTellsItsSource) {
     w.move({150, 10});
     CHECK(w.host.cursor == platform::Cursor::NotAllowed);       // between them
     w.move({220, 10});
-    CHECK(target.over && w.host.cursor == platform::Cursor::Arrow);
+    CHECK(target.over && w.host.cursor == platform::Cursor::DragCopy);    // over it: copied there
     w.move({260, 10});                                          // over its plain child: its parent takes it
     CHECK(target.over && target.leaves == 0);
     w.move({150, 10});

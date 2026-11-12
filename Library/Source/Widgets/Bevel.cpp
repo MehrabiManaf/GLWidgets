@@ -17,7 +17,9 @@ Color lit(Color c, float amount) {
 }
 
 void paintPopupBackground(paint::Painter& p, const Rect& rect, float radius, Color background, Color outline, const Bevel& bevel) {
-    if (bevel.relief > 0)
+    if (bevel.relief > 0 && bevel.edge > 0)
+        p.fillSlab(rect, radius, bevel.relief, bevel.roundness, bevel.edge, background);
+    else if (bevel.relief > 0)
         p.fillRelief(rect, radius, bevel.relief, bevel.roundness, background);
     else
         p.fillRect(rect, background);

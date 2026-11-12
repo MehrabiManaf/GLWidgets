@@ -1149,7 +1149,7 @@ TEST(somethingIsDraggedFromOneWindowToAnother) {
     t.screen.moveTo(*t.from, {350, 100});           // between them
     CHECK(!t.target->over && t.from->host.cursor == platform::Cursor::NotAllowed);
     t.screen.moveTo(*t.from, {450, 100});
-    CHECK(t.target->over && t.from->host.cursor == platform::Cursor::Arrow);
+    CHECK(t.target->over && t.from->host.cursor == platform::Cursor::DragCopy);
     t.screen.release(*t.from, {470, 120});
     CHECK((t.target->dropped == std::vector<std::string>{"A"}) && t.target->droppedAt == Point{70, 120});
     CHECK(!t.target->over && t.screen.captures == 0);
@@ -1181,7 +1181,7 @@ TEST(whereTheSystemCarriesDragsSomethingGoesIntoAnotherWindow) {
         return;
     const DockingHost::SystemDrag drag = *t.screen.systemDrag;
     drag.moved(t.to->root.get(), {50, 100});
-    CHECK(t.target->over && t.from->host.cursor == platform::Cursor::Arrow);
+    CHECK(t.target->over && t.from->host.cursor == platform::Cursor::DragCopy);
     drag.moved(nullptr, {});
     CHECK(!t.target->over && t.from->host.cursor == platform::Cursor::NotAllowed);
     drag.ended(t.to->root.get(), {60, 110});

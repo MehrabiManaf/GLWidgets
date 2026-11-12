@@ -393,18 +393,23 @@ void Chart::placeArriving(paint::Painter& p, const paint::Painter::Mark& mark, f
 
 // ---- the piece under the mouse ----
 
-void Chart::liftPiece(std::optional<std::string> key) {
+void Chart::liftPiece(std::optional<std::string> key, std::optional<Point> press) {
     std::string now = solidPieces() ? key.value_or(std::string()) : std::string();
-    if (now == lifted_)
+    if (now == lifted_) {
+        if (!lifted_.empty())
+            liftedPress_ = press;
         return;
+    }
     // the one that was lifted, down from where it is; the new one up
     const Duration fast = transition(true);
     if (!lifted_.empty()) {
         lowered_ = std::move(lifted_);
+        loweredPress_ = liftedPress_;
         lowering_.set(lifting_.value());
         lowering_.animateTo(scheduler(), 0, fast);
     }
     lifted_ = std::move(now);
+    liftedPress_ = press;
     lifting_.set(0);
     if (!lifted_.empty())
         lifting_.animateTo(scheduler(), 1, fast * 2, Easing::OutCubic);
@@ -421,12 +426,29 @@ float Chart::pieceLift(std::string_view key) const {
     return 0;
 }
 
-void Chart::placeLifted(paint::Painter& p, const paint::Painter::Mark& mark, float amount, const Rect& rect) const {
+std::optional<Point> Chart::piecePress(std::string_view key) const {
+    if (key.empty())
+        return std::nullopt;
+    return key == lifted_ ? liftedPress_ : key == lowered_ ? loweredPress_ : std::nullopt;
+}
+
+void Chart::placeLifted(paint::Painter& p, const paint::Painter::Mark& mark, float amount, const Rect& rect, std::optional<Point> press) const {
     if (amount <= 0)
         return;
     // up toward the one looking, as much as a little of its size (its shadow staying under it), turned toward the light
     const float up = std::clamp(0.08f * std::min(rect.width, rect.height), 4.0f, 9.0f);
-    p.place(mark, p.transform().map(rect.center()), {.lift = up * amount, .turn = paint::towardLight(0.12f * amount)});
+    paint::Quaternion turn = paint::towardLight(0.12f * amount);
+    if (press) {
+        // leaning where it is pressed: about the line across the way from its middle to there, that side down
+        const Point d = *press - rect.center();
+        const float length = std::hypot(d.x, d.y);
+        const float reach = std::max(1.0f, std::max(rect.width, rect.height) / 2);
+        if (length > 0.5f) {
+            const float lean = 0.26f * std::min(1.0f, length / reach) * amount;
+            turn = paint::Quaternion::axisAngle({-d.y / length, d.x / length, 0}, lean) * paint::towardLight(0.05f * amount);
+        }
+    }
+    p.place(mark, p.transform().map(rect.center()), {.lift = up * amount, .turn = turn});
 }
 
 Duration Chart::transition(bool fast) const {

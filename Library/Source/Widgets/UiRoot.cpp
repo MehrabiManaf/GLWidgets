@@ -664,8 +664,13 @@ std::optional<platform::Cursor> edgeCursor(platform::HitArea area) {
 
 void UiRoot::updateCursor() {
     if (drag_) {
-        // whether it would be taken where it is
-        cursor_ = drag_->action == DropAction::None ? platform::Cursor::NotAllowed : platform::Cursor::Arrow;
+        // whether it would be taken where it is, and what would be done with it there
+        switch (drag_->action) {
+        case DropAction::None: cursor_ = platform::Cursor::NotAllowed; break;
+        case DropAction::Copy: cursor_ = platform::Cursor::DragCopy; break;
+        case DropAction::Move: cursor_ = platform::Cursor::DragMove; break;
+        case DropAction::Link: cursor_ = platform::Cursor::DragLink; break;
+        }
         if (host_)
             host_->setCursor(cursor_);
         return;

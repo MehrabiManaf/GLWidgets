@@ -731,6 +731,44 @@ void CandleChart::paint(PaintContext& context) {
     const auto annotationX = [&](double t) { return px(indexOf(t)); };
     const auto annotationY = [&](double v, bool) { return py(v); };
     paintAnnotations(context, prices, annotationX, annotationY, false);
+    // coming in (Chart::beginEntrance): its candles one after another from the oldest, each with its volume, out of the
+    // bottom; the one under the mouse lifted
+    if (!shown_.empty())
+        beginEntrance();
+    const bool coming = entering();
+    const Shown* lifted = nullptr;
+    if (mouse_ && !dragging_ && plot.contains(*mouse_)) {
+        const double at = xv.low + (mouse_->x - plot.x) / plot.width * xv.span();
+        for (const Shown& c : shown_)
+            if (std::abs(c.index - at) <= c.width / 2 + 1e-9)
+                lifted = &c;
+    }
+    const auto keyOf = [](const Shown& c) { return std::to_string(c.index); };
+    liftPiece(lifted ? std::optional(keyOf(*lifted)) : std::nullopt);
+    const bool lifts = lifting();
+    if (coming && !ordered_) {
+        ordered_ = true;
+        candleOrder_ = context.ui.theme.motion.varied ? randomWay(4) : 0;
+    } else if (!coming) {
+        ordered_ = false;
+    }
+    const auto orderOf = [&](const Shown& c) {
+        const auto f = static_cast<float>(std::clamp((c.index - xv.low) / xv.span(), 0.0, 1.0));
+        switch (candleOrder_) {
+        case 1:
+            return 1 - f;                           // the newest first, back to the oldest
+        case 2:
+            return std::abs(f - 0.5f) * 2;          // out of the middle, both ways
+        case 3: {
+            // scattered: each at a time of its own (by where it is: the same one each frame)
+            std::uint32_t h = static_cast<std::uint32_t>(std::llround(c.index * 7.0)) * 2654435761u;
+            h ^= h >> 15;
+            return static_cast<float>(h % 1000) / 999.0f;
+        }
+        default:
+            return f;                               // the oldest first, on to the newest
+        }
+    };
     p.pushClip(plot);
     // the volumes: bars along the bottom, faint, as high as the highest that shows
     if (volumes_.height > 1) {
@@ -743,19 +781,47 @@ void CandleChart::paint(PaintContext& context) {
                 const float w = std::max(1.0f / ppd, slot * static_cast<float>(c.width) * (c.width > 1 ? 1.0f : 0.7f));
                 const float h = static_cast<float>(c.candle.volume / most) * volumes_.height;
                 const Color color = c.candle.close >= c.candle.open ? rise : fall;
-                p.fillRect({px(c.index) - w / 2, volumes_.bottom() - h, w, h}, withAlpha(color, color.a * alpha));
+                const paint::Painter::Mark mark = coming ? p.markHere() : paint::Painter::Mark{};
+                const Rect r{px(c.index) - w / 2, volumes_.bottom() - h, w, h};
+                p.fillRect(r, withAlpha(color, color.a * alpha));
+                if (coming)
+                    placeArriving(p, mark, arrived(orderOf(c)), r, Point{r.center().x, volumes_.bottom()}, {0, -1});
             }
         }
     }
     // the candles: a wick from the low to the high, a body from the open to the close (raised as the style's bars, when
     // wide enough); or bars: a stroke from the low to the high, a tick to the left at the open, one to the right at the close
     const float hair = 1.0f / ppd;
+    // (solids on their way, or lifted: not cut by the plot)
+    const bool loose = (coming || lifts) && solidPieces();
+    if (loose)
+        p.popClip();
     for (const Shown& c : shown_) {
         const Candle& k = c.candle;
         const Color color = k.close >= k.open ? rise : fall;
         const float x = px(c.index);
         const float room = slot * static_cast<float>(c.width);
         const float top = py(k.high), bottom = py(k.low);
+        // each one piece: its wick and its body, standing on its low
+        const paint::Painter::Mark mark = coming || lifts ? p.markHere() : paint::Painter::Mark{};
+        struct Placed {
+            const CandleChart& chart;
+            paint::Painter& painter;
+            const paint::Painter::Mark& mark;
+            bool coming;
+            float lift;
+            Rect rect;
+            float order;
+            ~Placed() {
+                if (lift > 0)
+                    chart.placeLifted(painter, mark, lift, rect);
+                if (coming)
+                    chart.placeArriving(painter, mark, chart.arrived(order), rect, Point{rect.center().x, rect.bottom()}, {0, -1});
+            }
+        };
+        const float width = std::max(room, 2.0f);
+        const Placed placed{*this, p, mark, coming, lifts ? pieceLift(keyOf(c)) : 0.0f, Rect{x - width / 2, top, width, std::max(hair, bottom - top)},
+                            orderOf(c)};
         if (props_.kind == Kind::Bars) {
             const float stroke = std::clamp(room * 0.12f, hair, 2.0f);
             const float tick = std::max(hair, room * 0.35f);
@@ -774,6 +840,8 @@ void CandleChart::paint(PaintContext& context) {
         else
             p.fillRect(r, color);
     }
+    if (loose)
+        p.pushClip(plot);
     // the lines over it: averages of the candles' closes (at their middles), lines of points where their times are
     const auto from = static_cast<std::size_t>(std::clamp(std::floor(xv.low), static_cast<double>(first_), static_cast<double>(first_ + candles_.size())));
     const auto to = static_cast<std::size_t>(std::clamp(std::ceil(xv.high) + 1, static_cast<double>(first_), static_cast<double>(first_ + candles_.size())));

@@ -25,6 +25,7 @@
 #include <GLWidgets/Charts/TreeMap.hpp>
 #include <GLWidgets/Paint/DrawList.hpp>
 #include <GLWidgets/Paint/Painter.hpp>
+#include <GLWidgets/Paint/Renderer.hpp>
 #include <GLWidgets/Widgets/UiRoot.hpp>
 
 #include <algorithm>
@@ -1535,4 +1536,27 @@ TEST(aGaugeAHistogramAndARaceComeInAsTheOtherChartsDo) {
         CHECK(comingGauge < shown(gauge.root) && comingHistogram < shown(histogram.root) && comingRace < shown(race.root));
     }
     tests::testScheduler().setAnimationsEnabled(false);
+}
+
+TEST(aFlameGraphsFramesOfGlassReadWhatIsUnderThemOnce) {
+    // many frames, each with its name: glass reliefs drawn together, after their shadows, before their names
+    tests::FakeHost host;
+    UiContext context = tests::testContext();
+    context.theme = Theme::dark(ThemeStyle::Glass);
+    UiRoot root(context, &host);
+    auto made = std::make_unique<FlameGraph>();
+    FlameGraph& flame = *made;
+    for (int i = 0; i < 40; ++i) {
+        const std::vector<std::string> stack = {"main", "work " + std::to_string(i % 8), "step " + std::to_string(i)};
+        flame.addStack(stack, 1 + i % 3);
+    }
+    root.setContent(std::move(made));
+    root.setSize({900, 400});
+    root.layout();
+    paint::DrawList list;
+    root.paint(list);
+    std::size_t glass = 0;
+    for (const paint::Vertex& v : list.vertices)
+        glass += v.kind > 5.5f && v.kind < 6.5f ? 1 : 0;
+    CHECK(glass > 40 * 4 && paint::Renderer::backdropCaptures(list).size() == 1);
 }

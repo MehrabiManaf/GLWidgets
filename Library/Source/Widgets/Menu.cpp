@@ -109,7 +109,11 @@ protected:
                 continue;
             }
             const bool chosen = current_ == i && item.enabled;
-            if (chosen)
+            // the one chosen: a key raised on the slab (a style's), or lit
+            if (chosen && s.highlightBevel.relief > 0)
+                paintRaised(p, {s.padding, row.y + 1, width - 2 * s.padding, row.height - 2}, s.cornerRadius, s.highlight, {0, 0, 0, 0},
+                            s.highlightBevel);
+            else if (chosen)
                 p.fillRoundedRect({s.padding, row.y, width - 2 * s.padding, row.height}, s.cornerRadius, lit(s.highlight, 0.06f),
                                   lit(s.highlight, -0.04f));
             // the texts paint after this, in the colors of the state
