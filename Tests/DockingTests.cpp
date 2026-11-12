@@ -86,6 +86,18 @@ TEST(addPanelMakesTheTree) {
     CHECK((d.area->panelIds() == std::vector<std::string>{"palette", "graph", "output", "search"}));
 }
 
+// A panel renamed: where it was, what it shows, its tab's title; another's id, or none, refused.
+TEST(aPanelIsRenamedWhereItIs) {
+    Docked d;
+    Widget* content = d.output->panelContent(0);
+    CHECK(d.area->renamePanel("output", "log", LocalizedText("Log")));
+    CHECK(d.output->panelId(0) == "log" && d.output->panelTitle(0).source == "Log" && d.output->panelContent(0) == content);
+    CHECK(d.output->active() == 1 && d.area->tabsOf("log") == d.output && !d.area->tabsOf("output"));
+    CHECK(!d.area->renamePanel("log", "search", LocalizedText("Search")) && !d.area->renamePanel("nothing", "x", LocalizedText("X")));
+    d.root.layout();
+    CHECK((d.area->panelIds() == std::vector<std::string>{"palette", "graph", "log", "search"}));
+}
+
 TEST(startIsOnTheRightInRightToLeft) {
     Docked d(LayoutDirection::RightToLeft);
     CHECK(d.palette->mapToRoot({}).x > d.graph->mapToRoot({}).x);

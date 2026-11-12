@@ -39,6 +39,8 @@ public:
     WindowState state() const override;
     void minimize() override;
     void maximize() override;
+    void setFullScreen(bool fullScreen) override;
+    bool fullScreen() const override;
     void restore() override;
     void setHitTest(HitTest hitTest) override;
     void startTextInput() override;

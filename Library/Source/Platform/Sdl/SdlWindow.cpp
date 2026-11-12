@@ -356,6 +356,14 @@ void SdlWindow::maximize() {
     SDL_MaximizeWindow(window_);
 }
 
+void SdlWindow::setFullScreen(bool fullScreen) {
+    SDL_SetWindowFullscreen(window_, fullScreen);       // the desktop's mode: the screen as it is, no mode change
+}
+
+bool SdlWindow::fullScreen() const {
+    return (SDL_GetWindowFlags(window_) & SDL_WINDOW_FULLSCREEN) != 0;
+}
+
 void SdlWindow::restore() {
     SDL_RestoreWindow(window_);
 }

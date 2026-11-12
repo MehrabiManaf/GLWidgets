@@ -103,6 +103,8 @@ public:
     const LocalizedText& panelTitle(std::size_t index) const { return entries_[index].title; }
     Widget* panelContent(std::size_t index) const { return entries_[index].content; }
     std::optional<std::size_t> indexOf(std::string_view id) const;
+    // The panel at `index` known by another id, its tab showing another title (where it is: what it shows stays).
+    void renamePanel(std::size_t index, std::string id, LocalizedText title);
     std::size_t active() const { return active_; }
     void setActive(std::size_t index);
     DockArea* area() const;
@@ -209,6 +211,9 @@ public:
     DockTabs& addPanel(DockPanel panel, Widget* nextTo = nullptr, DockSide side = DockSide::Center, float share = 0.5f);
     // Takes the panel `id` out: its content goes back to the caller (none when there is no such panel).
     std::unique_ptr<Widget> removePanel(std::string_view id);
+    // The panel `id` known by `newId` from now on (saved layouts too), its tab showing `title`, where it is. False when
+    // there is no such panel, or another has that id.
+    bool renamePanel(std::string_view id, std::string newId, LocalizedText title);
     // These, and removePanel, know the panels of the floating windows of the area too.
     DockTabs* tabsOf(std::string_view id) const;
     std::vector<std::string> panelIds() const;

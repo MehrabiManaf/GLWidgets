@@ -116,6 +116,10 @@ public:
     virtual void minimize() = 0;
     virtual void maximize() = 0;
     virtual void restore() = 0;             // from minimized or maximized
+    // The whole screen it is on, without the system's frame and bars (a presentation, a canvas to work on); off, as it was.
+    // A platform that cannot: nothing happens.
+    virtual void setFullScreen(bool fullScreen) { (void)fullScreen; }
+    virtual bool fullScreen() const { return false; }
 
     // What each point of a borderless window is. None (the default): all of it is client area.
     virtual void setHitTest(HitTest hitTest) = 0;

@@ -72,6 +72,9 @@ public:
     platform::WindowState windowState() const override;
     void minimizeWindow() override;
     void toggleMaximizeWindow() override;
+    // The whole screen (Platform::Window::setFullScreen), or as it was.
+    void setFullScreen(bool fullScreen);
+    bool fullScreen() const;
     void closeWindow() override { close(); }
     void startTextInput() override;
     void stopTextInput() override;

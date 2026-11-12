@@ -730,6 +730,15 @@ void DockTabs::onRootChanged() {
     rebuildTools();     // the float button: with a docking host only
 }
 
+void DockTabs::renamePanel(std::size_t index, std::string id, LocalizedText title) {
+    if (index >= entries_.size())
+        return;
+    entries_[index].id = std::move(id);
+    entries_[index].title = std::move(title);
+    rebuildBar();
+    invalidateLayout();
+}
+
 void DockTabs::rebuildBar() {
     while (!bar_->children().empty())
         bar_->removeChild(*bar_->children().back());
@@ -1038,6 +1047,14 @@ DockTabs* DockArea::tabsOf(std::string_view id) const {
             forEachTabs(*n, [&](DockTabs& tabs) { found = !found && tabs.indexOf(id) ? &tabs : found; });
     }
     return found;
+}
+
+bool DockArea::renamePanel(std::string_view id, std::string newId, LocalizedText title) {
+    DockTabs* tabs = tabsOf(id);
+    if (!tabs || (newId != id && tabsOf(newId)))
+        return false;
+    tabs->renamePanel(*tabs->indexOf(id), std::move(newId), std::move(title));
+    return true;
 }
 
 std::vector<std::string> DockArea::panelIds() const {

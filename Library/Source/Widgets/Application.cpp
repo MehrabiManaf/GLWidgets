@@ -935,6 +935,14 @@ void Window::minimizeWindow() {
     window_->minimize();
 }
 
+void Window::setFullScreen(bool fullScreen) {
+    window_->setFullScreen(fullScreen);
+}
+
+bool Window::fullScreen() const {
+    return window_->fullScreen();
+}
+
 void Window::toggleMaximizeWindow() {
     if (window_->state() == platform::WindowState::Maximized)
         window_->restore();
