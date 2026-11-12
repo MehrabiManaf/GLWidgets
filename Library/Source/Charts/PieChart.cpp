@@ -41,12 +41,10 @@ double PieSlice::total() const {
 PieChart::PieChart() : PieChart(Props{}) {}
 
 PieChart::PieChart(Props props)
-    : props_(std::move(props)), progress_([this] { invalidatePaint(); }), sweep_([this] { invalidatePaint(); }),
-      zoom_([this] { invalidatePaint(); }) {
+    : props_(std::move(props)), progress_([this] { invalidatePaint(); }), zoom_([this] { invalidatePaint(); }) {
     setTitle(props_.title);
     setFocusable(true);
     progress_.set(1);
-    sweep_.set(0);
     zoom_.set(1);
 }
 
@@ -358,14 +356,17 @@ void PieChart::paint(PaintContext& context) {
     for (const Item& item : painted_)
         if (item.depth == 0)
             total += item.value;
-    // the first time it shows with something to show: around into place
-    if (!swept_ && total > 0) {
-        swept_ = true;
-        const Duration duration = transition() * 3;
-        if (duration > Duration::zero())
-            sweep_.animateTo(scheduler(), 1, duration, Easing::InOutCubic);
-        else
-            sweep_.set(1);
+    // the first time it shows with something to show: its slices come in (Chart::beginEntrance), the first way (flat)
+    // around into place
+    if (total > 0)
+        beginEntrance();
+    const bool coming = entering();
+    liftPiece(hovered_);
+    const bool lifts = lifting();
+    float swept = 1;
+    if (coming && entranceWay() == 0 && !solidPieces()) {
+        const float x = std::min(1.0f, entranceProgress() / 0.75f);
+        swept = x < 0.5f ? 4 * x * x * x : 1 - std::pow(-2 * x + 2, 3.0f) / 2;
     }
     center_ = area.center();
     radius_ = std::max(0.0f, std::min(area.width, area.height) / 2 - popOut - 2);
@@ -397,14 +398,14 @@ void PieChart::paint(PaintContext& context) {
 
     const float thickness = (radius_ - inner_) / std::max(rings, 1.0f);
     const float start = props_.startAngle * pi / 180;
-    const float full = turn * sweep_.value();
+    const float full = turn * swept;
     const auto angleOf = [&](double f) { return start + static_cast<float>((std::clamp(f, low, high) - low) / (high - low)) * full; };
     const float out = popOut * (rings > 1.5f ? 0.6f : 1.0f);
     const float gap = s.gap / 2;
     // rings further apart than a slice comes out under the mouse (along its middle: a wide one's far side comes in as
     // much), so that it never goes into the next ring, nor into the one before it
     const float ringGap = std::max(gap, (out + s.gap) / 2);
-    const bool settled = sweep_.value() >= 1 && zoom_.value() >= 1;
+    const bool settled = !coming && zoom_.value() >= 1;
     // its slices raised as the style's bars are (paintArc)
     for (std::size_t k = 0; k < painted_.size(); ++k) {
         const Item& item = painted_[k];
@@ -428,7 +429,8 @@ void PieChart::paint(PaintContext& context) {
         Color color = item.color;
         if (raised)
             color = mix(color, Color{1, 1, 1, color.a}, 0.10f);
-        // (higher under the mouse)
+        // (higher under the mouse); coming in, one after another around (flat, the first way sweeps around instead)
+        const paint::Painter::Mark mark = coming || lifts ? p.markHere() : paint::Painter::Mark{};
         paintArc(p, at, r0, r1, a0, sweep, gap, color, raised ? 1.6f : 1.0f);
         shown_.push_back({k, r0, r1, a0, sweep, at});
         // its share of what shows in it, where it fits
@@ -439,6 +441,19 @@ void PieChart::paint(PaintContext& context) {
             const float r = r0 > 0.5f ? (r0 + r1) / 2 : r1 * 0.64f;
             if (r * sweep > size.width + 8 && r1 - r0 > size.height + 6)
                 drawText(context, text, at + direction * r, textOn(color), 0, {0.5f, 0.5f});
+        }
+        if (lifts) {
+            const Point middlePoint = at + direction * ((r0 + r1) / 2);
+            const float extent = r1 - r0;
+            placeLifted(p, mark, pieceLift(item.key), {middlePoint.x - extent / 2, middlePoint.y - extent / 2, extent, extent});
+        }
+        if (coming && (entranceWay() != 0 || solidPieces())) {
+            const float order = static_cast<float>(((item.from + item.to) / 2 - low) / (high - low));
+            // (as large as the slice is, about: how far it comes from)
+            const Point middlePoint = at + direction * ((r0 + r1) / 2);
+            const float extent = std::max(r1 - r0, std::min(r1 * sweep, 2 * r1));
+            const Rect bounds{middlePoint.x - extent / 2, middlePoint.y - extent / 2, extent, extent};
+            placeArriving(p, mark, arrived(order), bounds, at + direction * r0, direction);
         }
     }
     // the hole: the total of what shows (or the slice zoomed into's), or the value of the slice under the mouse

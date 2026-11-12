@@ -6,7 +6,9 @@
 // (Theme::glassReliefs). No widget asks for them by name.
 #include <GLWidgets/Widgets/Theme.hpp>
 
+#include <algorithm>
 #include <chrono>
+#include <cmath>
 
 namespace glw {
 
@@ -78,13 +80,29 @@ void Theme::solid(Theme& t, bool dark) {
     t.dock.landing = std::chrono::milliseconds(750);
     t.dock.rising = std::chrono::milliseconds(500);
     t.dock.variedArrivals = true;           // each one of three ways, at random
+    // a chart's bars, tiles and slices (solids) coming in a little slower than the rest: one after another, in space
+    t.chart.entrance = std::chrono::milliseconds(1100);
 }
 
 void Theme::glass(Theme& t, bool dark) {
     // Plastic's reliefs, of glass: its controls, and the slabs they stand on (a stack's, a card's), showing what is under
     // them, the window's own
     plastic(t, dark);
-    t.glassReliefs = paint::GlassReliefs{.from = 0.5f};
+    t.glassReliefs = paint::GlassReliefs{.from = 0.5f, .glossy = true};
+    // the windows' background pools of color and sheens of light (around the accent's hue, a little away from it), for
+    // the glass to show something
+    const Color a = t.palette.accent;
+    const float high = std::max({a.r, a.g, a.b}), low = std::min({a.r, a.g, a.b});
+    float hue = 0;
+    if (high > low) {
+        if (high == a.r)
+            hue = std::fmod((a.g - a.b) / (high - low) / 6 + 1, 1.0f);
+        else if (high == a.g)
+            hue = ((a.b - a.r) / (high - low) + 2) / 6;
+        else
+            hue = ((a.r - a.g) / (high - low) + 4) / 6;
+    }
+    t.backdrop = paint::Backdrop{.base = t.frame.background, .hue = std::fmod(hue + 0.55f, 1.0f), .vivid = dark ? 1.0f : 0.8f};
 }
 
 } // namespace glw

@@ -480,6 +480,9 @@ struct ChartStyle {
     float barRadius = 2;            // the corners of a bar, of a tile
     float gap = 2;                  // between tiles, slices, the bars of a stack
     Bevel barBevel;                 // bars and tiles, raised as the style's controls are
+    // its pieces (bars, tiles, slices) coming in when it first shows them (Chart::playEntrance): over this long; four
+    // times the theme's normal motion when 0 (none where there is no motion)
+    std::chrono::milliseconds entrance{0};
 };
 
 struct CanvasStyle {
@@ -556,6 +559,9 @@ struct Theme {
     float cameraDistance = 0;
     // Raised reliefs of glass (Painter::setGlassReliefs; none: of their colors).
     std::optional<paint::GlassReliefs> glassReliefs;
+    // The windows' background made as it is drawn (Painter::fillBackdrop; none: the frame's color): pools of color and
+    // sheens of light for glass to show (Glass).
+    std::optional<paint::Backdrop> backdrop;
 
     // The styles of every widget made from `palette`, in `style`.
     GLW_EXPORT static Theme fromPalette(const Palette& palette, ThemeStyle style = ThemeStyle::Studio);

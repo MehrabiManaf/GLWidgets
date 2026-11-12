@@ -303,11 +303,12 @@ void TreeMap::paint(PaintContext& context) {
         const float from = was != from_.end() && fit(was->second) ? 1.0f : 0.0f;
         return from + (to - from) * progress;
     };
-    for (std::size_t i = 0; i < tiles_.size(); ++i) {
-        const Tile& t = tiles_[i];
-        const Rect r = shownRect(t);
-        if (r.width < 0.5f || r.height < 0.5f)
-            continue;
+    if (!tiles_.empty())
+        beginEntrance();
+    const bool coming = entering();
+    liftPiece(hovered_ && *hovered_ < tiles_.size() && !tiles_[*hovered_].parent ? std::optional(tiles_[*hovered_].key) : std::nullopt);
+    const bool lifts = lifting();
+    const auto paintTile = [&](std::size_t i, const Tile& t, const Rect& r) {
         const bool lit = hovered_ == i;
         const float rr = std::min({radius, r.width / 2, r.height / 2});
         if (t.parent) {
@@ -329,7 +330,7 @@ void TreeMap::paint(PaintContext& context) {
                              {rtl ? 0.0f : 1.0f, 0.5f});
                 p.popClip();
             }
-            continue;
+            return;
         }
         const Color color = lit ? mix(t.color, Color{1, 1, 1, t.color.a}, 0.14f) : t.color;
         if (r.width > 4 && r.height > 4)
@@ -339,7 +340,7 @@ void TreeMap::paint(PaintContext& context) {
         // its name and its value in it, where they fit
         // (too small for any name: not measured, a treemap of thousands has many)
         if (r.width < 2 * pad + s.fontSize || r.height < s.fontSize + pad)
-            continue;
+            return;
         const std::string name = translate(t.node->label);
         const Size size = textSize(name);
         const Color ink = textOn(color);
@@ -355,6 +356,23 @@ void TreeMap::paint(PaintContext& context) {
             if (also > 0)
                 drawText(context, value, {x, r.y + pad - 2 + size.height}, withAlpha(ink, ink.a * 0.72f * also), 0, {rtl ? 1.0f : 0.0f, 0});
             p.popClip();
+        }
+    };
+    for (std::size_t i = 0; i < tiles_.size(); ++i) {
+        const Tile& t = tiles_[i];
+        const Rect r = shownRect(t);
+        if (r.width < 0.5f || r.height < 0.5f)
+            continue;
+        // coming in: from the start corner across, each tile with its name (by its own start corner: a group no later
+        // than what is in it)
+        const paint::Painter::Mark mark = coming || lifts ? p.markHere() : paint::Painter::Mark{};
+        paintTile(i, t, r);
+        if (lifts && !t.parent)
+            placeLifted(p, mark, pieceLift(t.key), r);
+        if (coming && area.width > 0 && area.height > 0) {
+            const float across = ((rtl ? area.right() - r.right() : r.x - area.x)) / area.width;
+            const float order = (across + (r.y - area.y) / area.height) / 2;
+            placeArriving(p, mark, arrived(order), r);
         }
     }
     if (hovered_ && *hovered_ < tiles_.size() && mouse_) {

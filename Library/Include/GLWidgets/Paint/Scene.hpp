@@ -79,6 +79,13 @@ struct Quaternion {
     friend bool operator==(const Quaternion&, const Quaternion&) = default;
 };
 
+// A turn of `angle` that tips a face looking up (out of the target) toward the light (above, to the upper left, where
+// the theme's Lighting has it): a piece in the air catching a highlight.
+inline Quaternion towardLight(float angle) {
+    const float x = -0.42f, y = -0.62f, n = std::sqrt(x * x + y * y);
+    return Quaternion::axisAngle({-y / n, x / n, 0}, angle);
+}
+
 // The sides of a brick joined to another (a tab to its stack, the stack under its tab): one piece with it there, no edge
 // drawn (no rim, no bend). Its top side only from `topFrom` to `topTo` (dips from its left) when `topTo` is past
 // `topFrom`, all of it otherwise. `onto`: joined onto what was drawn just before it: of glass, it shows what that one
@@ -129,11 +136,11 @@ struct ReliefBricks {
     friend bool operator==(const ReliefBricks&, const ReliefBricks&) = default;
 };
 
-// How something drawn is moved in three dimensions: made `scale` times as large and turned about its middle, lifted
-// `lift` dips toward the camera, moved `shift` across the target; `alpha` of it showing (Painter::place).
 // An edge of a rectangle: what something is hinged on (Painter::unfoldIn).
 enum class Edge : std::uint8_t { Top, Bottom, Left, Right };
 
+// How something drawn is moved in three dimensions: made `scale` times as large and turned about its middle, lifted
+// `lift` dips toward the camera, moved `shift` across the target; `alpha` of it showing (Painter::place).
 struct Lifted {
     float lift = 0;
     Quaternion turn;

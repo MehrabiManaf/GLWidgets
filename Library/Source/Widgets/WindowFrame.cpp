@@ -268,7 +268,11 @@ void WindowFrame::onStyleChanged() {
 }
 
 void WindowFrame::paint(PaintContext& context) {
-    context.painter.fillRect({0, 0, size().width, size().height}, context.ui.theme.frame.background);
+    // (a style's backdrop where it has one: for its glass to show)
+    if (const std::optional<paint::Backdrop>& backdrop = context.ui.theme.backdrop)
+        context.painter.fillBackdrop({0, 0, size().width, size().height}, *backdrop);
+    else
+        context.painter.fillRect({0, 0, size().width, size().height}, context.ui.theme.frame.background);
 }
 
 std::optional<platform::HitArea> WindowFrame::frameHitArea(Point p) const {

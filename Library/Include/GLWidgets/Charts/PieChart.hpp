@@ -143,8 +143,6 @@ private:
     mutable std::vector<std::string> legendKeys_;       // what its legend's items are
     std::unordered_map<std::string, double> from_;      // the shown values of the slices without parts, eased from
     Animation progress_;
-    Animation sweep_;                                   // the first time it shows: from 0 around to 1
-    bool swept_ = false;
     // zooming: the part of the top's turn shown and the ring the focus's parts are in, eased between
     std::vector<std::size_t> focus_;
     double fromLow_ = 0, fromHigh_ = 1;

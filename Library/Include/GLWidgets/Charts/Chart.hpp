@@ -12,6 +12,7 @@
 // painted again, and what shows is made of the data once a frame, from what of it shows.
 #include <GLWidgets/Charts/ChartAxis.hpp>
 #include <GLWidgets/Export.hpp>
+#include <GLWidgets/Paint/Painter.hpp>
 #include <GLWidgets/Widgets/Animation.hpp>
 #include <GLWidgets/Widgets/Layout.hpp>
 #include <GLWidgets/Widgets/Theme.hpp>
@@ -24,6 +25,7 @@
 #include <optional>
 #include <span>
 #include <string>
+#include <string_view>
 #include <unordered_map>
 #include <vector>
 
@@ -104,6 +106,9 @@ public:
     // The crosshair it shares with other charts (ChartCursor); none: its own only.
     void setCursor(std::shared_ptr<ChartCursor> cursor);
     const std::shared_ptr<ChartCursor>& cursor() const { return cursor_; }
+
+    // Its pieces (bars, tiles, slices) coming in again, as when it first showed them.
+    void playEntrance();
 
 protected:
     Chart();
@@ -216,6 +221,39 @@ protected:
     // not shown.
     Duration transition(bool fast = false) const;
 
+    // ---- its pieces coming in ----
+    // The first time it shows something (and again at playEntrance) its pieces come in one after another, one of three
+    // ways (at random where the theme varies its motions, MotionStyle::varied; the first otherwise), over the style's
+    // entrance time: where its pieces are solids (the theme's relief bricks), in space: dropping in from in front,
+    // swinging down onto the plot from standing toward the one looking, rising from behind it; otherwise in its plane:
+    // growing out of where they stand, sliding in, settling from a little larger.
+    // Begun by the chart's paint once it has something to show (nothing when it is not animated); once.
+    void beginEntrance();
+    bool entering() const { return entering_; }
+    // How far all of it has come (0 to 1; 1 when it is not coming in), and which of the ways it comes this time (0 to 2).
+    float entranceProgress() const;
+    int entranceWay() const { return entranceWay_; }
+    // How far a piece whose turn is at `order` (0 the first, 1 the last) has come, from 0 to 1 (1 when none comes).
+    float arrived(float order) const;
+    // Its pieces are solids (they come in space).
+    bool solidPieces() const;
+    // What was drawn of a piece since `mark` (Painter::markHere) placed as it comes, `u` of its way (arrived): `rect` its
+    // bounds; `base` where it stands (a bar's middle on its axis, a slice's on its inner edge; a tile: none, its top);
+    // `out` the way out of there (a bar's up from its axis, a slice's out from the middle).
+    void placeArriving(paint::Painter& painter, const paint::Painter::Mark& mark, float u, const Rect& rect, std::optional<Point> base = {},
+                       Point out = {}) const;
+
+    // ---- the piece under the mouse ----
+    // Where its pieces are solids, the one under the mouse (`key`, its own; none: none) is lifted toward the one looking,
+    // eased up, catching the light; the one that was, eased down. Told by the chart's paint, each time.
+    void liftPiece(std::optional<std::string> key);
+    // Some piece is lifted (or coming down): pieces are looked up (pieceLift).
+    bool lifting() const { return !lifted_.empty() || lowering_.value() > 0; }
+    // How far `key` is lifted (0 to 1).
+    float pieceLift(std::string_view key) const;
+    // What was drawn of a piece since `mark` (Painter::markHere), `rect` its bounds, lifted `amount` (pieceLift).
+    void placeLifted(paint::Painter& painter, const paint::Painter::Mark& mark, float amount, const Rect& rect) const;
+
     // A pixel's edge near `v`, at `pixelsPerDip`: thin lines drawn there are sharp.
     static float snap(float v, float pixelsPerDip);
     // Black or white, the one that reads on `background`.
@@ -240,6 +278,18 @@ private:
     std::size_t nextAnnotation_ = 1;
     std::shared_ptr<ChartCursor> cursor_;
     mutable std::unordered_map<std::string, std::unique_ptr<text::TextLayout>> texts_;
+    std::string lifted_;
+    std::string lowered_;
+    Animation lifting_{[this] { invalidatePaint(); }};
+    Animation lowering_{[this] { invalidatePaint(); }};
+    bool entered_ = false;
+    bool entering_ = false;
+    int entranceWay_ = 0;
+    Animation entrance_{[this] {
+        if (entrance_.value() >= 1)
+            entering_ = false;
+        invalidatePaint();
+    }};
 };
 
 } // namespace glw

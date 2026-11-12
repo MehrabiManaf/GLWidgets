@@ -23,6 +23,13 @@
 //      toward its edge as a lens (along its slope, within its bevel and a little more), its colors parting a little
 //      there; tinted by its color a little; a thin bright rim at its edge, a highlight where its slope turns toward the
 //      light.
+//      Glossy (kind 6.25): a sheen over its upper part, as a glass button's, and its lit edges glowing out of it a
+//      little (into the quad around it, added to what is under it), brightest toward the light.
+//   7  backdrop: made as it is drawn, for glass to show (Backdrop): over the color, soft glowing pools of color and faint
+//      sheens of light across, repeating every halfSize.x dips; uv the point on the target, halfSize.y how vivid,
+//      shape.x the hue the pools' are around.
+//   8  relief of glass of a sector of a ring: kind 4's shape, kind 6's glass (glossy: 8.25, its sheen along its outer
+//      arc).
 //   4  relief of a sector of a ring (a slice of a pie, of a donut), raised as 3 is: uv is the point in the sector's own
 //      frame (its center at the origin, its middle along +x), halfSize its inner and outer radii; shape.x its half angle
 //      and how far its sides are moved in, packed (half angle + 8 * sixteenths of a dip; negative: a whole ring); shape.y
@@ -158,6 +165,36 @@ float3 relief(float2 p, float2 g, float bevel, float height, float d, float hidd
     return color.rgb * shade + shine * highlight * color.a;
 }
 
+// A color of hue h (0 to 1 around the wheel), saturation s, value v.
+float3 hsv(float h, float s, float v) {
+    float3 k = saturate(abs(frac(h + float3(0.0, 2.0 / 3.0, 1.0 / 3.0)) * 6.0 - 3.0) - 1.0);
+    return v * lerp(float3(1.0, 1.0, 1.0), k, s);
+}
+
+// Kind 7's pattern at p (dips), repeating every `tile`: pools of color (where each is in the tile, how wide, its hue from
+// `hue`) glowing over `base`, as dark or light as it is; and faint sheens across (their ways whole turns in a tile, so that
+// they repeat with it).
+float3 backdrop(float2 p, float tile, float vivid, float hue, float3 base) {
+    static const float4 pools[6] = {float4(0.18, 0.22, 0.30, 0.00), float4(0.70, 0.12, 0.26, 0.10), float4(0.52, 0.58, 0.34, -0.08),
+                                    float4(0.10, 0.78, 0.24, 0.16), float4(0.86, 0.70, 0.22, -0.14), float4(0.40, 0.92, 0.18, 0.05)};
+    float2 q = p / tile;
+    float dark = 1.0 - saturate(dot(base, float3(0.2126, 0.7152, 0.0722)) * 1.6);
+    float3 c = base;
+    [unroll] for (int k = 0; k < 6; ++k) {
+        float2 d = q - pools[k].xy;
+        d -= round(d);
+        float r = length(d) / pools[k].z;
+        float glow = exp(-r * r * 2.0);
+        float3 color = hsv(hue + pools[k].w, lerp(0.45, 0.75, dark), lerp(0.95, 0.85, dark));
+        c = lerp(c, color, glow * lerp(0.32, 0.42, dark) * vivid);
+    }
+    // sheens: soft bright bands along two ways across
+    float a = 0.5 + 0.5 * cos(6.2831853 * dot(q, float2(2.0, -1.0)));
+    float b = 0.5 + 0.5 * cos(6.2831853 * dot(q, float2(1.0, 3.0)) + 1.3);
+    c += (pow(a, 18.0) * 0.06 + pow(b, 24.0) * 0.035) * vivid * float3(1.0, 1.0, 1.0);
+    return saturate(c);
+}
+
 // How much of a pixel at distance d is inside, with an edge `width` wide on each side of d = 0.
 float coverage(float d, float width) {
     return 1.0 - smoothstep(-width, width, d);
@@ -170,7 +207,7 @@ float4 fragmentMain(VertexOutput input) : SV_Target {
     float4 mask = input.color * texel.r;
 
     // a sector's bevel and corners, packed (kind 4)
-    bool sector = input.shape.z > 3.5 && input.shape.z < 4.5;
+    bool sector = (input.shape.z > 3.5 && input.shape.z < 4.5) || input.shape.z > 7.5;
     float corners = sector ? floor(input.shape.y / 256.0) : 0.0;
     float shapeY = input.shape.y - corners * 256.0;
     float2 arcSlope;
@@ -196,10 +233,16 @@ float4 fragmentMain(VertexOutput input) : SV_Target {
     float distance = max(min(texel.r, texel.g), min(max(texel.r, texel.g), texel.b)) - 0.5;
     float2 perPixel = fwidth(input.uv);
 
+    if (input.shape.z > 6.5 && input.shape.z < 7.5) {
+        float3 made = backdrop(input.uv, input.halfSize.x, input.halfSize.y, input.shape.x, input.color.rgb / max(input.color.a, 1e-3));
+        return float4(made * input.color.a, input.color.a);
+    }
     if (input.shape.z > 5.5) {
         // glass: what is under it, read where the pixel is (bent toward its edge, a lens), barely softened
-        float2 out2 = roundedBoxGradient(input.uv, input.halfSize, input.shape.x);
-        float zone = bevel + min(6.0, 0.15 * min(input.halfSize.x, input.halfSize.y));
+        // (a sector's: across its ring)
+        float2 out2 = sector ? arcSlope : roundedBoxGradient(input.uv, input.halfSize, input.shape.x);
+        float across = sector ? 0.5 * (input.halfSize.y - input.halfSize.x) : min(input.halfSize.x, input.halfSize.y);
+        float zone = bevel + min(6.0, 0.15 * across);
         float bend = 1.0 - smoothstep(0.0, zone, max(-d, 0.0));
         bend *= bend;
         float2 dipsPerPixel = max(perPixel, 1e-4);
@@ -216,7 +259,10 @@ float4 fragmentMain(VertexOutput input) : SV_Target {
         }
         behind /= 6.0;
         float3 straight = input.color.rgb / max(input.color.a, 1e-3);
-        float3 pane = lerp(behind * 0.97 + 0.03, straight, 0.07);
+        // tinted by its color a little; much more when it is a color (a chart's bar, a checked box), so that it reads
+        float most = max(straight.r, max(straight.g, straight.b)), least = min(straight.r, min(straight.g, straight.b));
+        float colored = smoothstep(0.15, 0.6, (most - least) / max(most, 1e-3));
+        float3 pane = lerp(behind * 0.97 + 0.03, straight, lerp(0.07, 0.62, colored));
         // its edge: a thin bright line, a little brighter toward the light; a highlight where its slope turns toward it
         float facing = 0.78 + 0.22 * saturate(dot(out2, -normalize(toward.xy + 1e-5)) * 0.5 + 0.5);
         float rim = exp(-max(-d, 0.0) / 1.0) * 0.36 * facing;
@@ -225,9 +271,19 @@ float4 fragmentMain(VertexOutput input) : SV_Target {
         float3 halfway = normalize(toward + float3(0.0, 0.0, 1.0));
         float shine = max(0.0, pow(saturate(dot(n, halfway)), 60.0) - pow(saturate(halfway.z), 60.0)) * 0.8;
         float shade = bend * 0.08 * (1.0 - facing) / 0.22;
-        float3 glass = saturate(pane * (1.0 - shade) + rim + shine);
+        // glossy: a sheen over its upper part (fading down to its middle, inside its rim), and its lit edges glowing out
+        // of it, added to what is under it
+        bool glossy = frac(input.shape.z) > 0.1;
+        // (a sector's: in from its outer arc)
+        float down = sector ? saturate((input.halfSize.y - length(input.uv)) / max(input.halfSize.y - input.halfSize.x, 1.0))
+                            : saturate((input.uv.y + input.halfSize.y) / max(2.0 * input.halfSize.y, 1.0));
+        float sheen = glossy ? (1.0 - smoothstep(0.0, 0.55, down)) * smoothstep(0.0, 2.5, -d) * 0.16 : 0.0;
+        float3 glass = saturate(pane * (1.0 - shade) + rim * (glossy ? 1.35 : 1.0) + shine * (glossy ? 1.4 : 1.0) + sheen);
         float alpha = input.color.a * inside;
-        return float4(glass * alpha, alpha);
+        float lightSide = saturate(dot(out2, -normalize(toward.xy + 1e-5)) * 0.6 + 0.4);
+        float glow = glossy ? exp(-max(d, 0.0) / 3.2) * (1.0 - inside) * 0.30 * lightSide * input.color.a : 0.0;
+        float3 glowColor = lerp(float3(1.0, 1.0, 1.0), straight, 0.35);
+        return float4(glass * alpha + glowColor * glow, alpha);
     }
     float onScreen = max(0.5 * dot(input.halfSize, 1.0 / max(perPixel, 1e-6)), 1.0);
     float4 field = input.color * saturate(distance * onScreen + 0.5);

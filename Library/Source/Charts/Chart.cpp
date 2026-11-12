@@ -277,6 +277,158 @@ void Chart::paintArc(paint::Painter& p, Point at, float r0, float r1, float a0, 
     }
 }
 
+// ---- its pieces coming in ----
+
+void Chart::playEntrance() {
+    entered_ = false;
+    entering_ = false;
+    entrance_.set(1);
+    invalidatePaint();
+}
+
+void Chart::beginEntrance() {
+    if (entered_)
+        return;
+    entered_ = true;
+    const Duration normal = transition();
+    if (normal <= Duration::zero())
+        return;
+    const UiContext* ui = context();
+    const std::chrono::milliseconds own = style().entrance;
+    entranceWay_ = ui && ui->theme.motion.varied ? randomWay(3) : 0;
+    entering_ = true;
+    entrance_.set(0);
+    entrance_.animateTo(scheduler(), 1, own.count() > 0 ? Duration(own) : normal * 4, Easing::Linear);
+}
+
+float Chart::entranceProgress() const {
+    return entering_ ? entrance_.value() : 1.0f;
+}
+
+float Chart::arrived(float order) const {
+    if (!entering_)
+        return 1;
+    // each a little more than half of the time, the last starting as the first is nearly there
+    return std::clamp((entrance_.value() - 0.45f * std::clamp(order, 0.0f, 1.0f)) / 0.55f, 0.0f, 1.0f);
+}
+
+bool Chart::solidPieces() const {
+    const UiContext* ui = context();
+    return ui && ui->theme.reliefBricks && style().barBevel.relief > 0;
+}
+
+void Chart::placeArriving(paint::Painter& p, const paint::Painter::Mark& mark, float u, const Rect& rect, std::optional<Point> base, Point out) const {
+    if (u >= 1)
+        return;
+    constexpr float pi = 3.14159265f;
+    const auto outCubic = [](float x) { return 1 - (1 - x) * (1 - x) * (1 - x); };
+    const auto outBack = [](float x, float over) {
+        const float v = x - 1;
+        return 1 + (over + 1) * v * v * v + over * v * v;
+    };
+    const auto smooth = [](float x) {
+        x = std::clamp(x, 0.0f, 1.0f);
+        return x * x * (3 - 2 * x);
+    };
+    const float length = std::hypot(out.x, out.y);
+    const Point way = length > 1e-4f ? Point{out.x / length, out.y / length} : Point{0, 1};
+    // a tile hinges on its top, grows out of its middle
+    const Point hinge = base ? *base : Point{rect.center().x, rect.y};
+    const Point grows = base ? *base : rect.center();
+    const float e = outCubic(u);
+    const float size = std::max(rect.width, rect.height);
+    paint::Lifted lifted;
+    Point pivot = rect.center();
+    if (solidPieces()) {
+        switch (entranceWay_) {
+        case 1: {
+            // standing on its base toward the one looking, swinging down onto the plot (a little past, and back)
+            const float angle = 1.35f * (1 - outBack(u, 1.3f));
+            lifted = {.turn = paint::Quaternion::axisAngle({-way.y, way.x, 0}, -angle), .alpha = std::min(1.0f, u * 5)};
+            pivot = hinge;
+            break;
+        }
+        case 2: {
+            // from behind the plot, growing as it comes nearer, the light catching it on the way
+            lifted = {.lift = -std::min(60.0f + 0.4f * size, 160.0f) * (1 - e) * (1 - e),
+                      .turn = paint::towardLight(0.3f * std::sin(pi * e)),
+                      .alpha = smooth(u / 0.35f),
+                      .scale = 0.7f + 0.3f * outBack(u, 1.5f)};
+            break;
+        }
+        default: {
+            // from in front: down faster and faster, turned a little (and catching the light), a small bounce as it lands
+            constexpr float landed = 0.8f;
+            const float left = 1 - std::min(1.0f, u / landed);
+            float lift = std::min(70.0f + 0.3f * size, 150.0f) * left * left;
+            if (u > landed) {
+                const float b = (u - landed) / (1 - landed);
+                lift = 4 * std::sin(pi * b) * (1 - b);
+            }
+            lifted = {.lift = lift,
+                      .turn = paint::towardLight(0.35f * left * left) * paint::Quaternion::axisAngle({way.x, way.y, 0}, 0.25f * left * left),
+                      .alpha = std::min(1.0f, u * 5)};
+            break;
+        }
+        }
+    } else {
+        switch (entranceWay_) {
+        case 1:
+            // sliding out of where it stands (a tile: in from the start side), fading in
+            lifted = {.shift = (length > 1e-4f ? way : Point{rightToLeft() ? -1.0f : 1.0f, 0}) * (-28 * (1 - e)), .alpha = smooth(u / 0.6f)};
+            break;
+        case 2:
+            // settling from a little larger, fading in
+            lifted = {.alpha = smooth(u / 0.5f), .scale = 1 + 0.12f * (1 - e)};
+            break;
+        default:
+            // growing out of where it stands, a little past its size and back
+            lifted = {.alpha = std::min(1.0f, u * 4), .scale = std::max(0.0f, outBack(u, 1.2f))};
+            pivot = grows;
+            break;
+        }
+    }
+    p.place(mark, p.transform().map(pivot), lifted);
+}
+
+// ---- the piece under the mouse ----
+
+void Chart::liftPiece(std::optional<std::string> key) {
+    std::string now = solidPieces() ? key.value_or(std::string()) : std::string();
+    if (now == lifted_)
+        return;
+    // the one that was lifted, down from where it is; the new one up
+    const Duration fast = transition(true);
+    if (!lifted_.empty()) {
+        lowered_ = std::move(lifted_);
+        lowering_.set(lifting_.value());
+        lowering_.animateTo(scheduler(), 0, fast);
+    }
+    lifted_ = std::move(now);
+    lifting_.set(0);
+    if (!lifted_.empty())
+        lifting_.animateTo(scheduler(), 1, fast * 2, Easing::OutCubic);
+    invalidatePaint();
+}
+
+float Chart::pieceLift(std::string_view key) const {
+    if (key.empty())
+        return 0;
+    if (key == lifted_)
+        return lifting_.value();
+    if (key == lowered_)
+        return lowering_.value();
+    return 0;
+}
+
+void Chart::placeLifted(paint::Painter& p, const paint::Painter::Mark& mark, float amount, const Rect& rect) const {
+    if (amount <= 0)
+        return;
+    // up toward the one looking, as much as a little of its size (its shadow staying under it), turned toward the light
+    const float up = std::clamp(0.08f * std::min(rect.width, rect.height), 4.0f, 9.0f);
+    p.place(mark, p.transform().map(rect.center()), {.lift = up * amount, .turn = paint::towardLight(0.12f * amount)});
+}
+
 Duration Chart::transition(bool fast) const {
     const UiContext* ui = context();
     if (!animated_ || !ui || !scheduler())

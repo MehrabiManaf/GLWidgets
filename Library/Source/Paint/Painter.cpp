@@ -14,6 +14,7 @@ namespace {
 constexpr float boxKind = static_cast<float>(VertexKind::Box);
 constexpr float reliefKind = static_cast<float>(VertexKind::Relief);
 constexpr float ringReliefKind = static_cast<float>(VertexKind::RingRelief);
+constexpr float glassGlow = 9;           // dips a glossy glass relief's glow reaches out of it (Painter.hlsl's kind 6)
 constexpr float turn = 6.28318530718f;
 
 Vertex texturedVertex(Point position, Point uv, std::uint32_t color, VertexKind kind = VertexKind::Textured) {
@@ -100,13 +101,14 @@ void Painter::fillRelief(const Rect& rect, float radius, float height, float bev
     const Rect r = t.map(rect);
     if (r.empty() || color.a <= 0)
         return;
-    const Rect quad = r.inflated(1.0f / pixelsPerDip_);
+    // of glass: it reads what is under it (as what it is joined onto reads, when it is); glossy, its glow around it too
+    const bool glass = glassReliefs_ && height >= glassReliefs_->from;
+    const bool glossy = glass && glassReliefs_->glossy;
+    const Rect quad = r.inflated(glossy ? glassGlow * t.scale : 1.0f / pixelsPerDip_);
     if (culled(quad))
         return;
     const Point center = r.center();
     const Point half{r.width / 2, r.height / 2};
-    // of glass: it reads what is under it (as what it is joined onto reads, when it is)
-    const bool glass = glassReliefs_ && height >= glassReliefs_->from;
     DrawCommand& cmd = glass ? command(joined.onto ? joinedBackdropTexture : backdropTexture, false) : command(whiteTexture, true);
     const auto base = static_cast<std::uint32_t>(list_.vertices.size());
     const std::uint32_t packed = packColor(color);
@@ -118,8 +120,31 @@ void Painter::fillRelief(const Rect& rect, float radius, float height, float bev
         v.halfSize = half;
         v.radius = std::clamp(radius * t.scale, 0.0f, std::min(half.x, half.y));
         v.border = std::max(bevel * t.scale, 0.5f);         // the bevel
-        v.kind = glass ? static_cast<float>(VertexKind::GlassRelief) : reliefKind;
+        // (glossy glass: its kind and a quarter, Painter.hlsl's kind 6)
+        v.kind = glass ? static_cast<float>(VertexKind::GlassRelief) + (glossy ? 0.25f : 0.0f) : reliefKind;
         v.blur = height * t.scale;                          // the height
+        v.color = packed;
+        list_.vertices.push_back(v);
+    }
+    list_.indices.insert(list_.indices.end(), {base, base + 1, base + 2, base, base + 2, base + 3});
+    cmd.indexCount += 6;
+}
+
+void Painter::fillBackdrop(const Rect& rect, const Backdrop& backdrop) {
+    const Rect r = transform().map(rect);
+    if (r.empty() || culled(r))
+        return;
+    DrawCommand& cmd = command(whiteTexture, true);
+    const auto base = static_cast<std::uint32_t>(list_.vertices.size());
+    const std::uint32_t packed = packColor(backdrop.base);
+    const float scale = transform().scale;
+    for (Point corner : {Point{r.left(), r.top()}, Point{r.right(), r.top()}, Point{r.right(), r.bottom()}, Point{r.left(), r.bottom()}}) {
+        Vertex v;
+        v.position = corner;
+        v.uv = corner;                              // where it is: its pattern
+        v.halfSize = {std::max(backdrop.tile * scale, 16.0f), backdrop.vivid};
+        v.radius = backdrop.hue;
+        v.kind = static_cast<float>(VertexKind::Backdrop);
         v.color = packed;
         list_.vertices.push_back(v);
     }
@@ -501,6 +526,10 @@ void Painter::fillArcRelief(Point center, float inner, float outer, float start,
                             float bevel, Color color, float corner) {
     if (sweep <= 0 || outer <= inner || outer <= 0 || color.a <= 0)
         return;
+    if (reliefBricks_ && height > 0) {
+        arcBrick(center, inner, outer, start, sweep, inset, height, bevel, color, corner);
+        return;
+    }
     const Transform& t = transform();
     const Point c = t.map(center);
     const float r0 = std::max(0.0f, inner) * t.scale, r1 = outer * t.scale;
@@ -530,14 +559,17 @@ void Painter::fillArcRelief(Point center, float inner, float outer, float start,
         if (half >= turn / 2 - 1e-4f)
             reach(r, turn / 2);
     }
-    const float margin = 1.0f / pixelsPerDip_ + 0.5f;
+    // of glass: it reads what is under it; glossy, its glow around it too
+    const bool glass = glassReliefs_ && height >= glassReliefs_->from;
+    const bool glossy = glass && glassReliefs_->glossy;
+    const float margin = (glossy ? glassGlow * t.scale : 1.0f / pixelsPerDip_) + 0.5f;
     lowX -= margin;
     lowY -= margin;
     highX += margin;
     highY += margin;
     const float middle = start + half;
     const Point axis{std::cos(middle), std::sin(middle)}, across{-axis.y, axis.x};
-    DrawCommand& cmd = command(whiteTexture, true);
+    DrawCommand& cmd = glass ? command(backdropTexture, false) : command(whiteTexture, true);
     const auto base = static_cast<std::uint32_t>(list_.vertices.size());
     const std::uint32_t packed = packColor(color);
     // its half angle and how far its sides are in, packed (see Painter.hlsl's kind 4); a whole ring, no sides
@@ -552,7 +584,7 @@ void Painter::fillArcRelief(Point center, float inner, float outer, float start,
         v.halfSize = {r0, r1};
         v.radius = sides;
         v.border = bevelAndCorners;
-        v.kind = ringReliefKind;
+        v.kind = glass ? static_cast<float>(VertexKind::GlassRingRelief) + (glossy ? 0.25f : 0.0f) : ringReliefKind;
         v.blur = height * t.scale;                         // the height
         v.color = packed;
         list_.vertices.push_back(v);

@@ -192,6 +192,12 @@ void Gauge::paint(PaintContext& context) {
     const Point at{area.x + area.width / 2 - radius * (left + right) / 2, area.y - radius * top};
     const float thickness = std::clamp(props_.thickness, 0.02f, 1.0f) * radius;
     const float inner = radius - thickness;
+    // coming in (Chart::beginEntrance): the dial as one piece standing on its bottom, its value sweeping up from its low
+    // end as it comes
+    beginEntrance();
+    const bool coming = entering();
+    const paint::Painter::Mark mark = coming ? p.markHere() : paint::Painter::Mark{};
+    const Rect dial{at.x + radius * left, at.y + radius * top, radius * (right - left), radius * (bottom - top)};
 
     // its track; its bands along its inside (a thin ring, a gap in from the track); the value over the track
     // (flat; its ends as round as the value's in a style of reliefs: a relief of no height)
@@ -210,7 +216,11 @@ void Gauge::paint(PaintContext& context) {
             from = std::max(from, b.to);
         }
     }
-    const double shown = shownValue();
+    double shown = shownValue();
+    if (coming) {
+        const float x = std::min(1.0f, entranceProgress() / 0.8f);
+        shown = range.low + (shown - range.low) * static_cast<double>(x < 0.5f ? 4 * x * x * x : 1 - std::pow(-2 * x + 2, 3.0f) / 2);
+    }
     const Color color = colorOf(shown);
     const float a1 = angleOf(shown);
     if (a1 > start + 1e-4f)
@@ -247,6 +257,8 @@ void Gauge::paint(PaintContext& context) {
         end(start, range.low);
         end(start + sweep, range.high);
     }
+    if (coming)
+        placeArriving(p, mark, arrived(0), dial, Point{dial.center().x, dial.bottom()}, {0, -1});
 }
 
 } // namespace glw

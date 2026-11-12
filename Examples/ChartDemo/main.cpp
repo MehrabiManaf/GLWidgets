@@ -229,7 +229,7 @@ struct Demo {
                    {.spacing = 10},
                    ui::HStack({.spacing = 10},
                               ui::Label({.text = tr("Style")}).alignment(glw::Alignment::Start, glw::Alignment::Center),
-                              ui::ComboBox({.items = {"Studio", "Fluid", "Plain", "Plastic", "Metal"},
+                              ui::ComboBox({.items = {"Studio", "Fluid", "Plain", "Plastic", "Metal", "Solid", "Glass"},
                                             .current = static_cast<std::size_t>(app.style()),
                                             .onChanged = [this](std::size_t i) { app.setStyle(static_cast<glw::ThemeStyle>(i)); }}),
                               ui::Label({.text = tr("Colors")}).alignment(glw::Alignment::Start, glw::Alignment::Center),
@@ -238,6 +238,9 @@ struct Demo {
                                             .onChanged = [this](std::size_t i) { app.setColorScheme(static_cast<glw::ColorScheme>(i)); }}),
                               ui::CheckBox({.text = tr("Eased"), .checked = true, .onToggled = [this](bool on) { animate(on); }})
                                   .alignment(glw::Alignment::Start, glw::Alignment::Center),
+                              // the bars, the tiles and the slices coming in again, as when they first showed
+                              ui::Button({.text = tr("Again"), .onClick = [this] { replay(); }})
+                                  .toolTip(tr("The charts' pieces coming in again")),
                               ui::Label({.text = tr("Bars")}).alignment(glw::Alignment::Start, glw::Alignment::Center),
                               ui::ComboBox({.items = {tr("Stacked"), tr("Grouped"), tr("Percent")},
                                             .onChanged = [this](std::size_t i) { bars->setLayout(static_cast<glw::BarLayout>(i)); }}),
@@ -673,6 +676,11 @@ struct Demo {
         network->append(t, networkValue);
         memoryHigh->append(t, memoryValue + spread);
         memoryLow->append(t, memoryValue - spread * 0.8);
+    }
+
+    void replay() {
+        for (glw::Chart* chart : std::initializer_list<glw::Chart*>{pie, bars, tree, race, histogram, gauges[0], gauges[1], gauges[2]})
+            chart->playEntrance();
     }
 
     void animate(bool on) {

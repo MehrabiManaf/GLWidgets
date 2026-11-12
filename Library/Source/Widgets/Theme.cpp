@@ -726,6 +726,8 @@ void Theme::fluid(Theme& t, bool dark) {
     t.motion.scroll = std::chrono::milliseconds(240);
     t.motion.ripple = std::chrono::milliseconds(520);
     t.motion.popupSlide = 12;
+    // what comes one of its ways at random each time (in its plane: a chart's pieces growing, sliding, settling)
+    t.motion.varied = true;
 }
 
 void Theme::reliefs(Theme& t, bool dark) {

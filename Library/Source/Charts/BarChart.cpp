@@ -386,10 +386,21 @@ void BarChart::paint(PaintContext& context) {
     const auto annotationY = [&](double v, bool) { return across(v); };
     paintAnnotations(context, plot, annotationX, annotationY, false, !standing);
     bars_.clear();
-    p.pushClip(plot);
+    if (last > first)
+        beginEntrance();
+    const bool coming = entering();
+    // (coming in as solids: out of the plot on the way, not cut by it)
+    const bool clipped = !(coming && solidPieces());
+    if (clipped)
+        p.pushClip(plot);
+    float order = 0;            // of the category painted, among those that show
+    const auto keyOf = [](std::size_t si, std::size_t ci) { return std::to_string(si) + '/' + std::to_string(ci); };
+    liftPiece(hovered_ ? std::optional(keyOf(hovered_->first, hovered_->second)) : std::nullopt);
+    const bool lifts = lifting();
     const auto bar = [&](Rect r, std::size_t si, std::size_t ci, float thickness) {
         if (r.width <= 0.2f || r.height <= 0.2f)
             return;
+        const paint::Painter::Mark mark = coming || lifts ? p.markHere() : paint::Painter::Mark{};
         Color color = seriesColorOf(si);
         if (hovered_ && hovered_->first == si && hovered_->second == ci)
             color = mix(color, Color{1, 1, 1, color.a}, 0.16f);
@@ -399,12 +410,29 @@ void BarChart::paint(PaintContext& context) {
         else
             p.fillRect(r, color);
         bars_.push_back({r, si, ci});
+        if (lifts)
+            placeLifted(p, mark, pieceLift(keyOf(si, ci)), r);
+        if (coming) {
+            // out of its end on the axis (the nearer one to 0), away from it
+            Point base, out;
+            if (standing) {
+                const bool fromBottom = std::abs(r.bottom() - zero) <= std::abs(r.y - zero);
+                base = {r.center().x, fromBottom ? r.bottom() : r.y};
+                out = {0, fromBottom ? -1.0f : 1.0f};
+            } else {
+                const bool fromLeft = std::abs(r.x - zero) <= std::abs(r.right() - zero);
+                base = {fromLeft ? r.x : r.right(), r.center().y};
+                out = {fromLeft ? 1.0f : -1.0f, 0};
+            }
+            placeArriving(p, mark, arrived(order), r, base, out);
+        }
     };
     const float gap = s.gap;
     for (long long c = first; c < last; ++c) {
         const auto ci = static_cast<std::size_t>(c - begin);
         const auto x = static_cast<double>(c);
         const float thickness = slot * static_cast<float>(1 - 2 * inset);
+        order = last - first > 1 ? static_cast<float>(c - first) / static_cast<float>(last - first - 1) : 0.0f;
         if (props_.layout == BarLayout::Grouped) {
             double at = x + inset;
             for (std::size_t si = 0; si < series_.size(); ++si) {
@@ -454,7 +482,8 @@ void BarChart::paint(PaintContext& context) {
             bar(r, si, ci, thickness);
         }
     }
-    p.popClip();
+    if (clipped)
+        p.popClip();
     paintAnnotations(context, plot, annotationX, annotationY, true, !standing);
 
     // the categories' names: every one, or every second, fifth... as they fit (steady as they scroll)

@@ -641,3 +641,61 @@ TEST(theSolidStyleVariesHowThingsCome) {
     }
     CHECK(seen[0] && seen[1] && seen[2] && randomWay(1) == 0);
 }
+
+TEST(aReliefArcIsABrickBentAroundItsRingWhereReliefsAreBricks) {
+    DrawList list;
+    {
+        Painter p(list, {0, 0, 800, 600}, 1);
+        p.setReliefBricks(ReliefBricks{.depth = 2.5f, .bevel = 0});
+        p.fillArcRelief({400, 300}, 60, 100, 0, 1.0f, 2, 1.6f, 1, {0.5f, 0.5f, 0.5f, 1}, 3);
+    }
+    // one brick, nothing flat: the ring's radii, its sides (half a radian), its ring's center behind its middle
+    CHECK(list.sceneVertices.size() == 4 && list.vertices.empty());
+    const SceneVertex& v = list.sceneVertices[0];
+    CHECK(near(v.decalUv[0], 60) && near(v.decalUv[1], 100) && v.decalUv[2] > 0.49f && v.decalUv[3] < 0);
+    const float out = std::hypot(v.center[0] - 400, v.center[1] - 300);
+    CHECK(out > 50 && out < 100 && near(out, -v.decalUv[3], 0.01f) && v.center[2] < 0);
+    // moved, twice as large: its ring with it
+    DrawList moved;
+    {
+        Painter p(moved, {0, 0, 800, 600}, 1);
+        p.setReliefBricks(ReliefBricks{.depth = 2.5f, .bevel = 0});
+        const Painter::Mark mark = p.markHere();
+        p.fillArcRelief({400, 300}, 60, 100, 0, 1.0f, 2, 1.6f, 1, {0.5f, 0.5f, 0.5f, 1}, 3);
+        p.place(mark, {400, 300}, {.scale = 2});
+    }
+    CHECK(near(moved.sceneVertices[0].decalUv[1], 200, 0.01f) && near(moved.sceneVertices[0].decalUv[3], 2 * v.decalUv[3], 0.01f));
+}
+
+TEST(aBackdropIsMadeWhereItIsDrawnAndGlossyGlassGlowsOutOfItsEdges) {
+    DrawList list;
+    {
+        Painter p(list, {0, 0, 800, 600}, 1);
+        p.fillBackdrop({0, 0, 800, 600}, Backdrop{.base = {0.1f, 0.1f, 0.12f, 1}});
+    }
+    CHECK(list.vertices.size() == 4 && list.vertices[0].kind == static_cast<float>(VertexKind::Backdrop));
+    CHECK(near(list.vertices[2].uv.x, 800) && near(list.vertices[2].uv.y, 600) && near(list.vertices[0].halfSize.x, 760));
+    const auto glass = [](bool glossy) {
+        DrawList drawn;
+        Painter p(drawn, {0, 0, 800, 600}, 1);
+        p.setGlassReliefs(GlassReliefs{.from = 0.5f, .glossy = glossy});
+        p.fillRelief({100, 100, 80, 30}, 4, 1.6f, 1.5f, {0.4f, 0.4f, 0.45f, 1});
+        return drawn;
+    };
+    const DrawList clear = glass(false), glossy = glass(true);
+    CHECK(clear.vertices[0].kind == static_cast<float>(VertexKind::GlassRelief));
+    CHECK(near(glossy.vertices[0].kind, static_cast<float>(VertexKind::GlassRelief) + 0.25f));
+    // its glow: room for it around it
+    CHECK(glossy.vertices[0].position.x < clear.vertices[0].position.x - 6 && Theme::dark(ThemeStyle::Glass).backdrop.has_value());
+}
+
+TEST(aReliefArcOfGlassReadsWhatIsUnderIt) {
+    DrawList list;
+    {
+        Painter p(list, {0, 0, 800, 600}, 1);
+        p.setGlassReliefs(GlassReliefs{.from = 0.5f, .glossy = true});
+        p.fillArcRelief({400, 300}, 60, 100, 0, 1.0f, 2, 1.6f, 1, {0.2f, 0.5f, 0.9f, 1}, 3);
+    }
+    CHECK(list.vertices.size() == 4 && near(list.vertices[0].kind, static_cast<float>(VertexKind::GlassRingRelief) + 0.25f));
+    CHECK(!Renderer::backdropCaptures(list).empty());
+}

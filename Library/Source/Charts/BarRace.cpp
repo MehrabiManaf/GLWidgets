@@ -380,11 +380,43 @@ void BarRace::paint(PaintContext& context) {
     const float labelSize = thickness >= s.fontSize * 1.15f ? s.fontSize : std::max(7.0f, thickness * 0.85f);
     const bool labels = thickness >= 6;
     bars_.clear();
+    // coming in (Chart::beginEntrance): its bars one after another down the ranks, out of the start side, each with its
+    // name and its total; the one under the mouse lifted
+    if (!visible_.empty())
+        beginEntrance();
+    const bool coming = entering();
+    liftPiece(hovered_ && *hovered_ < names_.size() ? std::optional(std::to_string(*hovered_)) : std::nullopt);
+    const bool lifts = lifting();
+    // (solids on their way: not cut by the plot)
+    const bool clipped = !((coming || lifts) && solidPieces());
+    const float ranks = std::max(1.0f, plot.height / std::max(slot_, 1.0f));
     for (std::size_t id : visible_) {
         const float place = shownPlace(id) - top;
         const float y = plot.y + place * slot_ + (slot_ - thickness) / 2;
         const float middle = y + thickness / 2;
-        p.pushClip(plot);
+        const paint::Painter::Mark mark = coming || lifts ? p.markHere() : paint::Painter::Mark{};
+        // (placed when all of it is drawn: its bars, its name, its total)
+        struct Placed {
+            const BarRace& race;
+            paint::Painter& painter;
+            const paint::Painter::Mark& mark;
+            bool coming, lifts;
+            Rect row;
+            float order;
+            Point base;
+            std::string key;
+            ~Placed() {
+                if (lifts)
+                    race.placeLifted(painter, mark, race.pieceLift(key), row);
+                if (coming)
+                    race.placeArriving(painter, mark, race.arrived(order), row, base, {race.rightToLeft() ? -1.0f : 1.0f, 0});
+            }
+        };
+        const float zeroX = x(0);
+        const Placed placed{*this, p, mark, coming, lifts, Rect{plot.x, y, plot.width, thickness}, std::clamp(place / ranks, 0.0f, 1.0f),
+                            Point{zeroX, middle}, lifts ? std::to_string(id) : std::string()};
+        if (clipped)
+            p.pushClip(plot);
         double at = 0;
         for (std::size_t k = 0; k < partCount(); ++k) {
             const double v = shownPart(id, k);
@@ -408,7 +440,8 @@ void BarRace::paint(PaintContext& context) {
                 p.fillRect(r, color);
             at += v;
         }
-        p.popClip();
+        if (clipped)
+            p.popClip();
         const float end = x(at);
         bars_.push_back({Rect{std::min(x(0), end), y, std::abs(end - x(0)), thickness}, id});
         if (!labels || middle < plot.y || middle > plot.bottom())

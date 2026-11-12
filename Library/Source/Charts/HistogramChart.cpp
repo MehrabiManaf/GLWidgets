@@ -428,7 +428,16 @@ void HistogramChart::paint(PaintContext& context) {
     const float binWidth = plot.width / static_cast<float>(bins_);
     const float gap = binWidth >= 6 ? std::min(s.gap, binWidth * 0.15f) : 0.0f;
     const bool alone = std::count_if(series_.begin(), series_.end(), [](const auto& x) { return x->visible_; }) <= 1;
-    p.pushClip(plot);
+    // coming in (Chart::beginEntrance): its bars one after another out of the axis; the one under the mouse lifted
+    if (bins_ > 0)
+        beginEntrance();
+    const bool coming = entering();
+    liftPiece(hovered && alone ? std::optional(std::to_string(*hovered)) : std::nullopt);
+    const bool lifts = lifting();
+    // (solids on their way: not cut by the plot)
+    const bool clipped = !((coming || lifts) && solidPieces());
+    if (clipped)
+        p.pushClip(plot);
     for (std::size_t k = 0; k < count; ++k) {
         const float alpha = series_[k]->shown_.value();
         if (alpha <= 0.002f)
@@ -443,13 +452,20 @@ void HistogramChart::paint(PaintContext& context) {
             const float x0 = px(start_ + static_cast<double>(b) * width_) + gap / 2;
             const float y = py(h);
             const Rect r{x0, y, binWidth - gap, plot.bottom() - y};
+            const paint::Painter::Mark mark = coming || lifts ? p.markHere() : paint::Painter::Mark{};
             if (alone && r.width >= 5 && r.height >= 3)
                 paintRaised(p, r, std::min(s.barRadius, r.width / 4), color, {0, 0, 0, 0}, s.barBevel);
             else
                 p.fillRect(r, color);
+            if (lifts)
+                placeLifted(p, mark, pieceLift(std::to_string(b)), r);
+            if (coming)
+                placeArriving(p, mark, arrived(bins_ > 1 ? static_cast<float>(b) / static_cast<float>(bins_ - 1) : 0.0f), r,
+                              Point{r.center().x, plot.bottom()}, {0, -1});
         }
     }
-    p.popClip();
+    if (clipped)
+        p.popClip();
     paintAnnotations(context, plot, xAxis_, yAxis_, true);
 
     // the first series that shows: its share at or under each value, a line; lines at its quantiles and its mean

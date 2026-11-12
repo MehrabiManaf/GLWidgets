@@ -1478,3 +1478,61 @@ TEST(aSankeyWithoutJustifyLeavesItsSinksWhereTheyAre) {
     CHECK(c.chart->columnCount() == 3 && c.chart->columnOf(e) == 1 && c.chart->columnOf(d) == 2);
     CHECK(c.paint() > 0);
 }
+
+TEST(aChartsPiecesComeInWhenItFirstShowsThemAndWhenAskedAgain) {
+    tests::testScheduler().setAnimationsEnabled(true);
+    {
+        Shown<TreeMap> c(TreeMap::Props{.depth = 1});
+        TreeMapNode root{.label = "all"};
+        for (double v : {6.0, 3.0, 1.0})
+            root.children.push_back({.label = "n" + std::to_string(root.children.size()), .value = v});
+        c.chart->setRoot(root);
+        // how much of it shows: its pieces' alpha, all of it
+        const auto shown = [&] {
+            paint::DrawList list;
+            c.root.paint(list);
+            double alpha = 0;
+            for (const paint::Vertex& v : list.vertices)
+                alpha += static_cast<double>(v.color >> 24);
+            return alpha;
+        };
+        const double coming = shown();
+        tests::advance(std::chrono::seconds(3));
+        const double there = shown();
+        CHECK(coming < there);
+        CHECK(shown() == there);
+        // again, when asked
+        c.chart->playEntrance();
+        CHECK(shown() < there);
+        tests::advance(std::chrono::seconds(3));
+        CHECK(shown() == there);
+    }
+    tests::testScheduler().setAnimationsEnabled(false);
+}
+
+TEST(aGaugeAHistogramAndARaceComeInAsTheOtherChartsDo) {
+    tests::testScheduler().setAnimationsEnabled(true);
+    {
+        const auto shown = [](UiRoot& root) {
+            paint::DrawList list;
+            root.paint(list);
+            double alpha = 0;
+            for (const paint::Vertex& v : list.vertices)
+                alpha += static_cast<double>(v.color >> 24);
+            return alpha;
+        };
+        Shown<Gauge> gauge(Gauge::Props{.unit = "%"});
+        gauge.chart->setValue(40);
+        Shown<HistogramChart> histogram(HistogramChart::Props{.bins = 10, .range = ChartRange{0, 100}});
+        HistogramSeries& h = histogram.chart->addSeries({.name = "a"});
+        for (int i = 0; i < 100; ++i)
+            h.add(i + 0.5);
+        Shown<BarRace> race(BarRace::Props{.shown = 3});
+        for (const char* name : {"a", "b", "c"})
+            race.chart->setValue(race.chart->addItem(name), 10);
+        const double comingGauge = shown(gauge.root), comingHistogram = shown(histogram.root), comingRace = shown(race.root);
+        tests::advance(std::chrono::seconds(3));
+        CHECK(comingGauge < shown(gauge.root) && comingHistogram < shown(histogram.root) && comingRace < shown(race.root));
+    }
+    tests::testScheduler().setAnimationsEnabled(false);
+}

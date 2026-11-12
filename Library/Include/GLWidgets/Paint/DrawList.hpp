@@ -28,13 +28,28 @@ inline constexpr TextureId backdropTexture = ~TextureId{0};
 // ... the same as the glass it is joined onto (drawn just before it) reads: no new copy for it.
 inline constexpr TextureId joinedBackdropTexture = ~TextureId{1};
 
-enum class VertexKind : std::uint8_t { Textured = 0, Box = 1, Mask = 2, Relief = 3, RingRelief = 4, Field = 5, GlassRelief = 6 };
+enum class VertexKind : std::uint8_t { Textured = 0, Box = 1, Mask = 2, Relief = 3, RingRelief = 4, Field = 5, GlassRelief = 6, Backdrop = 7,
+                                         GlassRingRelief = 8 };
 
 // Raised reliefs of glass (Painter::setGlassReliefs): those at least `from` high show what was drawn under them through
 // their surface, bent along their sloped edges as a lens (Painter.hlsl's kind 6).
+// `glossy`: a glossy sheen over their upper part, and their lit edges glowing a little out of them (soft light around
+// them, brightest toward the light).
 struct GlassReliefs {
     float from = 0.5f;
+    bool glossy = false;
     friend bool operator==(const GlassReliefs&, const GlassReliefs&) = default;
+};
+
+// A background made as it is drawn (Painter::fillBackdrop, Painter.hlsl's kind 7), for glass to show: over `base`, soft
+// glowing pools of color (their hues around `hue`, 0 to 1 around the color wheel; `vivid` how strong) and faint sheens of
+// light across, repeating every `tile` dips: the same however large, a few terms a pixel.
+struct Backdrop {
+    Color base;
+    float hue = 0.58f;
+    float vivid = 1;
+    float tile = 760;
+    friend bool operator==(const Backdrop&, const Backdrop&) = default;
 };
 
 // The light reliefs are lit by (Painter::fillRelief): the Renderer's (setLighting), the fragment shader's uniforms

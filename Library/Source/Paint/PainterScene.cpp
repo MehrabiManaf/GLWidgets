@@ -48,13 +48,6 @@ void setPlace(SceneVertex& v, Float3 center, Quaternion q) {
     v.rotation[3] = q.w;
 }
 
-// A turn of `angle` that tips a face looking up (out of the target) toward the light (above, to the upper left, where
-// the theme's Lighting has it): a piece in the air catching a highlight.
-Quaternion towardLight(float angle) {
-    const float x = -0.42f, y = -0.62f, n = std::sqrt(x * x + y * y);
-    return Quaternion::axisAngle({-y / n, x / n, 0}, angle);
-}
-
 // How much of `area` a brick covers (1: the slab the rest stands on).
 float largeIn(const SceneVertex& v, const Rect& area) {
     return std::clamp(v.halfSize[0] * v.halfSize[1] * 4 / std::max(1.0f, area.width * area.height), 0.0f, 1.0f);
@@ -236,7 +229,68 @@ void Painter::drawBrickDecal(const Brick& brick, const Rect& rect, TextureId tex
     sceneQuad(quad, v, texture, false);
 }
 
+void Painter::arcBrick(Point center, float inner, float outer, float start, float sweep, float inset, float height, float bevel, Color color,
+                       float corner) {
+    constexpr float turn = 6.28318530718f;
+    inner = std::max(0.0f, inner);
+    const bool whole = sweep >= turn - 1e-4f;
+    const float half = std::min(sweep, turn) / 2;
+    const float gap = whole ? 0.0f : std::max(0.0f, inset);
+    // in its own frame (the sector's middle along +x): what its arcs and sides reach
+    float lowX = 1e30f, highX = -1e30f, highY = 0;
+    const auto reach = [&](float r, float angle) {
+        lowX = std::min(lowX, r * std::cos(angle));
+        highX = std::max(highX, r * std::cos(angle));
+        highY = std::max(highY, std::abs(r * std::sin(angle)));
+    };
+    for (float r : {inner, outer}) {
+        for (float angle : {-half, 0.0f, half})
+            reach(r, angle);
+        if (half > turn / 4)
+            reach(r, turn / 4);
+        if (half >= turn / 2 - 1e-4f)
+            reach(r, turn / 2);
+    }
+    const float middleX = (lowX + highX) / 2;
+    // its body down into what it is on, as deep as a relief's brick is (no more than half as deep as it is across)
+    const float depth = std::min(height * reliefBricks_->depth, (outer - inner) * 0.5f);
+    const float middle = start + half;
+    const Point axis{std::cos(middle), std::sin(middle)};
+    const Brick brick{.center = {center.x + axis.x * middleX, center.y + axis.y * middleX, -depth / 2},
+                      .halfSize = {(highX - lowX) / 2, highY, depth / 2},
+                      .rotation = Quaternion::axisAngle({0, 0, 1}, middle),
+                      .cornerRadius = corner,
+                      .bevel = reliefBricks_->bevel >= 0 ? reliefBricks_->bevel : bevel,
+                      .color = color,
+                      .roughness = reliefBricks_->roughness,
+                      .shadow = 0,
+                      .reliefLight = true};
+    if (brick.halfSize.x <= 0 || brick.halfSize.y <= 0 || depth <= 0)
+        return;
+    SceneVertex v = sceneVertex(brick, brickKind);
+    // the ring in its frame (Scene.hlsl): its radii, its half angle and its sides' inset (sixteenths of a dip), where its
+    // center is; its corners as round as the ring's are, not as its bounds
+    const float scale = transform().scale;
+    v.decalUv[0] = inner * scale;
+    v.decalUv[1] = outer * scale;
+    v.decalUv[2] = whole ? -1.0f : half + 8.0f * std::round(gap * scale * 16);
+    v.decalUv[3] = -middleX * scale;
+    v.cornerRadius = std::clamp(corner * scale, v.bevel, std::max(v.bevel, (outer - inner) * scale / 2));
+    const Float3 c = centerOf(v);
+    const Quaternion& q = brick.rotation;
+    const Float3 ax = q.rotate({v.halfSize[0], 0, 0}), ay = q.rotate({0, v.halfSize[1], 0}), az = q.rotate({0, 0, v.halfSize[2]});
+    const Rect quad = around(*this, 1.5f / pixelsPerDip_, [&](auto take) {
+        for (int k = 0; k < 8; ++k)
+            take(c + ax * ((k & 1) ? 1.0f : -1.0f) + ay * ((k & 2) ? 1.0f : -1.0f) + az * ((k & 4) ? 1.0f : -1.0f));
+    });
+    sceneQuad(quad, v, whiteTexture, true);
+}
+
 // ---- what was drawn, moved ----
+
+Painter::Mark Painter::markHere() const {
+    return {list_.vertices.size(), list_.sceneVertices.size(), list_.commands.size()};
+}
 
 Painter::Mark Painter::mark() {
     // a command of its own from here: what follows is not added to one that came before
@@ -500,6 +554,17 @@ void Painter::place(const Mark& mark, Point pivot, const Lifted& lifted) {
                 four[k].bevel *= scale;
                 for (float& d : four[k].decal)
                     d *= four[k].material[2] > 0.5f ? scale : 1.0f;      // (a decal's rectangle on its face)
+                if (four[k].material[2] < 0.5f && four[k].decalUv[1] > 0) {
+                    // a brick bent around a ring: its radii, its sides' inset and where its ring's center is
+                    float* arc = four[k].decalUv;
+                    arc[0] *= scale;
+                    arc[1] *= scale;
+                    arc[3] *= scale;
+                    if (arc[2] >= 0) {
+                        const float steps = std::floor(arc[2] / 8);
+                        arc[2] = arc[2] - steps * 8 + 8 * std::round(steps * scale);
+                    }
+                }
             }
             if (faded)
                 scaleAlpha(four[k].color, lifted.alpha);

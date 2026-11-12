@@ -111,6 +111,8 @@ public:
     void drawBrickDecal(const Brick& brick, const Rect& rect, TextureId texture, const Rect& uv, Point range, Color color);
     // Raised reliefs of glass, flat (none: of their color): what is under them showing through (GlassReliefs).
     void setGlassReliefs(std::optional<GlassReliefs> glass) { glassReliefs_ = glass; }
+    // `rect` filled with `backdrop` (its pattern where it is on the target: the same wherever it is drawn).
+    void fillBackdrop(const Rect& rect, const Backdrop& backdrop);
     // Raised reliefs (fillRelief with a height above 0) drawn as bricks (none: as reliefs).
     void setReliefBricks(std::optional<ReliefBricks> bricks) { reliefBricks_ = bricks; }
     const std::optional<ReliefBricks>& reliefBricks() const { return reliefBricks_; }
@@ -123,6 +125,9 @@ public:
         std::size_t vertices = 0, sceneVertices = 0, commands = 0;
     };
     Mark mark();
+    // ... without a command of its own: for place only (not placeClips, unclip), so that many small pieces each moved
+    // (a chart's bars, its tiles) are drawn in as few commands as they would be still.
+    Mark markHere() const;
     // What was drawn since `mark` falling in from in front of the target, `t` of the way (0 to 1): each brick (and what
     // is printed on it) from near the camera, turning about an axis of its own, a little aside, down to where it is, one
     // after another from the top of `area` down; its shadow coming as it does; the 2D of it (text, lines) showing at the
@@ -189,6 +194,9 @@ private:
     void placeQuad(SceneVertex* four) const;
     // The scene vertex of `brick` through the current transform, of `kind` (its eye and pixels per dip set; no position).
     SceneVertex sceneVertex(const Brick& brick, float kind) const;
+    // fillArcRelief's solid (with relief bricks): a brick bent around the ring, its top where the relief's is.
+    void arcBrick(Point center, float inner, float outer, float start, float sweep, float inset, float height, float bevel, Color color,
+                  float corner);
     // A box in the target's dips.
     void box(const Rect& rect, float radius, float border, float blur, Color top, Color bottom);
     // A textured quad in the target's dips.

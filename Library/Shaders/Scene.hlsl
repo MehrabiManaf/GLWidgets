@@ -19,6 +19,11 @@
 // edge, brighter toward the light; its turned sides darker, a highlight where it turns toward the light. A look, not
 // refraction computed.
 //
+// A brick may be a sector of a ring seen from above (a slice of a pie, of a donut, bent): its bounds as a box's (its
+// frame's middle where the sector's is, x along its middle), the ring's radii in decalUv.xy, its half angle and how far
+// its sides are moved in packed in decalUv.z (as Painter.hlsl's kind 4), where the ring's center is along its x in
+// decalUv.w; its corners (where a side meets an arc) round over its corner radius. decalUv.y above 0 says it is one.
+//
 // A shadow (material.z 2) is a brick's on the target (z = 0): a rounded rectangle (center.xy, halfSize.xy, its corner
 // radius) blurred over `bevel` dips, as far as the target is (behind the bricks that stand over it). Drawn with the
 // bricks, it needs no pipeline of its own.
@@ -115,19 +120,49 @@ float3 unrotate(float4 q, float3 v) {
     return rotate(float4(-q.xyz, q.w), v);
 }
 
-// Distance from p (the brick's frame) to the brick: half size h, its corners seen from above round over `corner`, all its
+// Distance from p to a sector of a ring around the origin, its middle along +x (Painter.hlsl's ringSector, without its
+// slope): from the radius radii.x to radii.y, its half angle and its sides' inset packed in `sides` (negative: a whole
+// ring), its corners rounded over `corner`.
+float ringSector(float2 p, float2 radii, float sides, float corner) {
+    float len = length(p);
+    float arcs = max(len - radii.y, radii.x - len);
+    bool ring = sides < 0.0;
+    float steps = floor(max(sides, 0.0) / 8.0);
+    float angle = max(sides, 0.0) - steps * 8.0;
+    float inset = steps / 16.0;
+    float2 up = float2(-sin(angle), cos(angle));
+    float2 down = float2(up.x, -up.y);
+    float d1 = dot(p, up) + inset;
+    float d2 = dot(p, down) + inset;
+    bool narrow = angle <= 1.5707963;
+    float side = ring ? -1e6 : (narrow ? max(d1, d2) : min(d1, d2));
+    float r = ring ? 0.0 : min(corner, 0.5 * (radii.y - radii.x));
+    r = max(0.0, narrow ? min(r, len * sin(angle) - inset) : r);
+    float2 q = float2(arcs, side) + r;
+    return length(max(q, 0.0)) + min(max(q.x, q.y), 0.0) - r;
+}
+
+// Distance from p (the brick's frame, seen from above) to its outline: a rounded rectangle (half size h, its corners
+// round over `corner`), or a sector of a ring (`arc`: decalUv; its y above 0).
+float outline(float2 p, float2 h, float corner, float4 arc) {
+    if (arc.y > 0.0)
+        return ringSector(p - float2(arc.w, 0.0), arc.xy, arc.z, corner);
+    float2 q = abs(p) - (h - corner);
+    return length(max(q, 0.0)) + min(max(q.x, q.y), 0.0) - corner;
+}
+
+// Distance from p (the brick's frame) to the brick: half size h, its outline's corners round over `corner`, all its
 // edges over `bevel` (corner >= bevel).
-float brickDistance(float3 p, float3 h, float corner, float bevel) {
-    float2 q = abs(p.xy) - (h.xy - corner);
-    float flat = length(max(q, 0.0)) + min(max(q.x, q.y), 0.0) - (corner - bevel);
+float brickDistance(float3 p, float3 h, float corner, float bevel, float4 arc) {
+    float flat = outline(p.xy, h.xy, corner, arc) + bevel;
     float2 w = float2(flat, abs(p.z) - (h.z - bevel));
     return min(max(w.x, w.y), 0.0) + length(max(w, 0.0)) - bevel;
 }
 
-float3 brickNormal(float3 p, float3 h, float corner, float bevel, float e) {
+float3 brickNormal(float3 p, float3 h, float corner, float bevel, float4 arc, float e) {
     const float2 k = float2(1.0, -1.0);
-    return normalize(k.xyy * brickDistance(p + k.xyy * e, h, corner, bevel) + k.yyx * brickDistance(p + k.yyx * e, h, corner, bevel) +
-                     k.yxy * brickDistance(p + k.yxy * e, h, corner, bevel) + k.xxx * brickDistance(p + k.xxx * e, h, corner, bevel));
+    return normalize(k.xyy * brickDistance(p + k.xyy * e, h, corner, bevel, arc) + k.yyx * brickDistance(p + k.yyx * e, h, corner, bevel, arc) +
+                     k.yxy * brickDistance(p + k.yxy * e, h, corner, bevel, arc) + k.xxx * brickDistance(p + k.xxx * e, h, corner, bevel, arc));
 }
 
 // ---- the environment ----
@@ -249,8 +284,8 @@ FragmentOutput fragmentMain(VertexOutput input) {
     // normal the face's; elsewhere (its bevels, its sides, its edge) found by walking
     float tTop = (h.z - ro.z) / (rd.z < -1e-6 ? rd.z : -1e-6);
     float2 onTop = (ro + rd * tTop).xy;
-    float2 inner = abs(onTop) - (h.xy - corner);
-    float flatTop = length(max(inner, 0.0)) + min(max(inner.x, inner.y), 0.0) - (corner - bevel);
+    float4 arc = input.material.z < 0.5 ? input.decalUv : float4(0.0, 0.0, 0.0, 0.0);
+    float flatTop = outline(onTop, h.xy, corner, arc) + bevel;
     float t = t0;
     float nearest = 1e9;
     float nearestT = t0;
@@ -262,7 +297,7 @@ FragmentOutput fragmentMain(VertexOutput input) {
     } else {
         // toward its surface, by how far it is; as near as it came, in pixels
         [loop] for (int i = 0; i < 40; ++i) {
-            float d = brickDistance(ro + rd * t, h, corner, bevel);
+            float d = brickDistance(ro + rd * t, h, corner, bevel, arc);
             float pixel = t * perPixel;
             float m = d / pixel;
             if (m < nearest) {
@@ -277,7 +312,7 @@ FragmentOutput fragmentMain(VertexOutput input) {
             if (t > t1)
                 break;
         }
-        localNormal = brickNormal(ro + rd * nearestT, h, corner, bevel, max(nearestT * perPixel * 0.5, 0.01));
+        localNormal = brickNormal(ro + rd * nearestT, h, corner, bevel, arc, max(nearestT * perPixel * 0.5, 0.01));
     }
     float coverage = hit ? 1.0 : saturate(1.0 - nearest);
     if (coverage <= 0.002)
