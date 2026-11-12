@@ -9,6 +9,7 @@
 #include <GLWidgets/Core/Color.hpp>
 #include <GLWidgets/Core/Geometry.hpp>
 #include <GLWidgets/Export.hpp>
+#include <GLWidgets/Paint/Scene.hpp>
 #include <GLWidgets/Widgets/Animation.hpp>
 #include <GLWidgets/Widgets/Theme.hpp>
 
@@ -25,8 +26,10 @@ GLW_EXPORT Color lit(Color c, float amount);
 
 // A control standing out of what it is on: its shadow (when its background is opaque), its background lighter at its top,
 // the light line inside along its top, `outline` around it. Pressed, sunk: darker at its top, a shadow inside instead.
+// `pressed` how far, from 0 to 1 (a Press's value: a relief goes down as it does, a little past its height as it springs
+// back). `joined`: its sides joined to another, where it is a relief drawn as a brick (Painter::fillRelief).
 GLW_EXPORT void paintRaised(paint::Painter& painter, const Rect& rect, float radius, Color background, Color outline,
-                            const Bevel& bevel, bool pressed = false);
+                            const Bevel& bevel, float pressed = 0, const paint::Joined& joined = {});
 // A control sunk into what it is on: the light line under its bottom edge, its background, a shadow inside along its top,
 // `outline` around it.
 GLW_EXPORT void paintSunken(paint::Painter& painter, const Rect& rect, float radius, Color background, Color outline,
@@ -39,8 +42,23 @@ GLW_EXPORT void paintFocusGlow(paint::Painter& painter, const Rect& rect, float 
 // (the end side's when `outerAtEnd`: the right of a vertical bar in left to right, the bottom of a horizontal one) while
 // `wide` is 0, as wide as the bar less a margin at 1 (the mouse over the bar, the thumb dragged), eased between.
 // Its corners `radius` round, at most half as much as it is thick (a pill).
+// Raised as `bevel` says when its relief is above 0.
 GLW_EXPORT void paintScrollThumb(paint::Painter& painter, const Rect& thumb, bool vertical, bool outerAtEnd, float wide, Color color,
-                                 float radius = 0);
+                                 float radius = 0, const Bevel& bevel = {});
+
+// How far a control is pressed, from 0 (up) to 1 (down), eased: down quickly, up with a small overshoot, as a key springs
+// back (the theme's motions: at once where there are none). Given to paintRaised.
+class GLW_EXPORT Press {
+public:
+    explicit Press(std::function<void()> onStep) : amount_(std::move(onStep)) {}
+    // Pressed or not now (called as it is painted, as a ColorTransition is).
+    void to(Scheduler* scheduler, bool pressed, const MotionStyle& motion);
+    float value() const { return amount_.value(); }
+
+private:
+    Animation amount_;
+    bool down_ = false;
+};
 
 // A press's ripple (a style's that has one: ButtonStyle::ripple): out of where the control was pressed to its ends, as high
 // as it is and as round (inside it, a pill's round ends too), fading as it goes. Started on a press, painted over the

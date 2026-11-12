@@ -6,6 +6,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
+#include <vector>
 
 namespace glw::paint {
 
@@ -47,6 +48,41 @@ void setPlace(SceneVertex& v, Float3 center, Quaternion q) {
     v.rotation[3] = q.w;
 }
 
+// A turn of `angle` that tips a face looking up (out of the target) toward the light (above, to the upper left, where
+// the theme's Lighting has it): a piece in the air catching a highlight.
+Quaternion towardLight(float angle) {
+    const float x = -0.42f, y = -0.62f, n = std::sqrt(x * x + y * y);
+    return Quaternion::axisAngle({-y / n, x / n, 0}, angle);
+}
+
+// How much of `area` a brick covers (1: the slab the rest stands on).
+float largeIn(const SceneVertex& v, const Rect& area) {
+    return std::clamp(v.halfSize[0] * v.halfSize[1] * 4 / std::max(1.0f, area.width * area.height), 0.0f, 1.0f);
+}
+
+// The order a panel's pieces come in (Painter::arriveFrom, riseIn): 0 its slab (its largest brick, nearly as large as
+// it), 1 its tab (a brick joined at its bottom) with what is drawn over the slab's top (its tab bar), 2 the rest.
+struct Pieces {
+    float slabTop = -1e30f;         // (none: no slab, all of it the rest)
+    int stageOf(const SceneVertex& v, const Rect& area) const {
+        if (largeIn(v, area) >= 0.5f)
+            return 0;
+        const auto sides = static_cast<unsigned>(v.decal[0] + 0.5f);
+        return v.material[2] < 0.5f || v.material[2] > 1.5f ? ((sides & 2u) != 0 ? 1 : 2) : 2;
+    }
+    int stageOf(float y) const { return y < slabTop ? 1 : 2; }
+};
+
+Pieces piecesOf(const std::vector<SceneVertex>& vertices, std::size_t first, const Rect& area) {
+    Pieces pieces;
+    for (std::size_t i = first; i + 3 < vertices.size(); i += 4) {
+        const SceneVertex& v = vertices[i];
+        if (v.material[2] < 0.5f && largeIn(v, area) >= 0.5f)
+            pieces.slabTop = std::max(pieces.slabTop, v.center[1] - v.halfSize[1]);
+    }
+    return pieces;
+}
+
 } // namespace
 
 Point Painter::project(Float3 p) const {
@@ -77,6 +113,11 @@ SceneVertex Painter::sceneVertex(const Brick& brick, float kind) const {
     v.eye[2] = camera_.eye.z;
     v.pixelsPerDip = pixelsPerDip_;
     v.color = packColor(brick.color);
+    // its joined sides (a brick's decal fields: it has none)
+    const Joined& j = brick.joined;
+    v.decal[0] = static_cast<float>((j.top ? 1 : 0) | (j.bottom ? 2 : 0) | (j.left ? 4 : 0) | (j.right ? 8 : 0));
+    v.decal[1] = (j.topFrom - brick.halfSize.x) * t.scale;
+    v.decal[2] = (j.topTo - brick.halfSize.x) * t.scale;
     return v;
 }
 
@@ -136,7 +177,7 @@ void Painter::drawBrick(const Brick& brick) {
     });
     // of glass: it reads what is under it
     if (brick.glass)
-        sceneQuad(quad, v, backdropTexture, false);
+        sceneQuad(quad, v, brick.joined.onto ? joinedBackdropTexture : backdropTexture, false);
     else
         sceneQuad(quad, v, whiteTexture, true);
 }
@@ -217,21 +258,50 @@ void Painter::arriveFrom(const Mark& mark, float t, const Rect& area, const Rect
     // where a point of the area was: the area stretched onto `from`
     const float sx = from.width / area.width, sy = from.height / area.height;
     const auto was = [&](Point p) { return Point{from.x + (p.x - area.x) * sx, from.y + (p.y - area.y) * sy}; };
-    // a row a little after the one above it; each eased from where it was to its place, coming down from a little nearer
-    // the camera as it goes
-    const auto delayAt = [&](float y) { return 0.06f * std::clamp((y - area.y) / area.height, 0.0f, 1.0f); };
-    constexpr float span = 0.94f;
-    const auto eased = [&](float delay) {
-        const float u = std::clamp((t - delay) / span, 0.0f, 1.0f);
-        return u < 0.5f ? 4 * u * u * u : 1 - std::pow(-2 * u + 2, 3.0f) / 2;      // in and out, cubic
-    };
-    const float height = camera_.eye.z * 0.08f;
-    const auto along = [](Point a, Point b, float e) { return Point{a.x + (b.x - a.x) * e, a.y + (b.y - a.y) * e}; };
-    // where a point `height` high must be to show at `seen` from the camera: it starts exactly where it was showing
     const Float3& eye = camera_.eye;
+    // where a point `z` high must be to show at `seen` from the camera: each starts exactly where it was showing
     const auto under = [&](Point seen, float z) {
         const float k = (eye.z - z) / eye.z;
         return Point{eye.x + (seen.x - eye.x) * k, eye.y + (seen.y - eye.y) * k};
+    };
+    const auto along = [](Point a, Point b, float e) { return Point{a.x + (b.x - a.x) * e, a.y + (b.y - a.y) * e}; };
+    constexpr float pi = 3.14159265f;
+    // How a piece comes, `large` of the area (the slab the rest stands on: 1): put together, the slab first, then one row
+    // after another down the area; each from where it was, a little nearer the camera, along an arc (up a little, then
+    // down), quick at first and slowing, a slight tilt of its own that sways once and settles; landed, a small bounce and
+    // a pop of its size.
+    const float lifted = eye.z * 0.08f;             // where it starts (nearer the camera)
+    const float hop = eye.z * 0.035f;               // the arc's height over that
+    const float bounce = std::min(5.0f, eye.z * 0.006f);
+    constexpr float span = 0.6f, landed = 0.8f;     // of t a piece takes; of that, when it lands (then the bounce)
+    struct Motion {
+        float e = 1;            // of the way from where it was (its place and size), eased
+        float z = 0;            // over where it is
+        float sway = 0;         // its tilt along its way, radians
+        float glint = 0;        // ... toward the light
+        float pop = 1;          // its size, times
+    };
+    // the slab first, then its tab (and its bar), then the rest a row after another
+    const Pieces pieces = piecesOf(list_.sceneVertices, mark.sceneVertices, area);
+    const auto motion = [&](int stage, float y, float large) {
+        const float rows = std::clamp((y - area.y) / area.height, 0.0f, 1.0f);
+        const float delay = stage == 0 ? 0.0f : stage == 1 ? 0.14f : 0.26f + 0.14f * rows;
+        const float u = std::clamp((t - delay) / span, 0.0f, 1.0f);
+        const float s = std::min(1.0f, u / landed);
+        Motion m;
+        m.e = 1 - (1 - s) * (1 - s) * (1 - s);
+        const float small = 1 - large;
+        m.z = lifted * (1 - m.e) + hop * std::sin(pi * s) * small;
+        // leaning a little into its way (its leading edge lower), flat as it lands, a hair the other way after; turned
+        // toward the light on the way (a highlight across it), back as it lands
+        m.sway = (0.07f * (1 - m.e) - 0.015f * std::sin(pi * s) * s) * small;
+        m.glint = 0.26f * std::sin(pi * s) * (0.25f + 0.75f * small);
+        if (u > landed) {
+            const float b = (u - landed) / (1 - landed);
+            m.z += bounce * std::sin(pi * b) * (1 - b) * small;
+            m.pop = 1 + 0.035f * std::sin(pi * b) * small;
+        }
+        return m;
     };
 
     // the 2D of it: with what it is on, seen where it is on the way, stretched as it is (a line, a box); a glyph (a quad of
@@ -243,20 +313,18 @@ void Painter::arriveFrom(const Mark& mark, float t, const Rect& area, const Rect
         if (glyph) {
             const Point middle{(list_.vertices[i].position.x + list_.vertices[i + 2].position.x) / 2,
                                (list_.vertices[i].position.y + list_.vertices[i + 2].position.y) / 2};
-            const float e = eased(delayAt(middle.y));
-            const float z = height * (1 - e);
-            const Point at = along(under(was(middle), height), middle, e);
+            const Motion m = motion(pieces.stageOf(middle.y), middle.y, 0);
+            const Point at = along(under(was(middle), lifted), middle, m.e);
             for (std::size_t k = i; k < i + 4; ++k) {
                 const Point p = list_.vertices[k].position;
-                list_.vertices[k].position = project({at.x + p.x - middle.x, at.y + p.y - middle.y, z});
+                list_.vertices[k].position = project({at.x + p.x - middle.x, at.y + p.y - middle.y, m.z});
             }
             i += 3;
             continue;
         }
-        const float e = eased(delayAt(v.position.y));
-        const float z = height * (1 - e);
-        const Point at = along(under(was(v.position), height), v.position, e);
-        v.position = project({at.x, at.y, z});
+        const Motion m = motion(pieces.stageOf(v.position.y), v.position.y, 0);
+        const Point at = along(under(was(v.position), lifted), v.position, m.e);
+        v.position = project({at.x, at.y, m.z});
     }
     float order = 0;
     for (std::size_t i = mark.sceneVertices; i + 3 < list_.sceneVertices.size(); i += 4) {
@@ -267,36 +335,38 @@ void Painter::arriveFrom(const Mark& mark, float t, const Rect& area, const Rect
             seed = seed * 1664525u + 1013904223u;
             return static_cast<float>(seed >> 8) / static_cast<float>(1u << 24);       // 0 to 1
         };
-        const float e = eased(delayAt(c.y));
+        const float large = largeIn(four[0], area);
+        const Motion m = motion(pieces.stageOf(four[0], area), c.y, large);
         const Point start = was(c);
         if (four[0].material[2] > 1.5f) {
-            const Point at = along(start, c, e);
             // a shadow: under its brick on the way, darker as it comes down
+            const Point at = along(start, c, m.e);
             for (int k = 0; k < 4; ++k) {
                 four[k].center[0] += at.x - c.x;
                 four[k].center[1] += at.y - c.y;
                 four[k].position = {four[k].position.x + at.x - c.x, four[k].position.y + at.y - c.y};
-                scaleAlpha(four[k].color, 0.3f + 0.7f * e);
+                scaleAlpha(four[k].color, 0.3f + 0.7f * m.e);
             }
             continue;
         }
-        const Point at = along(under(start, height), c, e);           // (its top face, as its 2D, where it was)
+        const Point at = along(under(start, lifted), c, m.e);       // (its top face, as its 2D, where it was)
         // as large as it was showing there (the area stretched onto `from`; nearer the camera, it shows larger), growing to
-        // its own size as it comes
-        const float nearer = (eye.z - height) / eye.z;
+        // its own size as it comes, a pop of it as it lands
+        const float nearer = (eye.z - lifted) / eye.z;
         const float fromX = sx * nearer, fromY = sy * nearer;
-        const float wide = four[0].halfSize[0] * (fromX + (1 - fromX) * e), tall = four[0].halfSize[1] * (fromY + (1 - fromY) * e);
+        const float wide = four[0].halfSize[0] * (fromX + (1 - fromX) * m.e) * m.pop;
+        const float tall = four[0].halfSize[1] * (fromY + (1 - fromY) * m.e) * m.pop;
+        // its tilt: about the line across its way (none when it does not move)
+        const Float3 way{c.x - start.x, c.y - start.y, 0};
+        const Quaternion lean = length(way) > 1 ? Quaternion::axisAngle({-way.y, way.x, 0}, m.sway) : Quaternion{};
+        const Quaternion tilt = towardLight(m.glint) * lean;
         for (int k = 0; k < 4; ++k) {
             four[k].halfSize[0] = wide;
             four[k].halfSize[1] = tall;
             four[k].cornerRadius = std::min(four[k].cornerRadius, std::min(wide, tall));
             four[k].bevel = std::min(four[k].bevel, four[k].cornerRadius);
+            setPlace(four[k], {at.x, at.y, four[k].center[2] + m.z + order}, tilt * rotationOf(four[k]));
         }
-        // a slight tilt of its own, undone as it lands
-        const Float3 axis{next() * 2 - 1, next() * 2 - 1, 0};
-        const Quaternion tilt = Quaternion::axisAngle(length(axis) > 0.01f ? axis : Float3{1, 0, 0}, 0.07f * (1 - e));
-        for (int k = 0; k < 4; ++k)
-            setPlace(four[k], {at.x, at.y, four[k].center[2] + height * (1 - e) + order}, tilt * rotationOf(four[k]));
         placeQuad(four);
         order += 0.01f;
     }
@@ -314,12 +384,14 @@ void Painter::arrive(const Mark& mark, float t, const Rect& area, bool fromBehin
     if (t >= 1)
         return;
     const float top = area.y, tall = std::max(1.0f, area.height), wide = std::max(1.0f, area.width);
-    const Point middle = area.center();
-    const float reach = std::max(1.0f, std::hypot(wide, tall) / 2);
-    // when a place starts to come: falling, from the top of the area down; rising, from its middle out
+    // when a place starts to come: falling, from the top of the area down; rising, a panel's pieces in the reverse of
+    // the order they land in (Pieces): the rest a row after another, then its tab, then its slab
+    const Pieces pieces = piecesOf(list_.sceneVertices, mark.sceneVertices, area);
+    const auto risingDelay = [&](int stage, float y) {
+        return stage == 2 ? 0.12f * std::clamp((y - top) / tall, 0.0f, 1.0f) : stage == 1 ? 0.2f : 0.3f;
+    };
     const auto delayAt = [&](Point at) {
-        return fromBehind ? 0.35f * std::clamp(std::hypot(at.x - middle.x, at.y - middle.y) / reach, 0.0f, 1.0f)
-                          : 0.40f * std::clamp((at.y - top) / tall, 0.0f, 1.0f);
+        return fromBehind ? risingDelay(pieces.stageOf(at.y), at.y) : 0.40f * std::clamp((at.y - top) / tall, 0.0f, 1.0f);
     };
     constexpr float span = 0.55f;           // of t a brick takes to come (its delay at most 0.4, and a little of its own)
     constexpr float landed = 0.8f;          // falling: of its span when it lands (then a little bounce)
@@ -353,7 +425,7 @@ void Painter::arrive(const Mark& mark, float t, const Rect& area, bool fromBehin
         // the area too) turns as it comes
         const float large = std::clamp(four[0].halfSize[0] * four[0].halfSize[1] * 4 / (wide * tall), 0.0f, 1.0f);
         const float free = std::clamp(1 - large * 1.6f, 0.0f, 1.0f);
-        const float delay = (delayAt({cx, cy}) + 0.05f * next()) * free;
+        const float delay = fromBehind ? risingDelay(pieces.stageOf(four[0], area), cy) : (delayAt({cx, cy}) + 0.05f * next()) * free;
         const float u = progress(delay);
         if (four[0].material[2] > 1.5f) {
             // a shadow: coming as its brick does
@@ -383,10 +455,12 @@ void Painter::arrive(const Mark& mark, float t, const Rect& area, bool fromBehin
             const float left = 1 - u;
             const float behind = left * left * left;
             rise = -far * 0.9f * behind;
-            angle = 0.6f * free * behind;
+            angle = 0.35f * free * behind;
             alpha = smooth(u / 0.35f);
         }
-        const Quaternion spin = Quaternion::axisAngle(turnAbout, angle);
+        // rising: turned toward the light on the way too (a highlight across it), flat where it comes to
+        const float glint = fromBehind ? 0.26f * std::sin(3.14159265f * u) * (0.25f + 0.75f * free) : 0.0f;
+        const Quaternion spin = towardLight(glint) * Quaternion::axisAngle(turnAbout, angle);
         for (int k = 0; k < 4; ++k) {
             SceneVertex& v = four[k];
             setPlace(v, {cx + aside.x, cy + aside.y, v.center[2] + rise + order}, spin * rotationOf(v));

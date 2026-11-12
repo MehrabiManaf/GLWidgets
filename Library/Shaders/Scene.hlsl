@@ -298,11 +298,19 @@ FragmentOutput fragmentMain(VertexOutput input) {
         float2 outward = max(q2.x, q2.y) > 0.0 ? normalize(max(q2, 0.0) + 1e-5) : (q2.x > q2.y ? float2(1.0, 0.0) : float2(0.0, 1.0));
         outward *= sign(hit.xy + 1e-6);
         float2 out2 = rotate(q, float3(outward, 0.0)).xy;
-        float lens = 1.0 - smoothstep(0.0, 16.0, max(inside, 0.0));
+        // a side joined to another (a tab to its stack): one piece there, no edge (decal.x its sides: 1 top, 2 bottom,
+        // 4 left, 8 right; decal.yz where its top is joined, all of it when not apart)
+        uint sides = (uint)(input.decal.x + 0.5);
+        bool topOpen = (sides & 1u) != 0u && (input.decal.z <= input.decal.y || (hit.x >= input.decal.y && hit.x <= input.decal.z));
+        float open = (outward.y < -0.5 && topOpen) || (outward.y > 0.5 && (sides & 2u) != 0u) || (outward.x < -0.5 && (sides & 4u) != 0u) ||
+                             (outward.x > 0.5 && (sides & 8u) != 0u) ? 1.0 : 0.0;
+        // its edge's zone: a fifth of its smaller side, 10 dips at most (small ones not all lens)
+        float zone = max(min(10.0, 0.4 * min(h.x, h.y)), 2.0);
+        float lens = (1.0 - smoothstep(0.0, zone, max(inside, 0.0))) * (1.0 - open);
         lens *= lens;
         // on its bevel and sides (turned away), bent by how far it turns
-        float turned = 1.0 - saturate(n.z);
-        float2 shift = (out2 * (lens * 9.0 + turned * 6.0)) * input.uvPerDip;
+        float turned = (1.0 - saturate(n.z)) * (1.0 - open);
+        float2 shift = (out2 * (lens * min(zone * 0.7, 7.0) + turned * 6.0)) * input.uvPerDip;
         uint width, height;
         image.GetDimensions(width, height);
         float2 texel = 1.0 / float2(max(width, 1u), max(height, 1u));
@@ -321,9 +329,9 @@ FragmentOutput fragmentMain(VertexOutput input) {
         float3 pane = lerp(behind * 0.97 + 0.03, input.color.rgb, 0.07) * lerp(0.80, 1.0, facing);
         // the rim: a thin line along the top face's edge, lit by how much it faces the light
         float3 toward = normalize(light.xyz);
-        float lit = 0.45 + 0.55 * saturate(dot(out2, -normalize(toward.xy + 1e-5)) * 0.5 + 0.5);
-        float edgeLine = exp(-max(inside, 0.0) / 1.2) * (inside > -bevel ? 1.0 : 0.0);
-        float rim = edgeLine * 0.42 * lit + pow(1.0 - facing, 3.0) * 0.35;
+        float lit = 0.78 + 0.22 * saturate(dot(out2, -normalize(toward.xy + 1e-5)) * 0.5 + 0.5);
+        float edgeLine = exp(-max(inside, 0.0) / 1.2) * (inside > -bevel ? 1.0 : 0.0) * (1.0 - open);
+        float rim = edgeLine * 0.36 * lit + pow(1.0 - facing, 3.0) * 0.30 * (1.0 - open);
         // a soft inner shade along the edge away from the light
         float shade = lens * 0.10 * (1.0 - lit);
         float3 halfway = normalize(toward + v);

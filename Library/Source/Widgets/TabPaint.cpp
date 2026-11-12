@@ -70,18 +70,25 @@ void paintStack(PaintContext& context, const DockStyle& s, Size size, float bar,
         // raised: a slab of its background under its bar, the tab shown a relief as high joined to it, its lower part
         // over the slab's top edge (cut there): a folder's tab, its face the slab's
         const Bevel& slab = s.islandBevel;
-        paintRaised(p, {0, bar, r.width, std::max(0.0f, r.height - bar)}, s.cornerRadius, s.background, {0, 0, 0, 0}, slab);
-        if (bar >= 1 && activeTab) {
+        // the tab shown within the row (scrolled): the slab's top joined to it there (one piece, no edge between them)
+        const bool tabbed = bar >= 1 && activeTab;
+        const float left = tabbed ? std::max(activeTab->x, row.x) - 1 : 0;
+        const float right = tabbed ? std::min(activeTab->x + activeTab->width, row.x + row.width) + 1 : 0;
+        paint::Joined under;
+        if (tabbed && right > left) {
+            under.top = true;
+            under.topFrom = left + s.tabRadius;
+            under.topTo = right - s.tabRadius;
+        }
+        paintRaised(p, {0, bar, r.width, std::max(0.0f, r.height - bar)}, s.cornerRadius, s.background, {0, 0, 0, 0}, slab, false, under);
+        if (tabbed && right > left) {
             const Rect& tab = *activeTab;
             const float top = std::max(0.0f, tab.y + selectedTabTop);
             const Rect shape{tab.x, top, tab.width, bar - top + slab.roundness + s.tabBevel.roundness + 2};
-            // within the row (scrolled), down to the slab's edge
-            const float left = std::max(tab.x, row.x) - 1, right = std::min(tab.x + tab.width, row.x + row.width) + 1;
-            if (right > left) {
-                p.pushClip({left, 0, right - left, bar + slab.roundness});
-                p.fillRelief(shape, s.tabRadius, slab.relief, s.tabBevel.roundness, s.background);
-                p.popClip();
-            }
+            // down to the slab's edge, its bottom joined onto the slab
+            p.pushClip({left, 0, right - left, bar + slab.roundness});
+            p.fillRelief(shape, s.tabRadius, slab.relief, s.tabBevel.roundness, s.background, {.bottom = true, .onto = true});
+            p.popClip();
         }
         return;
     }

@@ -78,7 +78,8 @@ public:
               std::size_t end = std::numeric_limits<std::size_t>::max(), const rhi::Texture* backdrop = nullptr);
 
     // Where the glass of `list` (its commands that read backdropTexture) wants what was drawn before it captured and
-    // blurred: before the first of them, and before each that something drawn since the last capture is under. The
+    // blurred: before the first of them, and before each that something drawn since the last capture is under (not before
+    // glass joined onto the glass before it: joinedBackdropTexture). The
     // indices of those commands, in order; none without glass. A target with glass is drawn into a texture of its own,
     // the passes cut there (the target copied and blurred between them: Application does it).
     static std::vector<std::size_t> backdropCaptures(const DrawList& list);

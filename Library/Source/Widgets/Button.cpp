@@ -109,7 +109,8 @@ void Button::paint(PaintContext& context) {
     border_.to(scheduler(), s.borderWidth > 0 ? s.border.resolve(v) : Color{0, 0, 0, 0}, fast);
     glow_.to(scheduler(), v.focused ? s.focusRing : withAlpha(s.focusRing, 0), context.ui.theme.motion.normal);
     paintFocusGlow(context.painter, r, s.cornerRadius, glow_.value());
-    paintRaised(context.painter, r, s.cornerRadius, background_.value(), border_.value(), s.bevel, v.pressed);
+    press_.to(scheduler(), v.pressed, context.ui.theme.motion);
+    paintRaised(context.painter, r, s.cornerRadius, background_.value(), border_.value(), s.bevel, press_.value());
     ripple_.paint(context.painter, r.inflated(-1), std::max(0.0f, s.cornerRadius - 1), s.ripple);
     // the label paints after this, in the color of the state
     label_->setColor(s.text.resolve(v));

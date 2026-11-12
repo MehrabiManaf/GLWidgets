@@ -63,8 +63,8 @@ struct StateColor {
 //   Solid   Plastic in three dimensions: its raised controls solids (Theme::reliefBricks), their tops where Plastic's
 //           are, their sides showing as a camera above the window sees them; panels docked from a floating window fall
 //           into their places (DockStyle::landing), and floated, rise into their window from behind it.
-//   Glass   Solid of glass: its controls, and the slabs they stand on, panes of frosted glass, what is under them
-//           showing through, blurred (ReliefBricks::glass).
+//   Glass   Plastic of glass: its controls, and the slabs they stand on, reliefs of glass, what is under them showing
+//           through, bent along their edges as a lens (Theme::glassReliefs).
 enum class ThemeStyle : std::uint8_t {
     Studio,
     Fluid,
@@ -173,6 +173,9 @@ struct CheckBoxStyle {
     Color check;                    // the mark
     Bevel bevel;                    // unchecked: sunken
     Bevel checkedBevel;             // checked: raised
+    // Checked: what is raised falls into the box from this many dips nearer the one looking (Painter::place), as it
+    // shows; 0: it fades in where it is.
+    float checkDrop = 0;
     float size = 16;
     float cornerRadius = 0;
     float spacing = 8;              // between the box and the text
@@ -185,6 +188,10 @@ struct ScrollBarStyle {
     float width = 8;
     float minimumThumb = 24;        // the thumb's length, however long the content
     float cornerRadius = 0;         // of the thumb (at most half as much as it is thick: a pill)
+    // A groove the thumb runs in, sunk (relief above 0: as deep; in `track`'s color), and the thumb raised (relief above
+    // 0): a style's of reliefs. None (0): a track of its color and a flat thumb.
+    Bevel trackBevel;
+    Bevel thumbBevel;
 };
 
 // The rows of item views (ListView): a box under the mouse, the one selected a box of the accent's tint; the current one,
@@ -212,6 +219,8 @@ struct ItemViewStyle {
     bool slideSelection = false;    // the selection slides from the row it was on to the one it goes to
     Color headerBackground{0, 0, 0, 0};         // behind a header's titles (transparent: none)
     Bevel headerBevel;              // ... raised as a control (Plastic, Metal, Fluid)
+    // Above 0: a table's column headers each raised on its own (keys), this many dips apart; 0: one header across them.
+    float headerGap = 0;
     Bevel rowBevel;                 // the rows' highlights (under the mouse, pressed, selected) raised as controls (reliefs)
 };
 
@@ -508,6 +517,8 @@ struct Theme {
     // window's edges).
     std::optional<paint::ReliefBricks> reliefBricks;
     float cameraDistance = 0;
+    // Raised reliefs of glass (Painter::setGlassReliefs; none: of their colors).
+    std::optional<paint::GlassReliefs> glassReliefs;
 
     // The styles of every widget made from `palette`, in `style`.
     GLW_EXPORT static Theme fromPalette(const Palette& palette, ThemeStyle style = ThemeStyle::Studio);

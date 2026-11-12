@@ -105,6 +105,7 @@ enum class Easing : std::uint8_t {
     Linear,
     OutCubic,               // fast, then slowing down: what responds to the user (Fluent's "decelerate")
     InOutCubic,             // slow, fast, slow: what moves from one place to another
+    OutBack,                // fast, a little past the target, back to it: a key springing back
 };
 
 GLW_EXPORT float ease(Easing easing, float t);

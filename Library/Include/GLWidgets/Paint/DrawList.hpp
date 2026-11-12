@@ -25,8 +25,17 @@ inline constexpr TextureId whiteTexture = 0;
 // What was drawn under a glass brick (Brick::glass), blurred: no texture of its own, the renderer's copy of the target as
 // it is when the brick comes (Renderer::backdropCaptures).
 inline constexpr TextureId backdropTexture = ~TextureId{0};
+// ... the same as the glass it is joined onto (drawn just before it) reads: no new copy for it.
+inline constexpr TextureId joinedBackdropTexture = ~TextureId{1};
 
-enum class VertexKind : std::uint8_t { Textured = 0, Box = 1, Mask = 2, Relief = 3, RingRelief = 4, Field = 5 };
+enum class VertexKind : std::uint8_t { Textured = 0, Box = 1, Mask = 2, Relief = 3, RingRelief = 4, Field = 5, GlassRelief = 6 };
+
+// Raised reliefs of glass (Painter::setGlassReliefs): those at least `from` high show what was drawn under them through
+// their surface, bent along their sloped edges as a lens (Painter.hlsl's kind 6).
+struct GlassReliefs {
+    float from = 0.5f;
+    friend bool operator==(const GlassReliefs&, const GlassReliefs&) = default;
+};
 
 // The light reliefs are lit by (Painter::fillRelief): the Renderer's (setLighting), the fragment shader's uniforms
 // (Painter.hlsl's Lighting). One for all of a target.

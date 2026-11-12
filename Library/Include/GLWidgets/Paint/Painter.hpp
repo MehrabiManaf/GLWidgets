@@ -46,7 +46,8 @@ public:
     // A rounded rectangle as a relief: `height` dips above what it is on (below it when negative: sunk), its edge rounding
     // down over `bevel` dips, lit by the light of the target (Lighting, the Renderer's): its flat top in `color`. Raised,
     // a brick instead while the painter draws them so (setReliefBricks).
-    void fillRelief(const Rect& rect, float radius, float height, float bevel, Color color);
+    // `joined`: as a brick, its sides joined to another (Scene.hpp's Joined).
+    void fillRelief(const Rect& rect, float radius, float height, float bevel, Color color, const Joined& joined = {});
     void fillCircle(Point center, float radius, Color color);
     void strokeCircle(Point center, float radius, float width, Color color);
 
@@ -108,6 +109,8 @@ public:
     // `range` how far its distances reach in uv's units, in `color` lit as the face is. Drawn after its brick, it turns,
     // leans and moves with it, sharp at any size (text::drawTextOnBrick).
     void drawBrickDecal(const Brick& brick, const Rect& rect, TextureId texture, const Rect& uv, Point range, Color color);
+    // Raised reliefs of glass, flat (none: of their color): what is under them showing through (GlassReliefs).
+    void setGlassReliefs(std::optional<GlassReliefs> glass) { glassReliefs_ = glass; }
     // Raised reliefs (fillRelief with a height above 0) drawn as bricks (none: as reliefs).
     void setReliefBricks(std::optional<ReliefBricks> bricks) { reliefBricks_ = bricks; }
     const std::optional<ReliefBricks>& reliefBricks() const { return reliefBricks_; }
@@ -184,6 +187,7 @@ private:
     std::vector<Point> curve_;
     Camera camera_;
     std::optional<ReliefBricks> reliefBricks_;
+    std::optional<GlassReliefs> glassReliefs_;
 };
 
 } // namespace glw::paint

@@ -119,14 +119,24 @@ void ScrollBar::paint(PaintContext& context, const ScrollBarStyle& style, bool t
     if (!shown_)
         return;
     paint::Painter& p = context.painter;
-    if (track)
-        p.fillRect(track_, style.track);
     // thin until the mouse is over it or its thumb is dragged
     const bool over = hovered_ != Part::None || grab_;
     wide_.animateTo(context.ui.scheduler, over ? 1.0f : 0.0f, context.ui.theme.motion.fast);
+    if (style.trackBevel.relief > 0) {
+        // a groove the thumb runs in (an overlaid bar's: showing as it widens)
+        const float shown = track ? 1.0f : wide_.value();
+        if (shown > 0) {
+            const Rect groove = track_.inflated(-1);
+            paintSunken(p, groove, std::min(style.cornerRadius, std::min(groove.width, groove.height) / 2),
+                        withAlpha(style.track, style.track.a * shown), {0, 0, 0, 0}, style.trackBevel);
+        }
+    } else if (track) {
+        p.fillRect(track_, style.track);
+    }
     const VisualState state{.hovered = hovered_ == Part::Thumb || grab_.has_value(), .pressed = grab_.has_value()};
     const bool vertical = orientation_ == Orientation::Vertical;
-    paintScrollThumb(p, thumb(), vertical, !vertical || !rightToLeft_, wide_.value(), style.thumb.resolve(state), style.cornerRadius);
+    paintScrollThumb(p, thumb(), vertical, !vertical || !rightToLeft_, wide_.value(), style.thumb.resolve(state), style.cornerRadius,
+                     style.thumbBevel);
 }
 
 WheelScroll wheelScroll(SmoothScroll& smooth, Scheduler* scheduler, double shown, double step, bool precise, double limit) {

@@ -85,7 +85,7 @@ void Painter::drawShadow(const Rect& rect, float radius, float blur, Color color
     box(t.map(rect), radius * t.scale, 0, blur * t.scale, color, color);
 }
 
-void Painter::fillRelief(const Rect& rect, float radius, float height, float bevel, Color color) {
+void Painter::fillRelief(const Rect& rect, float radius, float height, float bevel, Color color, const Joined& joined) {
     if (reliefBricks_ && height > 0 && !rect.empty()) {
         // a solid: its top where the relief's is, its body down into what it is on
         const float depth = std::min(height * reliefBricks_->depth, std::min(rect.width, rect.height) * 0.5f);
@@ -93,7 +93,7 @@ void Painter::fillRelief(const Rect& rect, float radius, float height, float bev
         drawBrick({.center = {c.x, c.y, -depth / 2}, .halfSize = {rect.width / 2, rect.height / 2, depth / 2}, .cornerRadius = radius,
                    .bevel = reliefBricks_->bevel >= 0 ? reliefBricks_->bevel : bevel, .color = color,
                    .roughness = reliefBricks_->roughness, .shadow = 0, .reliefLight = true,
-                   .glass = reliefBricks_->glass && height >= reliefBricks_->glassFrom});
+                   .glass = reliefBricks_->glass && height >= reliefBricks_->glassFrom, .joined = joined});
         return;
     }
     const Transform& t = transform();
@@ -105,7 +105,9 @@ void Painter::fillRelief(const Rect& rect, float radius, float height, float bev
         return;
     const Point center = r.center();
     const Point half{r.width / 2, r.height / 2};
-    DrawCommand& cmd = command(whiteTexture, true);
+    // of glass: it reads what is under it (as what it is joined onto reads, when it is)
+    const bool glass = glassReliefs_ && height >= glassReliefs_->from;
+    DrawCommand& cmd = glass ? command(joined.onto ? joinedBackdropTexture : backdropTexture, false) : command(whiteTexture, true);
     const auto base = static_cast<std::uint32_t>(list_.vertices.size());
     const std::uint32_t packed = packColor(color);
     for (Point corner : {Point{quad.left(), quad.top()}, Point{quad.right(), quad.top()}, Point{quad.right(), quad.bottom()},
@@ -116,7 +118,7 @@ void Painter::fillRelief(const Rect& rect, float radius, float height, float bev
         v.halfSize = half;
         v.radius = std::clamp(radius * t.scale, 0.0f, std::min(half.x, half.y));
         v.border = std::max(bevel * t.scale, 0.5f);         // the bevel
-        v.kind = reliefKind;
+        v.kind = glass ? static_cast<float>(VertexKind::GlassRelief) : reliefKind;
         v.blur = height * t.scale;                          // the height
         v.color = packed;
         list_.vertices.push_back(v);

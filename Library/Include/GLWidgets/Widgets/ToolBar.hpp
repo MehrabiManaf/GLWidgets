@@ -57,6 +57,7 @@ private:
     ColorTransition background_{[this] { invalidatePaint(); }};
     ColorTransition outline_{[this] { invalidatePaint(); }};
     Ripple ripple_{[this] { invalidatePaint(); }};
+    Press press_{[this] { invalidatePaint(); }};
 };
 
 class GLW_EXPORT ToolBar : public Widget {

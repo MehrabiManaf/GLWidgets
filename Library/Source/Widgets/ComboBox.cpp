@@ -141,7 +141,8 @@ void ComboBox::paint(PaintContext& context) {
     background_.to(scheduler(), s.background.resolve(v), context.ui.theme.motion.fast);
     glow_.to(scheduler(), v.focused && !open_ ? s.focusRing : withAlpha(s.focusRing, 0), context.ui.theme.motion.normal);
     paintFocusGlow(p, r, s.cornerRadius, glow_.value());
-    paintRaised(p, r, s.cornerRadius, background_.value(), s.borderWidth > 0 ? s.border.resolve(v) : Color{0, 0, 0, 0}, s.bevel, v.pressed);
+    press_.to(scheduler(), v.pressed, context.ui.theme.motion);
+    paintRaised(p, r, s.cornerRadius, background_.value(), s.borderWidth > 0 ? s.border.resolve(v) : Color{0, 0, 0, 0}, s.bevel, press_.value());
     label_->setColor(s.text.resolve(v));
     // a chevron down, at the end side
     const float x = rightToLeft() ? arrowRoom / 2 : r.width - arrowRoom / 2, y = r.height / 2;

@@ -86,6 +86,9 @@ void CheckBox::paint(PaintContext& context) {
     if (m < 1)
         paintSunken(p, box_, s.cornerRadius, s.background.resolve(v), s.border.resolve(v), s.bevel);
     if (m > 0) {
+        // falling into the box as it shows (a style's), from nearer the one looking
+        const bool dropping = s.checkDrop > 0 && m < 1;
+        const paint::Painter::Mark mark = dropping ? p.mark() : paint::Painter::Mark{};
         const Color fill = fill_.value();
         Bevel bevel = s.checkedBevel;
         bevel.highlight.a *= m;
@@ -105,6 +108,10 @@ void CheckBox::paint(PaintContext& context) {
         } else {
             const Point points[] = {a, b, b + (c - b) * ((drawn - first) / second)};
             p.drawPolyline(points, 2, ink);
+        }
+        if (dropping) {
+            const float fall = 1 - m;
+            p.place(mark, p.transform().map(box_.center()), {.lift = s.checkDrop * fall * fall});
         }
     }
     // the text paints after this, in the color of the state

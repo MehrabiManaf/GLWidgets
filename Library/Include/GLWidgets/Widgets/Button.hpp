@@ -63,6 +63,7 @@ private:
     ColorTransition border_{[this] { invalidatePaint(); }};
     ColorTransition glow_{[this] { invalidatePaint(); }};
     Ripple ripple_{[this] { invalidatePaint(); }};
+    Press press_{[this] { invalidatePaint(); }};
 };
 
 } // namespace glw

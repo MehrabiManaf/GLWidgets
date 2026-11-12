@@ -724,15 +724,23 @@ void TableView::paint(PaintContext& context) {
     paint::Painter& p = context.painter;
     const Rect h = headerRect();
     const bool rtl = rightToLeft();
-    // behind its titles, raised as a control (a style's)
-    if (s.headerBackground.a > 0)
+    // behind its titles, raised as a control (a style's): across them, or each its own key
+    const bool keys = s.headerGap > 0 && s.headerBackground.a > 0 && s.headerBevel.relief > 0;
+    if (s.headerBackground.a > 0 && !keys)
         paintRaised(p, {area_.x, h.y, area_.width, h.height - 1}, s.cornerRadius, s.headerBackground, {0, 0, 0, 0}, s.headerBevel);
     p.pushClip(h);
     const auto [first, last] = shownColumns();
     for (std::size_t column = first; column < last; ++column) {
         const float x = h.x + columnX(column, h.width), w = shownWidth(column);
-        // under the mouse, pressed
-        if (hoveredHeader_ == column && !hoveredEdge_ && !resizing_) {
+        if (keys) {
+            // a key: lighter under the mouse, down as it is pressed
+            const bool hot = hoveredHeader_ == column && !hoveredEdge_ && !resizing_;
+            const Rect key{x + s.headerGap / 2, h.y + s.headerGap / 2, w - s.headerGap, h.height - 1 - s.headerGap};
+            if (!key.empty())
+                paintRaised(p, key, s.cornerRadius, hot ? lit(s.headerBackground, 0.06f) : s.headerBackground, {0, 0, 0, 0}, s.headerBevel,
+                            hot && pressedHeader_ == column ? 1.0f : 0.0f);
+        } else if (hoveredHeader_ == column && !hoveredEdge_ && !resizing_) {
+            // under the mouse, pressed
             const VisualState state{.hovered = true, .pressed = pressedHeader_ == column};
             const Rect pill{x + s.inset, h.y + 2, w - 2 * s.inset, h.height - 4};
             if (s.rowBevel.relief > 0)

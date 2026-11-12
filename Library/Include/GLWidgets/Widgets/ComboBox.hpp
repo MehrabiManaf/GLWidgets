@@ -9,6 +9,7 @@
 // was typed. Only one of its texts can be chosen.
 #include <GLWidgets/Export.hpp>
 #include <GLWidgets/Widgets/Animation.hpp>
+#include <GLWidgets/Widgets/Bevel.hpp>
 #include <GLWidgets/Widgets/Localization.hpp>
 #include <GLWidgets/Widgets/Theme.hpp>
 #include <GLWidgets/Widgets/Widget.hpp>
@@ -75,6 +76,7 @@ private:
     // holds it again).
     std::shared_ptr<ComboBox*> self_ = std::make_shared<ComboBox*>(this);
     ColorTransition background_{[this] { invalidatePaint(); }};
+    Press press_{[this] { invalidatePaint(); }};
     ColorTransition glow_{[this] { invalidatePaint(); }};
 };
 

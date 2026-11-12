@@ -147,7 +147,7 @@ void Renderer::draw(rhi::CommandList& commands, const DrawList& list, const Rend
     // the light of reliefs (Painter.hlsl's Lighting); of bricks (Scene.hlsl's Environment, then the light of reliefs)
     const float lighting[12] = {lighting_.x,       lighting_.y,        lighting_.z,         lighting_.ambient,
                                 lighting_.diffuse, lighting_.specular, lighting_.shininess, lighting_.rimShadow,
-                                lighting_.metal,   lighting_.brushed,  0,                   0};
+                                lighting_.metal,   lighting_.brushed,  static_cast<float>(size.width), static_cast<float>(size.height)};
     const float environment[16] = {environment_.exposure, environment_.dark ? 1.0f : 0.0f, 0, 0,
                                    lighting_.x,           lighting_.y,                     lighting_.z, lighting_.ambient,
                                    lighting_.diffuse,     lighting_.specular,              lighting_.shininess, 0,
@@ -179,7 +179,8 @@ void Renderer::draw(rhi::CommandList& commands, const DrawList& list, const Rend
         if (scissor.empty())
             continue;
         commands.setScissor(scissor);
-        const Bound tex = cmd.texture == backdropTexture ? Bound{backdrop ? backdrop : white_.get(), rhi::Filter::Linear} : texture(cmd.texture);
+        const bool glass = cmd.texture == backdropTexture || cmd.texture == joinedBackdropTexture;
+        const Bound tex = glass ? Bound{backdrop ? backdrop : white_.get(), rhi::Filter::Linear} : texture(cmd.texture);
         const rhi::Sampler* sampler = tex.filter == rhi::Filter::Nearest ? nearest_.get() : sampler_.get();
         if (tex.texture != bound || sampler != boundSampler) {
             commands.setTexture(0, *tex.texture, *sampler);
@@ -247,7 +248,9 @@ std::vector<std::size_t> Renderer::backdropCaptures(const DrawList& list) {
         if (cmd.indexCount == 0)
             continue;
         const Rect covers = bounds(cmd);
-        if (cmd.texture == backdropTexture && (!captured || (drawn && drawn->intersects(covers)))) {
+        // (glass joined onto the glass before it reads what that one read: none of its own, unless none was read yet)
+        const bool joined = cmd.texture == joinedBackdropTexture;
+        if ((cmd.texture == backdropTexture && (!captured || (drawn && drawn->intersects(covers)))) || (joined && !captured)) {
             captures.push_back(c);
             captured = true;
             drawn.reset();

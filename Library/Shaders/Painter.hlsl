@@ -18,6 +18,11 @@
 //      normal from the slope of that height, a diffuse and a specular term, scaled so that its flat top shows its color
 //      as it is; sunk, the shadow its rim casts on its floor, away from the light. A metal's highlight is of its color,
 //      and it is brushed: fine lines along it. One anti-aliased pixel at its edge.
+//   6  relief of glass: a box relief (as 3) whose surface shows what was drawn under it (the texture: a copy of the
+//      target, Renderer::backdropCaptures, read where the pixel is on the target, finish.zw its size in pixels), bent
+//      toward its edge as a lens (along its slope, within its bevel and a little more), its colors parting a little
+//      there; tinted by its color a little; a thin bright rim at its edge, a highlight where its slope turns toward the
+//      light.
 //   4  relief of a sector of a ring (a slice of a pie, of a donut), raised as 3 is: uv is the point in the sector's own
 //      frame (its center at the origin, its middle along +x), halfSize its inner and outer radii; shape.x its half angle
 //      and how far its sides are moved in, packed (half angle + 8 * sixteenths of a dip; negative: a whole ring); shape.y
@@ -67,7 +72,8 @@ VK_COMBINED VK_BINDING(0, 2) SamplerState imageSampler : register(s0, space2);
 VK_BINDING(0, 3) cbuffer Lighting : register(b0, space3) {
     float4 light;       // xyz: toward the light (x right, y down the screen, z out of it); w: the ambient light
     float4 material;    // x: diffuse, y: specular, z: shininess, w: how dark a rim's shadow in a sunk relief is
-    float4 finish;      // x: how metal it is (its highlight of its color, not white); y: how brushed (lines along it)
+    float4 finish;      // x: how metal it is (its highlight of its color, not white); y: how brushed (lines along it);
+                        // zw: the target's size in pixels (glass reads its copy of it)
 };
 
 VertexOutput vertexMain(VertexInput input) {
@@ -164,7 +170,7 @@ float4 fragmentMain(VertexOutput input) : SV_Target {
     float4 mask = input.color * texel.r;
 
     // a sector's bevel and corners, packed (kind 4)
-    bool sector = input.shape.z > 3.5;
+    bool sector = input.shape.z > 3.5 && input.shape.z < 4.5;
     float corners = sector ? floor(input.shape.y / 256.0) : 0.0;
     float shapeY = input.shape.y - corners * 256.0;
     float2 arcSlope;
@@ -189,6 +195,40 @@ float4 fragmentMain(VertexOutput input) : SV_Target {
     // a distance field: its edge a pixel wide however large it shows
     float distance = max(min(texel.r, texel.g), min(max(texel.r, texel.g), texel.b)) - 0.5;
     float2 perPixel = fwidth(input.uv);
+
+    if (input.shape.z > 5.5) {
+        // glass: what is under it, read where the pixel is (bent toward its edge, a lens), barely softened
+        float2 out2 = roundedBoxGradient(input.uv, input.halfSize, input.shape.x);
+        float zone = bevel + min(6.0, 0.15 * min(input.halfSize.x, input.halfSize.y));
+        float bend = 1.0 - smoothstep(0.0, zone, max(-d, 0.0));
+        bend *= bend;
+        float2 dipsPerPixel = max(perPixel, 1e-4);
+        float2 shift = out2 * bend * min(zone * 0.8, 6.0) / dipsPerPixel;             // pixels, outward
+        float2 target = max(finish.zw, 1.0);
+        float3 behind = float3(0.0, 0.0, 0.0);
+        [unroll] for (int k = 0; k < 6; ++k) {
+            float a = k * 1.0471976 + 0.5;
+            float2 at = input.position.xy + float2(cos(a), sin(a)) * 1.2;
+            // red bent the least, blue the most: a faint fringe where it bends
+            behind.r += image.SampleLevel(imageSampler, (at + shift * 0.94) / target, 0).r;
+            behind.g += image.SampleLevel(imageSampler, (at + shift) / target, 0).g;
+            behind.b += image.SampleLevel(imageSampler, (at + shift * 1.08) / target, 0).b;
+        }
+        behind /= 6.0;
+        float3 straight = input.color.rgb / max(input.color.a, 1e-3);
+        float3 pane = lerp(behind * 0.97 + 0.03, straight, 0.07);
+        // its edge: a thin bright line, a little brighter toward the light; a highlight where its slope turns toward it
+        float facing = 0.78 + 0.22 * saturate(dot(out2, -normalize(toward.xy + 1e-5)) * 0.5 + 0.5);
+        float rim = exp(-max(-d, 0.0) / 1.0) * 0.36 * facing;
+        float t = saturate(-d / bevel);
+        float3 n = normalize(float3(input.shape.w * 1.5707963 * cos(t * 1.5707963) / bevel * out2, 1.0));
+        float3 halfway = normalize(toward + float3(0.0, 0.0, 1.0));
+        float shine = max(0.0, pow(saturate(dot(n, halfway)), 60.0) - pow(saturate(halfway.z), 60.0)) * 0.8;
+        float shade = bend * 0.08 * (1.0 - facing) / 0.22;
+        float3 glass = saturate(pane * (1.0 - shade) + rim + shine);
+        float alpha = input.color.a * inside;
+        return float4(glass * alpha, alpha);
+    }
     float onScreen = max(0.5 * dot(input.halfSize, 1.0 / max(perPixel, 1e-6)), 1.0);
     float4 field = input.color * saturate(distance * onScreen + 0.5);
 

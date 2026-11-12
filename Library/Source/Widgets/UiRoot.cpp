@@ -287,11 +287,20 @@ void UiRoot::paint(paint::DrawList& list) {
     paint::Painter painter(list, {0, 0, size_.width, size_.height}, scale_);
     // the theme's raised controls as bricks (a style's that has them), seen from its camera
     painter.setReliefBricks(context_.theme.reliefBricks);
+    painter.setGlassReliefs(context_.theme.glassReliefs);
     if (context_.theme.cameraDistance > 0)
         painter.setCamera({{size_.width / 2, size_.height / 2, context_.theme.cameraDistance * std::max(size_.width, size_.height)}});
     PaintContext context{painter, context_};
-    if (content_)
-        paintTree(*content_, context, {0, 0, size_.width, size_.height});
+    if (content_) {
+        // what arrives, after the rest: over it, as it comes (from wherever it comes, nothing cut)
+        std::vector<Later> later;
+        paintTree(*content_, context, {0, 0, size_.width, size_.height}, &later);
+        for (const Later& l : later) {
+            painter.pushTransform(l.transform);
+            paintTree(*l.widget, context, {-1e6f, -1e6f, 2e6f, 2e6f});
+            painter.popTransform();
+        }
+    }
     if (overlay_)
         painter.fillRect({0, 0, size_.width, size_.height}, *overlay_);
     needsPaint_ = false;
@@ -304,12 +313,16 @@ void UiRoot::setOverlay(std::optional<Color> color) {
     invalidatePaint();
 }
 
-void UiRoot::paintTree(Widget& widget, PaintContext& context, const Rect& visible) {
+void UiRoot::paintTree(Widget& widget, PaintContext& context, const Rect& visible, std::vector<Later>* later) {
     // what paints a little out of its bounds (a focus ring, a shadow) is painted while that may show
     constexpr float overhang = 24;
     if (!widget.visible_ || !widget.bounds_.inflated(overhang).intersects(visible))
         return;
     paint::Painter& painter = context.painter;
+    if (later && widget.arrival()) {
+        later->push_back({&widget, painter.transform()});
+        return;
+    }
     // arriving: all of what it paints falls in (Painter::fallIn), its bricks tested by depth as they pass one another; or
     // rises from behind (Painter::riseIn), drawn over what is already there as they come (not hidden behind it)
     const std::optional<Arrival> arrival = widget.arrival();
@@ -333,10 +346,10 @@ void UiRoot::paintTree(Widget& widget, PaintContext& context, const Rect& visibl
     for (const auto& child : widget.children_) {
         if (const std::optional<Rect> cut = widget.childClip(*child)) {
             painter.pushClip(*cut);
-            paintTree(*child, context, inside.intersected(*cut));
+            paintTree(*child, context, inside.intersected(*cut), later);
             painter.popClip();
         } else {
-            paintTree(*child, context, inside);
+            paintTree(*child, context, inside, later);
         }
     }
     if (transformed)

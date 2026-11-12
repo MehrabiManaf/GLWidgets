@@ -1,8 +1,9 @@
 // SPDX-FileCopyrightText: 2026 Abdolmanaf Mehrabi Sisakht
 // SPDX-License-Identifier: MIT
-// The Solid style and its Glass: Plastic in three dimensions. Everything they are lives here, as data the widgets already
-// know: their raised controls drawn as bricks (Painter::setReliefBricks, through Theme::reliefBricks), of glass in Glass,
-// the camera they are seen from, and docked panels arriving (DockStyle::landing, rising). No widget asks for them by name.
+// The Solid style, Plastic in three dimensions, and Glass, Plastic of glass. Everything they are lives here, as data the
+// widgets already know: Solid's raised controls drawn as bricks (Painter::setReliefBricks, through Theme::reliefBricks),
+// the camera they are seen from, docked panels arriving (DockStyle::landing, rising); Glass's reliefs of glass
+// (Theme::glassReliefs). No widget asks for them by name.
 #include <GLWidgets/Widgets/Theme.hpp>
 
 #include <chrono>
@@ -36,23 +37,37 @@ void Theme::solid(Theme& t, bool dark) {
     t.node.bodyBevel.roundness = 3;
     t.chart.barRadius = 2.25f;
     t.chart.barBevel.roundness = 1.25f;
-    // its raised controls solids, their bodies down into what they are on: as deep as five times Plastic's reliefs are
-    // high, a little rougher than glass
-    // their tops flat to a sharp edge (only their corners round, as seen from above)
-    t.reliefBricks = paint::ReliefBricks{.depth = 5, .roughness = 0.32f, .bevel = 0};
+    // a table's column headers keys of their own; the selection moving from row to row (a brick sliding)
+    for (ItemViewStyle* view : {&t.itemView, &t.table}) {
+        view->headerGap = 2;
+        view->slideSelection = true;
+    }
+    // a check box's brick falling into its box as it is checked
+    t.checkBox.checkDrop = 14;
+    // a scroll bar's thumb a brick in a groove
+    t.scrollBar.track = t.lineEdit.background.normal;
+    t.scrollBar.trackBevel = {.relief = 1.2f, .roundness = 1.5f};
+    t.scrollBar.thumb = t.button.background;
+    t.scrollBar.thumbBevel = {.relief = 1.2f, .roundness = 1};
+    // what stands on what it is on: its shadow under it a little darker
+    const Color shadow{0, 0, 0, dark ? 0.6f : 0.28f};
+    t.button.bevel.shadow = t.toolBar.bevel.shadow = t.collapsiblePanel.bevel.shadow = t.checkBox.checkedBevel.shadow = shadow;
+    t.itemView.headerBevel.shadow = t.table.headerBevel.shadow = shadow;
+    // its raised controls solids, thin: their bodies down into what they are on as deep as two and a half times Plastic's
+    // reliefs are high; their tops flat to a sharp edge (only their corners round, as seen from above)
+    t.reliefBricks = paint::ReliefBricks{.depth = 2.5f, .roughness = 0.32f, .bevel = 0};
     // seen from a little nearer than by default: their sides show toward the window's edges
     t.cameraDistance = 0.9f;
     // panels docked from a floating window fall into their places; floated, they rise into their window from behind it
-    t.dock.landing = std::chrono::milliseconds(420);
+    t.dock.landing = std::chrono::milliseconds(520);
     t.dock.rising = std::chrono::milliseconds(320);
 }
 
 void Theme::glass(Theme& t, bool dark) {
-    solid(t, dark);
-    // its controls panes of frosted glass, and the slabs they stand on (a stack's, a card's): what is under them, the
-    // window's own, blurred through them
-    t.reliefBricks->glass = true;
-    t.reliefBricks->glassFrom = 0.5f;
+    // Plastic's reliefs, of glass: its controls, and the slabs they stand on (a stack's, a card's), showing what is under
+    // them, the window's own
+    plastic(t, dark);
+    t.glassReliefs = paint::GlassReliefs{.from = 0.5f};
 }
 
 } // namespace glw

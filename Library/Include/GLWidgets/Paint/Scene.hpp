@@ -79,6 +79,21 @@ struct Quaternion {
     friend bool operator==(const Quaternion&, const Quaternion&) = default;
 };
 
+// The sides of a brick joined to another (a tab to its stack, the stack under its tab): one piece with it there, no edge
+// drawn (no rim, no bend). Its top side only from `topFrom` to `topTo` (dips from its left) when `topTo` is past
+// `topFrom`, all of it otherwise. `onto`: joined onto what was drawn just before it: of glass, it shows what that one
+// shows under it (not that one through it).
+struct Joined {
+    bool top = false;
+    bool bottom = false;
+    bool left = false;
+    bool right = false;
+    float topFrom = 0;
+    float topTo = 0;
+    bool onto = false;
+    bool any() const { return top || bottom || left || right; }
+};
+
 // A solid rounded box: where it is (its middle), how large (half its sides), how it is turned, how round (its corners as
 // seen from above, its edges all around), of what (a color, how rough, how metal), and how dark a shadow it casts on the
 // target (cast from the scene's light).
@@ -96,6 +111,7 @@ struct Brick {
     // Of glass: what is under it shows through it, blurred (bent a little at its edges, as a thick pane bends what is
     // behind it), tinted by its color a little; its edges catching the light. Lit as reliefLight says otherwise.
     bool glass = false;
+    Joined joined;
 };
 
 // Raised reliefs drawn as bricks instead (Painter::setReliefBricks): their tops where the reliefs are (at the target,
@@ -133,7 +149,8 @@ struct Camera {
 // relief (1) or of glass (2), 5 the camera's eye and pixels per dip, 6 a decal's rectangle on the top face (from its
 // middle, the brick's frame), 7 the part of the texture shown on it, 8 color). A decal is a glyph's distance field printed on the top face
 // (text on a key): it turns and leans with it; its material's first two are how far its distances reach in the
-// texture's units.
+// texture's units. A brick's decal fields say which of its sides are joined (Joined): the first its sides (1 top,
+// 2 bottom, 4 left, 8 right), the next two where its top is joined (from its middle; all of it when not apart).
 struct SceneVertex {
     Point position;                 // dips of the target
     float center[3];

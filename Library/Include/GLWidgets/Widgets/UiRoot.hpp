@@ -233,7 +233,13 @@ private:
     void dragLeft();
     DropAction dropAt(const DragData& data, Point at, platform::KeyModifiers modifiers);
     // `visible`: what of the widget's parent shows (its coordinates); a widget out of it is not painted, nor anything in it.
-    static void paintTree(Widget& widget, PaintContext& context, const Rect& visible);
+    // What arrives (Widget::arrival) is painted after all the rest, over it (it comes from elsewhere, over what is
+    // there): put in `later` with the transform of where it is, when there is one to put it in.
+    struct Later {
+        Widget* widget = nullptr;
+        paint::Transform transform;         // its parent's, on the target
+    };
+    static void paintTree(Widget& widget, PaintContext& context, const Rect& visible, std::vector<Later>* later = nullptr);
     static Widget* hit(Widget& widget, Point point);     // `point` in the widget's parent's coordinates
 
     const UiContext& context_;

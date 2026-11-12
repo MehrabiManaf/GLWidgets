@@ -107,6 +107,12 @@ float ease(Easing easing, float t) {
         const float u = 1 - t;
         return 1 - u * u * u;
     }
+    case Easing::OutBack: {
+        // (an overshoot of about 6% of the way)
+        constexpr float s = 1.2f;
+        const float u = t - 1;
+        return 1 + (s + 1) * u * u * u + s * u * u;
+    }
     case Easing::InOutCubic: {
         if (t < 0.5f)
             return 4 * t * t * t;

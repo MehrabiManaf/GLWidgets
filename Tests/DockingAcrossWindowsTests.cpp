@@ -659,7 +659,7 @@ TEST(aPanelDockedBackLandsAsItsStyleSays) {
         screen.release(*t.window, out);
         screen.closeWindows();
         screen.layout();
-        const bool landing = style != ThemeStyle::Studio;
+        const bool landing = style == ThemeStyle::Solid;       // (Glass: Plastic's reliefs of glass, nothing in space)
         // floated: rising into its window from behind it (drawn over what is there as it comes: no depth test)
         paint::DrawList floated;
         screen.all.front()->root->paint(floated);

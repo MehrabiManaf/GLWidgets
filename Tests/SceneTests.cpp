@@ -13,6 +13,8 @@
 #include <GLWidgets/Text/Font.hpp>
 #include <GLWidgets/Text/GlyphAtlas.hpp>
 #include <GLWidgets/Text/TextLayout.hpp>
+#include <GLWidgets/Widgets/Bevel.hpp>
+#include <GLWidgets/Widgets/Layout.hpp>
 #include <GLWidgets/Widgets/Theme.hpp>
 #include <GLWidgets/Widgets/UiRoot.hpp>
 
@@ -304,11 +306,36 @@ TEST(aGlassBrickReadsWhatWasDrawnUnderIt) {
     CHECK(Renderer::backdropCaptures(solid).empty());
 }
 
-TEST(theGlassStyleIsSolidOfGlass) {
-    const Theme glass = Theme::dark(ThemeStyle::Glass), solid = Theme::dark(ThemeStyle::Solid);
+TEST(theGlassStyleIsPlasticOfGlass) {
+    // Plastic's reliefs and shapes, of glass: nothing in space, nothing arriving
+    const Theme glass = Theme::dark(ThemeStyle::Glass), plastic = Theme::dark(ThemeStyle::Plastic);
     CHECK(themeStyleNamed("glass") == ThemeStyle::Glass);
-    CHECK(glass.reliefBricks && glass.reliefBricks->glass && solid.reliefBricks && !solid.reliefBricks->glass);
-    CHECK(glass.button.cornerRadius == solid.button.cornerRadius && glass.dock.landing == solid.dock.landing && glass.dock.rising.count() > 0);
+    CHECK(glass.glassReliefs && !glass.reliefBricks && !plastic.glassReliefs && !Theme::dark(ThemeStyle::Solid).glassReliefs);
+    CHECK(glass.button.cornerRadius == plastic.button.cornerRadius && glass.button.bevel.relief == plastic.button.bevel.relief);
+    CHECK(glass.dock.landing.count() == 0 && glass.dock.rising.count() == 0);
+}
+
+TEST(aGlassReliefReadsWhatIsUnderItAndIsJoinedAsABrickIs) {
+    DrawList list;
+    {
+        Painter p(list, {0, 0, 800, 600}, 1);
+        p.setGlassReliefs(GlassReliefs{.from = 0.5f});
+        p.fillRect({0, 0, 800, 600}, {0.2f, 0.2f, 0.2f, 1});
+        p.fillRelief({0, 30, 400, 300}, 4, 0.8f, 1.5f, {0.3f, 0.3f, 0.3f, 1});                  // a slab: glass
+        p.fillRelief({16, 8, 88, 30}, 4, 0.8f, 1.5f, {0.3f, 0.3f, 0.3f, 1}, {.bottom = true, .onto = true});   // its tab
+        p.fillRelief({20, 60, 80, 26}, 4, 1.6f, 2, {0.5f, 0.5f, 0.5f, 1});                       // a button on it
+        p.fillRelief({20, 100, 80, 26}, 4, 0.3f, 1, {0.5f, 0.5f, 0.5f, 1});                      // too low: as it is
+        p.fillRelief({20, 140, 80, 26}, 4, -1.4f, 2, {0.1f, 0.1f, 0.1f, 1});                     // sunk: as it is
+    }
+    CHECK(list.sceneVertices.empty());
+    int glass = 0, plain = 0;
+    for (std::size_t i = 4; i < list.vertices.size(); i += 4) {
+        glass += list.vertices[i].kind == static_cast<float>(VertexKind::GlassRelief) ? 1 : 0;
+        plain += list.vertices[i].kind == static_cast<float>(VertexKind::Relief) ? 1 : 0;
+    }
+    CHECK(glass == 3 && plain == 2);
+    // a copy before the slab, none for its tab (joined onto it), another for the button on the slab
+    CHECK(Renderer::backdropCaptures(list).size() == 2);
 }
 
 TEST(whatFallsInFromSomewhereStartsWhereItWasShowing) {
@@ -338,4 +365,136 @@ TEST(whatFallsInFromSomewhereStartsWhereItWasShowing) {
     const Point corner = end.vertices[0].position;
     CHECK(near(start.vertices[0].position.x, 400 + (corner.x - 100) * 2, 0.5f) && near(start.vertices[0].position.y, 300 + (corner.y - 100), 0.5f));
     CHECK(near(end.sceneVertices[0].center[0], 200) && near(end.sceneVertices[0].center[2], -5));
+}
+
+TEST(aTabJoinedOntoItsStackIsOnePieceOfGlassWithIt) {
+    DrawList list;
+    {
+        Painter p(list, {0, 0, 800, 600}, 1);
+        p.setReliefBricks(ReliefBricks{.glass = true, .glassFrom = 0.5f});
+        // the stack's slab, its top joined to the tab between 20 and 100; the tab over it, its bottom joined onto it
+        p.fillRelief({0, 30, 400, 300}, 4, 0.8f, 1.5f, {0.3f, 0.3f, 0.3f, 1}, {.top = true, .topFrom = 20, .topTo = 100});
+        p.fillRelief({16, 8, 88, 30}, 4, 0.8f, 1.5f, {0.3f, 0.3f, 0.3f, 1}, {.bottom = true, .onto = true});
+    }
+    // the slab's joined sides on its brick (its top, from its middle); the tab's bottom
+    const SceneVertex& slab = list.sceneVertices[0];
+    CHECK(slab.decal[0] == 1 && near(slab.decal[1], 20 - 200) && near(slab.decal[2], 100 - 200));
+    CHECK(list.sceneVertices[4].decal[0] == 2);
+    // one copy only, before the slab: the tab reads what the slab reads (not the slab through it)
+    std::size_t joined = 0;
+    for (const DrawCommand& c : list.commands)
+        joined += c.texture == joinedBackdropTexture ? 1 : 0;
+    CHECK(joined == 1 && Renderer::backdropCaptures(list).size() == 1);
+}
+
+TEST(aPanelLandsSlabThenTabThenTheRestAndRisesTheOtherWay) {
+    // a slab, its tab (joined at its bottom), a control on the slab: how far each is from its place, part of the way in
+    const Rect area{0, 0, 400, 300};
+    const auto away = [&](float t, bool rising) {
+        DrawList list;
+        Painter p(list, {0, 0, 1000, 800}, 1);
+        p.setReliefBricks(ReliefBricks{.depth = 1.5f, .bevel = 0});
+        const Painter::Mark mark = p.mark();
+        p.fillRelief({0, 30, 400, 270}, 4, 0.8f, 1.5f, {0.3f, 0.3f, 0.3f, 1}, {.top = true, .topFrom = 10, .topTo = 90});
+        p.fillRelief({10, 6, 80, 30}, 4, 0.8f, 1.5f, {0.3f, 0.3f, 0.3f, 1}, {.bottom = true, .onto = true});
+        p.fillRelief({20, 60, 120, 26}, 4, 1.6f, 0, {0.5f, 0.5f, 0.5f, 1});
+        if (rising)
+            p.riseIn(mark, t, area);
+        else
+            p.fallIn(mark, t, area, Rect{500, 400, 400, 300});
+        // (how far each is from the target's plane: in front of it landing, behind it rising)
+        std::vector<float> far;
+        for (std::size_t i = 0; i < list.sceneVertices.size(); i += 4)
+            far.push_back(std::abs(list.sceneVertices[i].center[2]));
+        return far;
+    };
+    // landing: the slab nearest its place (lowest), then the tab, then the control
+    const std::vector<float> landing = away(0.25f, false);
+    CHECK(landing.size() == 3 && landing[0] < landing[1] && landing[1] < landing[2]);
+    // rising: the other way: the control nearest its place, then the tab, then the slab
+    const std::vector<float> rising = away(0.3f, true);
+    CHECK(rising.size() == 3 && rising[2] < rising[1] && rising[1] < rising[0]);
+}
+
+namespace {
+
+// A widget that paints a rectangle of its color.
+class Filled final : public Widget {
+public:
+    explicit Filled(Color color) : color_(color) {}
+
+protected:
+    void paint(PaintContext& context) override { context.painter.fillRect({0, 0, size().width, size().height}, color_); }
+
+private:
+    Color color_;
+};
+
+} // namespace
+
+TEST(whatArrivesIsPaintedOverWhatComesAfterIt) {
+    tests::FakeHost host;
+    UiRoot root(tests::testContext(), &host);
+    auto row = std::make_unique<Widget>();
+    row->setLayout(std::make_unique<StackLayout>(Orientation::Horizontal));
+    auto arriving = std::make_unique<Arriving>();
+    Arriving& a = *arriving;
+    row->addChild(std::move(arriving));
+    auto blue = std::make_unique<Filled>(Color{0, 0, 1, 1});
+    blue->setMinimumSize({100, 100});
+    row->addChild(std::move(blue));
+    root.setContent(std::move(row));
+    root.setSize({400, 300});
+    root.layout();
+    const auto blueAt = [](const DrawList& list) {
+        for (std::size_t i = 0; i < list.vertices.size(); ++i) {
+            if (list.vertices[i].color == packColor({0, 0, 1, 1}))
+                return i;
+        }
+        return list.vertices.size();
+    };
+    // still: in their order, the one after it over it
+    DrawList list;
+    root.paint(list);
+    CHECK(blueAt(list) > 0 && blueAt(list) == list.vertices.size() - 4);
+    // arriving: after it, over it (it comes from elsewhere, over what is there)
+    a.at = Arrival{0.3f, false, Rect{200, 100, 100, 100}};
+    root.invalidatePaint();
+    root.paint(list);
+    CHECK(blueAt(list) < list.vertices.size() - 4);
+}
+
+TEST(aPressGoesDownQuicklyAndSpringsBackPastItsPlace) {
+    tests::testScheduler().setAnimationsEnabled(true);
+    float shown = 0;
+    Press press([&] {});
+    const MotionStyle motion;
+    press.to(&tests::testScheduler(), true, motion);
+    tests::advance(motion.fast);
+    CHECK(near(press.value(), 1, 1e-3f));
+    // let go: up, a little past where it was (below 0: higher than it stands) on the way, then there
+    press.to(&tests::testScheduler(), false, motion);
+    float lowest = 1;
+    for (int k = 0; k < 20; ++k) {
+        tests::advance(motion.normal / 20);
+        lowest = std::min(lowest, press.value());
+    }
+    shown = press.value();
+    CHECK(lowest < -0.01f && near(shown, 0, 1e-3f));
+    tests::testScheduler().setAnimationsEnabled(false);
+}
+
+TEST(theSolidStylesControlsAreBricksOfTheirOwn) {
+    const Theme solid = Theme::dark(ThemeStyle::Solid), plastic = Theme::dark(ThemeStyle::Plastic);
+    CHECK(solid.table.headerGap > 0 && solid.table.slideSelection && solid.checkBox.checkDrop > 0);
+    CHECK(solid.scrollBar.trackBevel.relief > 0 && solid.scrollBar.thumbBevel.relief > 0);
+    CHECK(plastic.table.headerGap == 0 && plastic.checkBox.checkDrop == 0 && plastic.scrollBar.thumbBevel.relief == 0);
+    // a thumb raised: a relief (a brick, with the painter's bricks), not a flat pill
+    DrawList list;
+    {
+        Painter p(list, {0, 0, 400, 300}, 1);
+        p.setReliefBricks(solid.reliefBricks);
+        paintScrollThumb(p, {380, 20, 12, 80}, true, true, 1, {0.5f, 0.5f, 0.5f, 1}, 4, solid.scrollBar.thumbBevel);
+    }
+    CHECK(list.sceneVertices.size() == 4);
 }

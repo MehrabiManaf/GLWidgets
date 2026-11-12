@@ -113,7 +113,8 @@ void ToolButton::paint(PaintContext& context) {
     background_.to(scheduler(), background, fast);
     outline_.to(scheduler(), state.hovered || state.pressed || checked ? s.outline : withAlpha(s.outline, 0), fast);
     const Rect r{0, 0, size().width, size().height};
-    paintRaised(p, r, s.cornerRadius, background_.value(), outline_.value(), s.bevel, state.pressed || checked);
+    press_.to(scheduler(), state.pressed || checked, context.ui.theme.motion);
+    paintRaised(p, r, s.cornerRadius, background_.value(), outline_.value(), s.bevel, press_.value());
     ripple_.paint(p, r, s.cornerRadius, s.ripple);
     const Color ink = enabled ? s.icon : s.disabledIcon;
     if (!action_->icon().empty()) {
