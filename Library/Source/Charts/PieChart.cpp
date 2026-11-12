@@ -407,11 +407,13 @@ void PieChart::paint(PaintContext& context) {
     const float ringGap = std::max(gap, (out + s.gap) / 2);
     const bool settled = !coming && zoom_.value() >= 1;
     // its slices raised as the style's bars are (paintArc)
-    for (std::size_t k = 0; k < painted_.size(); ++k) {
+    // each slice; the one lifted (or coming down) over the others, after them: leaning, its raised side is not under its
+    // neighbours
+    const auto paintSlice = [&](std::size_t k) {
         const Item& item = painted_[k];
         const float ring = static_cast<float>(item.depth) - depth;      // 0: the first ring out of the hole
         if (item.value <= 0 || ring + 1 <= 0.001f || ring >= rings - 0.001f)
-            continue;
+            return;
         float r0 = std::max(inner_, inner_ + ring * thickness), r1 = inner_ + (ring + 1) * thickness;
         // rings a gap apart too
         if (ring > 0.01f)
@@ -420,7 +422,7 @@ void PieChart::paint(PaintContext& context) {
             r1 -= ringGap;
         const float a0 = angleOf(item.from), sweep = angleOf(item.to) - a0;
         if (r1 - r0 < 0.5f || sweep < 1e-3f)
-            continue;
+            return;
         const float middle = a0 + sweep / 2;
         const Point direction{std::cos(middle), std::sin(middle)};
         const auto moved = out_.find(item.key);
@@ -457,7 +459,17 @@ void PieChart::paint(PaintContext& context) {
             const Rect bounds{middlePoint.x - extent / 2, middlePoint.y - extent / 2, extent, extent};
             placeArriving(p, mark, arrived(order), bounds, at + direction * r0, direction);
         }
+        };
+    std::vector<std::size_t> over;
+    for (std::size_t k = 0; k < painted_.size(); ++k) {
+        if (lifts && pieceLift(painted_[k].key) > 0)
+            over.push_back(k);
+        else
+            paintSlice(k);
     }
+    std::sort(over.begin(), over.end(), [&](std::size_t a, std::size_t b) { return pieceLift(painted_[a].key) < pieceLift(painted_[b].key); });
+    for (const std::size_t k : over)
+        paintSlice(k);
     // the hole: the total of what shows (or the slice zoomed into's), or the value of the slice under the mouse
     const Item* under = nullptr;
     for (const Item& item : painted_)

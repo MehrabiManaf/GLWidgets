@@ -358,11 +358,13 @@ void TreeMap::paint(PaintContext& context) {
             p.popClip();
         }
     };
-    for (std::size_t i = 0; i < tiles_.size(); ++i) {
+    // each tile; the one lifted (or coming down) over the others, after them: leaning, its raised side is not under its
+    // neighbours
+    const auto paintPiece = [&](std::size_t i) {
         const Tile& t = tiles_[i];
         const Rect r = shownRect(t);
         if (r.width < 0.5f || r.height < 0.5f)
-            continue;
+            return;
         // coming in: from the start corner across, each tile with its name (by its own start corner: a group no later
         // than what is in it)
         const paint::Painter::Mark mark = coming || lifts ? p.markHere() : paint::Painter::Mark{};
@@ -374,7 +376,17 @@ void TreeMap::paint(PaintContext& context) {
             const float order = (across + (r.y - area.y) / area.height) / 2;
             placeArriving(p, mark, arrived(order), r);
         }
+    };
+    std::vector<std::size_t> over;
+    for (std::size_t i = 0; i < tiles_.size(); ++i) {
+        if (lifts && !tiles_[i].parent && pieceLift(tiles_[i].key) > 0)
+            over.push_back(i);
+        else
+            paintPiece(i);
     }
+    std::sort(over.begin(), over.end(), [&](std::size_t a, std::size_t b) { return pieceLift(tiles_[a].key) < pieceLift(tiles_[b].key); });
+    for (const std::size_t i : over)
+        paintPiece(i);
     if (hovered_ && *hovered_ < tiles_.size() && mouse_) {
         const Tile& t = tiles_[*hovered_];
         std::string title;
