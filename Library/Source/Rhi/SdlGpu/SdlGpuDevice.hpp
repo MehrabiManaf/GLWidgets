@@ -32,6 +32,7 @@ public:
     std::unique_ptr<Pipeline> createPipeline(const PipelineDesc& desc) override;
     std::unique_ptr<CommandList> beginCommands() override;
     void waitIdle() override;
+    std::vector<std::byte> readPixels(const Texture& texture) override;
 
     // SdlGpuSurface: the surfaces there are, which must all be gone before the device
     void surfaceCreated() { ++surfaces_; }

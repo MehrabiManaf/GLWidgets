@@ -18,8 +18,11 @@
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
+#include <cstring>
+#include <exception>
 #include <memory>
 #include <mutex>
+#include <string>
 #include <string_view>
 #include <variant>
 #include <limits>
@@ -408,14 +411,19 @@ struct Application::Impl final : DockingHost {
         }
         images->upload(*device, *commands, *renderer);
         bool all = true;
+        std::vector<Window*> saving;        // saveImage: drawn into their texture, read back after
         for (Window* w : which) {
             renderer->upload(*commands, w->list_, w->buffers_);
             // a depth buffer only for bricks that may pass through one another (falling into their places)
             const bool depth = w->list_.depth && !w->list_.sceneVertices.empty();
-            // glass: drawn into a texture first, copied and blurred where the glass reads what is under it
-            if (const std::vector<std::size_t> captures = paint::Renderer::backdropCaptures(w->list_); !captures.empty()) {
+            // glass: drawn into a texture first, copied and blurred where the glass reads what is under it (and a frame
+            // to save: into that texture as well, to read it back)
+            if (const std::vector<std::size_t> captures = paint::Renderer::backdropCaptures(w->list_);
+                !captures.empty() || w->imagePath_) {
                 if (const auto size = commands->acquireSurface(*w->surface_)) {
                     drawWithGlass(*w, *commands, *size, captures, depth);
+                    if (w->imagePath_)
+                        saving.push_back(w);
                 } else {
                     w->root_.invalidatePaint();
                     all = false;
@@ -432,7 +440,37 @@ struct Application::Impl final : DockingHost {
         }
         commands->submit();
         inFrame = false;
+        for (Window* w : saving)
+            saveImage(*w);
         return all;
+    }
+
+    // What `w` drew into its texture this frame, to the file of saveImage.
+    void saveImage(Window& w) {
+        std::string error;
+        try {
+            const rhi::TextureFormat format = w.offscreen_->format();
+            const bool bgra = format == rhi::TextureFormat::BGRA8 || format == rhi::TextureFormat::BGRA8Srgb;
+            if (!bgra && format != rhi::TextureFormat::RGBA8 && format != rhi::TextureFormat::RGBA8Srgb) {
+                error = "the window's images are not of 8 bits a channel";
+            } else {
+                const std::vector<std::byte> bytes = device->readPixels(*w.offscreen_);
+                std::vector<std::uint32_t> pixels(bytes.size() / 4);
+                std::memcpy(pixels.data(), bytes.data(), pixels.size() * 4);
+                for (std::uint32_t& p : pixels) {
+                    if (bgra)       // blue in the lowest byte: red there
+                        p = (p & 0xFF00FF00u) | ((p & 0xFFu) << 16) | ((p >> 16) & 0xFFu);
+                    p |= 0xFF000000u;       // opaque, as the window shows it
+                }
+                if (!platform->savePng(*w.imagePath_, w.offscreen_->size(), pixels, &error) && error.empty())
+                    error = "the file could not be written";
+            }
+        } catch (const std::exception& e) {
+            error = e.what();
+        }
+        w.imagePath_.reset();
+        if (auto done = std::exchange(w.imageSaved_, nullptr))
+            done(error);
     }
 
     void frameDrawn(std::size_t windows) {
@@ -1014,6 +1052,12 @@ platform::WindowState Window::windowState() const {
 
 void Window::minimizeWindow() {
     window_->minimize();
+}
+
+void Window::saveImage(std::string path, std::function<void(const std::string& error)> done) {
+    imagePath_ = std::move(path);
+    imageSaved_ = std::move(done);
+    root_.invalidatePaint();
 }
 
 void Window::setFullScreen(bool fullScreen) {

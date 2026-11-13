@@ -22,6 +22,7 @@
 #include <optional>
 #include <span>
 #include <string_view>
+#include <vector>
 
 namespace glw::platform {
 class Platform;
@@ -137,6 +138,11 @@ public:
 
     // Waits until the GPU has done everything submitted.
     virtual void waitIdle() = 0;
+
+    // Waits until the GPU has done everything submitted, then gives the pixels of all of `texture` (not a surface's image):
+    // its rows one after the other, the top one first, in its format. Slow, the GPU waited for: a screenshot, a test, not
+    // each frame.
+    virtual std::vector<std::byte> readPixels(const Texture& texture) = 0;
 
 protected:
     Device() = default;

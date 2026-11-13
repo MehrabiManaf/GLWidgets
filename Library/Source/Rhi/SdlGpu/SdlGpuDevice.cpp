@@ -286,6 +286,52 @@ void SdlGpuDevice::waitIdle() {
     SDL_WaitForGPUIdle(device_);
 }
 
+std::vector<std::byte> SdlGpuDevice::readPixels(const Texture& texture) {
+    const PixelSize size = texture.size();
+    const std::size_t bytes = static_cast<std::size_t>(size.width) * size.height * bytesPerPixel(texture.format());
+    GLW_EXPECTS(bytes > 0 && bytes <= UINT32_MAX);
+    SDL_GPUTransferBufferCreateInfo info{};
+    info.usage = SDL_GPU_TRANSFERBUFFERUSAGE_DOWNLOAD;
+    info.size = static_cast<Uint32>(bytes);
+    SDL_GPUTransferBuffer* staging = SDL_CreateGPUTransferBuffer(device_, &info);
+    if (!staging)
+        throw Error(sdlError("SDL_CreateGPUTransferBuffer"));
+    struct Release {
+        SDL_GPUDevice* device;
+        SDL_GPUTransferBuffer* buffer;
+        ~Release() { SDL_ReleaseGPUTransferBuffer(device, buffer); }
+    } release{device_, staging};
+    SDL_GPUCommandBuffer* commands = SDL_AcquireGPUCommandBuffer(device_);
+    if (!commands)
+        throw Error(sdlError("SDL_AcquireGPUCommandBuffer"));
+    SDL_GPUCopyPass* copy = SDL_BeginGPUCopyPass(commands);
+    SDL_GPUTextureRegion source{};
+    source.texture = as<const SdlGpuTexture>(texture).handle();
+    source.w = static_cast<Uint32>(size.width);
+    source.h = static_cast<Uint32>(size.height);
+    source.d = 1;
+    SDL_GPUTextureTransferInfo destination{};
+    destination.transfer_buffer = staging;
+    destination.pixels_per_row = static_cast<Uint32>(size.width);
+    destination.rows_per_layer = static_cast<Uint32>(size.height);
+    SDL_DownloadFromGPUTexture(copy, &source, &destination);
+    SDL_EndGPUCopyPass(copy);
+    SDL_GPUFence* fence = SDL_SubmitGPUCommandBufferAndAcquireFence(commands);
+    if (!fence)
+        throw Error(sdlError("SDL_SubmitGPUCommandBufferAndAcquireFence"));
+    const bool done = SDL_WaitForGPUFences(device_, true, &fence, 1);
+    SDL_ReleaseGPUFence(device_, fence);
+    if (!done)
+        throw Error(sdlError("SDL_WaitForGPUFences"));
+    const void* memory = SDL_MapGPUTransferBuffer(device_, staging, false);
+    if (!memory)
+        throw Error(sdlError("SDL_MapGPUTransferBuffer"));
+    std::vector<std::byte> result(bytes);
+    std::memcpy(result.data(), memory, bytes);
+    SDL_UnmapGPUTransferBuffer(device_, staging);
+    return result;
+}
+
 // ---- surface ----
 
 SdlGpuSurface::SdlGpuSurface(SdlGpuDevice& device, platform::sdl::SdlWindow& window) : device_(device), window_(window) {

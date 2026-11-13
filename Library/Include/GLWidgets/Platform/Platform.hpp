@@ -11,6 +11,8 @@
 #include <GLWidgets/Platform/Window.hpp>
 
 #include <chrono>
+#include <cstdint>
+#include <span>
 #include <functional>
 #include <memory>
 #include <optional>
@@ -101,6 +103,10 @@ public:
     // Whether the system's appearance is dark (true) or light (false); none when it does not say. Its changes come as
     // SystemThemeChanged.
     virtual std::optional<bool> systemDark() const { return std::nullopt; }
+
+    // Writes `pixels` (rows of size.width, the top one first; RGBA, its red in the lowest byte, not premultiplied) as a
+    // PNG file at `path` (UTF-8). False when it could not, and why in `error`.
+    virtual bool savePng(const std::string& path, PixelSize size, std::span<const std::uint32_t> pixels, std::string* error) = 0;
 
     // The text of the system's clipboard (UTF-8; empty when it holds none).
     virtual std::string clipboardText() const = 0;

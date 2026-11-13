@@ -35,6 +35,7 @@ public:
     bool mouseHeld() const override;
     void captureMouse(bool capture) override;
     void setCursor(Cursor cursor) override;
+    bool savePng(const std::string& path, PixelSize size, std::span<const std::uint32_t> pixels, std::string* error) override;
     std::string clipboardText() const override;
     void setClipboardText(std::string_view text) override;
     std::optional<bool> systemDark() const override;

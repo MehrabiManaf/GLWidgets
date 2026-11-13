@@ -17,6 +17,7 @@
 #include <SDL3/SDL_clipboard.h>
 #include <SDL3/SDL_hints.h>
 #include <SDL3/SDL_mouse.h>
+#include <SDL3/SDL_surface.h>
 #include <SDL3/SDL_init.h>
 #include <SDL3/SDL_version.h>
 #include <SDL3/SDL_video.h>
@@ -274,6 +275,18 @@ void SdlPlatform::setCursor(Cursor cursor) {
     SDL_Cursor* shown = cursors_[index] ? cursors_[index] : SDL_GetDefaultCursor();
     if (shown && SDL_SetCursor(shown))
         cursor_ = cursor;
+}
+
+bool SdlPlatform::savePng(const std::string& path, PixelSize size, std::span<const std::uint32_t> pixels, std::string* error) {
+    GLW_EXPECTS(pixels.size() == static_cast<std::size_t>(size.width) * size.height);
+    // SDL's surface over the pixels (not copied; only read), written by SDL's PNG writer
+    SDL_Surface* surface = SDL_CreateSurfaceFrom(size.width, size.height, SDL_PIXELFORMAT_RGBA32,
+                                                 const_cast<std::uint32_t*>(pixels.data()), size.width * 4);
+    const bool saved = surface && SDL_SavePNG(surface, path.c_str());
+    if (!saved && error)
+        *error = SDL_GetError();
+    SDL_DestroySurface(surface);
+    return saved;
 }
 
 std::string SdlPlatform::clipboardText() const {

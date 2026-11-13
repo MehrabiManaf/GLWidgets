@@ -72,6 +72,9 @@ public:
     platform::WindowState windowState() const override;
     void minimizeWindow() override;
     void toggleMaximizeWindow() override;
+    // Its next frame, drawn as ever and saved as a PNG file at `path` (UTF-8): a screenshot of what it shows (not of the
+    // system's frame around it). `done` is told after that frame, with why it was not saved (empty: it was).
+    void saveImage(std::string path, std::function<void(const std::string& error)> done = {});
     // The whole screen (Platform::Window::setFullScreen), or as it was.
     void setFullScreen(bool fullScreen);
     bool fullScreen() const;
@@ -119,6 +122,9 @@ private:
     bool closing_ = false;
     bool told_ = false;                                 // its root was told it closes
     std::function<bool()> onCloseRequested_;
+    // saveImage: where its next frame goes, and who is told
+    std::optional<std::string> imagePath_;
+    std::function<void(const std::string&)> imageSaved_;
     // a popup coming in: faded in, its content sliding `slide_` dips to its place
     void entering();
     void roundCorners();                // a popup's: as the theme says, or as it was asked
