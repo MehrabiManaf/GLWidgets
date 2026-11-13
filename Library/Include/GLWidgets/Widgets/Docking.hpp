@@ -103,6 +103,8 @@ public:
     const std::string& panelId(std::size_t index) const { return entries_[index].id; }
     const LocalizedText& panelTitle(std::size_t index) const { return entries_[index].title; }
     Widget* panelContent(std::size_t index) const { return entries_[index].content; }
+    // Its own minimum, and room for the least of each of its panels (shown or not: a tab chosen fits) under its tab bar.
+    Size leastSize() const override;
     std::optional<std::size_t> indexOf(std::string_view id) const;
     // The panel at `index` known by another id, its tab showing another title (where it is: what it shows stays).
     void renamePanel(std::size_t index, std::string id, LocalizedText title);

@@ -42,7 +42,24 @@ std::vector<Widget*> Splitter::panes() const {
 
 float Splitter::minimumOf(const Widget& pane) const {
     const Insets m = pane.margin();
-    return orientation_ == Orientation::Horizontal ? pane.minimumSize().width + m.horizontal() : pane.minimumSize().height + m.vertical();
+    const Size least = pane.leastSize();
+    return orientation_ == Orientation::Horizontal ? least.width + m.horizontal() : least.height + m.vertical();
+}
+
+Size Splitter::leastSize() const {
+    const bool horizontal = orientation_ == Orientation::Horizontal;
+    const auto list = panes();
+    float along = style().thickness * static_cast<float>(list.empty() ? 0 : list.size() - 1), across = 0;
+    for (const Widget* pane : list) {
+        const Insets m = pane->margin();
+        const Size least = pane->leastSize();
+        along += horizontal ? least.width + m.horizontal() : least.height + m.vertical();
+        across = std::max(across, horizontal ? least.height + m.vertical() : least.width + m.horizontal());
+    }
+    const Insets p = padding();
+    const Size own = minimumSize();
+    const Size needed = horizontal ? Size{along + p.horizontal(), across + p.vertical()} : Size{across + p.horizontal(), along + p.vertical()};
+    return {std::max(own.width, needed.width), std::max(own.height, needed.height)};
 }
 
 float Splitter::along(Point p) const {

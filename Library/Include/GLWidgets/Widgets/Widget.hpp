@@ -207,6 +207,9 @@ public:
     Insets padding() const { return padding_; }
     void setMinimumSize(Size size);
     Size minimumSize() const { return minimumSize_; }
+    // The least a layout or a splitter gives it: its minimum size, and for one made of parts that each need their room (a
+    // splitter's panes, a dock's stack of panels) at least what they need together.
+    virtual Size leastSize() const { return minimumSize_; }
     void setMaximumSize(Size size);
     Size maximumSize() const { return maximumSize_; }
     // Shares of the space a stack layout has left: 0 takes none (the desired size), 2 twice what 1 takes.

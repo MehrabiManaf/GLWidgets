@@ -39,6 +39,9 @@ public:
     // The two panes beside a handle given equal room (as far as their minimums let them), eased there; of a pane that is
     // a splitter of the same orientation, its pane by the handle (and so on), the others keeping theirs.
     void shareEqually(std::size_t handle);
+    // Its panes' least sizes side by side (one above the other), with its handles between them: a pane that is a
+    // splitter too keeps the room its own panes need.
+    Size leastSize() const override;
 
 protected:
     Size measureContent(Size available) override;

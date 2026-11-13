@@ -195,6 +195,32 @@ TEST(splitterSharesAndDragging) {
     CHECK(near(right->bounds().width, 120));
 }
 
+// A pane that is a splitter of its own keeps the room its panes need: no handle squeezes them past their minimums.
+TEST(aSplitterInASplitterKeepsWhatItsPanesNeed) {
+    UiRoot root(tests::testContext());
+    const float t = tests::testContext().theme.splitter.thickness;
+    root.setSize({600 + t, 300});
+    Widget* left = nullptr;
+    Splitter* outer = nullptr;
+    Splitter* inner = nullptr;
+    root.setContent(ui::Splitter({}, ui::make<Block>(Size{}).bind(left),
+                                 ui::Splitter({.orientation = Orientation::Vertical}, ui::make<Block>(Size{150, 40}),
+                                              ui::make<Block>(Size{100, 60}))
+                                     .bind(inner))
+                        .bind(outer));
+    root.layout();
+    // its least: the widest of its panes across, both of them and the handle along
+    CHECK(near(inner->leastSize().width, 150) && near(inner->leastSize().height, 100 + t));
+    CHECK(near(outer->leastSize().width, 150 + t) && near(outer->leastSize().height, 100 + t));
+    // the outer handle dragged far to the end: the inner splitter keeps 150
+    const Point handle = outer->handles()[0].center();
+    root.dispatch(press(handle));
+    root.dispatch(platform::MouseMoved{1, {handle.x + 1000, handle.y}});
+    root.dispatch(press({handle.x + 1000, handle.y}, false));
+    root.layout();
+    CHECK(near(inner->bounds().width, 150) && near(left->bounds().width, 450));
+}
+
 TEST(aSplitterHandleDoubleClickedSharesItsPanesRoomEqually) {
     UiRoot root(tests::testContext());
     const float t = tests::testContext().theme.splitter.thickness;

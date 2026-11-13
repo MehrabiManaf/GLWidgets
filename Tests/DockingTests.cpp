@@ -400,6 +400,23 @@ TEST(theApplicationChangesATabsMenu) {
     CHECK(chosen && d.host.open().empty());
 }
 
+// A stack keeps the least its panels need under its bar, and the splitters around it keep that.
+TEST(aStackKeepsWhatItsPanelsNeed) {
+    Docked d;
+    CHECK(d.palette->size().width < 250);           // a quarter of the area
+    // a panel that needs 300 by 250: its stack (with its bar), and the area around it, give it that
+    DockPanel wide = panel("wide");
+    wide.content->setMinimumSize({300, 250});
+    d.area->addPanel(std::move(wide), d.palette);
+    d.root.layout();
+    const Size least = d.palette->leastSize();
+    CHECK(least.width >= 300 && least.height >= 250 + d.palette->barHeight());
+    CHECK(d.palette->size().width >= 300 && d.palette->size().height >= least.height - 0.5f);
+    // the node beside it (the graph and the output, one above the other) keeps theirs as well
+    const Size beside = d.graph->parent()->leastSize();
+    CHECK(beside.height >= d.graph->leastSize().height + d.output->leastSize().height);
+}
+
 TEST(aStackOfOnePanelHidesItsTabBar) {
     Docked d;
     auto click = [&](Point at) {

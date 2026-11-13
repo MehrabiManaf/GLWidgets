@@ -82,7 +82,8 @@ void StackLayout::arrange(Widget& widget, const Rect& content) {
     };
     const auto minimum = [&](const Widget* child) {
         const Insets m = child->margin();
-        return vertical ? child->minimumSize().height + m.vertical() : child->minimumSize().width + m.horizontal();
+        const Size least = child->leastSize();
+        return vertical ? least.height + m.vertical() : least.width + m.horizontal();
     };
     const float room = vertical ? content.height : content.width;
     float total = spacing_ * static_cast<float>(children.size() - 1), shares = 0;

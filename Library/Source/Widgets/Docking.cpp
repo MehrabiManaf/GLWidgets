@@ -671,6 +671,20 @@ std::size_t indexIn(const Widget& parent, const Widget& child) {
 
 // ---- stacks ----
 
+Size DockTabs::leastSize() const {
+    Size least = minimumSize();
+    for (const Entry& e : entries_) {
+        if (!e.content)
+            continue;
+        // the panel under the bar, inside the stack's edge (a dip at its sides and bottom)
+        const Size panel = e.content->leastSize();
+        const Insets m = e.content->margin();
+        least.width = std::max(least.width, panel.width + m.horizontal() + 2);
+        least.height = std::max(least.height, panel.height + m.vertical() + barHeight() + 1);
+    }
+    return least;
+}
+
 DockTabs::DockTabs() {
     setMinimumSize({90, 70});
     setClipsChildren(true);
