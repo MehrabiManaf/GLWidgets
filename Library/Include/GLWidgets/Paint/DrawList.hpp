@@ -35,9 +35,12 @@ enum class VertexKind : std::uint8_t { Textured = 0, Box = 1, Mask = 2, Relief =
 // their surface, bent along their sloped edges as a lens (Painter.hlsl's kind 6).
 // `glossy`: a glossy sheen over their upper part, and their lit edges glowing a little out of them (soft light around
 // them, brightest toward the light).
+// `bevel`: how round the edges of their tops are, over how many dips (0: their tops flat to a sharp edge, as a solid's);
+// negative: the reliefs' own.
 struct GlassReliefs {
     float from = 0.5f;
     bool glossy = false;
+    float bevel = -1;
     friend bool operator==(const GlassReliefs&, const GlassReliefs&) = default;
 };
 

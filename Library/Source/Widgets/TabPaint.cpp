@@ -84,9 +84,12 @@ void paintStack(PaintContext& context, const DockStyle& s, Size size, float bar,
         if (tabbed && right > left) {
             const Rect& tab = *activeTab;
             const float top = std::max(0.0f, tab.y + selectedTabTop);
-            const Rect shape{tab.x, top, tab.width, bar - top + slab.roundness + s.tabBevel.roundness + 2};
-            // down to the slab's edge, its bottom joined onto the slab
-            p.pushClip({left, 0, right - left, bar + slab.roundness});
+            // down to the slab's edge, its bottom joined onto the slab; of glass, further over the slab's top (its edge,
+            // its lens there), one piece with it (Painter.hlsl's kind 6, open at its bottom: 10 dips and its corners' over)
+            const bool glass = context.ui.theme.glassReliefs && slab.relief >= context.ui.theme.glassReliefs->from;
+            const float over = glass ? 10 : slab.roundness;
+            const Rect shape{tab.x, top, tab.width, bar - top + over + (glass ? s.tabRadius : s.tabBevel.roundness + 2)};
+            p.pushClip({left, 0, right - left, bar + over});
             p.fillRelief(shape, s.tabRadius, slab.relief, s.tabBevel.roundness, s.background, {.bottom = true, .onto = true});
             p.popClip();
         }

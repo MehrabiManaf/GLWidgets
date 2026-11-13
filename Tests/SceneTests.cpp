@@ -331,10 +331,13 @@ TEST(aGlassReliefReadsWhatIsUnderItAndIsJoinedAsABrickIs) {
     CHECK(list.sceneVertices.empty());
     int glass = 0, plain = 0;
     for (std::size_t i = 4; i < list.vertices.size(); i += 4) {
-        glass += list.vertices[i].kind == static_cast<float>(VertexKind::GlassRelief) ? 1 : 0;
+        glass += std::floor(list.vertices[i].kind) == static_cast<float>(VertexKind::GlassRelief) ? 1 : 0;
         plain += list.vertices[i].kind == static_cast<float>(VertexKind::Relief) ? 1 : 0;
     }
     CHECK(glass == 3 && plain == 2);
+    // the tab open at its bottom (one piece of glass with the slab there), the others not
+    CHECK(near(list.vertices[8].kind, static_cast<float>(VertexKind::GlassRelief) + 0.125f) &&
+          list.vertices[4].kind == static_cast<float>(VertexKind::GlassRelief));
     // a copy before the slab, none for its tab (joined onto it), another for the button on the slab
     CHECK(Renderer::backdropCaptures(list).size() == 2);
 }

@@ -12,10 +12,11 @@
 
 namespace glw {
 
-void Theme::solid(Theme& t, bool dark) {
-    plastic(t, dark);
-    // its corners a little rounder than they were at first, about as round as Plastic's; the edges of its solids round
-    // over less (a solid's corner is no rounder than its edge: Painter::drawBrick)
+namespace {
+
+// Solid's shapes, Glass's too: their corners (as seen from above) about as round as Plastic's, the edges of their tops
+// rounding over little (a solid's corner is no rounder than its edge: Painter::drawBrick).
+void shapes(Theme& t) {
     t.cornerRadius = 4;
     t.button.cornerRadius = 5;
     t.button.bevel.roundness = 2;
@@ -39,6 +40,13 @@ void Theme::solid(Theme& t, bool dark) {
     t.node.bodyBevel.roundness = 3;
     t.chart.barRadius = 3;
     t.chart.barBevel.roundness = 1.25f;
+}
+
+} // namespace
+
+void Theme::solid(Theme& t, bool dark) {
+    plastic(t, dark);
+    shapes(t);
     // menus, tooltips, dialogs: slabs over the window; a menu, a tooltip rising into its window, a dialog landing in it
     t.menu.bevel = t.toolTip.bevel = t.dialog.bevel = {.relief = 0.8f, .roundness = 1.5f, .edge = 2};
     // ... a menu's item under the mouse a key raised on its slab
@@ -97,7 +105,10 @@ void Theme::glass(Theme& t, bool dark) {
     // Plastic's reliefs, of glass: its controls, and the slabs they stand on (a stack's, a card's), showing what is under
     // them, the window's own
     plastic(t, dark);
-    t.glassReliefs = paint::GlassReliefs{.from = 0.5f, .glossy = true};
+    // shaped as Solid's solids: their corners as round, their tops flat to a sharp edge (no rounded rim), lit as Plastic's
+    // reliefs are, of glass
+    shapes(t);
+    t.glassReliefs = paint::GlassReliefs{.from = 0.5f, .glossy = true, .bevel = 0};
     // the windows' background pools of color and sheens of light (around the accent's hue, a little away from it), for
     // the glass to show something
     const Color a = t.palette.accent;

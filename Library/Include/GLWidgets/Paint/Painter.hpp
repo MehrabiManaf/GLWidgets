@@ -116,6 +116,8 @@ public:
     void drawBrickDecal(const Brick& brick, const Rect& rect, TextureId texture, const Rect& uv, Point range, Color color);
     // Raised reliefs of glass, flat (none: of their color): what is under them showing through (GlassReliefs).
     void setGlassReliefs(std::optional<GlassReliefs> glass) { glassReliefs_ = glass; }
+    // A relief `height` high is of glass (setGlassReliefs).
+    bool glassAt(float height) const { return glassReliefs_ && height >= glassReliefs_->from; }
     // `rect` filled with `backdrop` (its pattern where it is on the target: the same wherever it is drawn).
     void fillBackdrop(const Rect& rect, const Backdrop& backdrop);
     // Raised reliefs (fillRelief with a height above 0) drawn as bricks (none: as reliefs).

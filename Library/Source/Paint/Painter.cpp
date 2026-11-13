@@ -119,9 +119,10 @@ void Painter::fillRelief(const Rect& rect, float radius, float height, float bev
         v.uv = corner - center;
         v.halfSize = half;
         v.radius = std::clamp(radius * t.scale, 0.0f, std::min(half.x, half.y));
-        v.border = std::max(bevel * t.scale, 0.5f);         // the bevel
-        // (glossy glass: its kind and a quarter, Painter.hlsl's kind 6)
-        v.kind = glass ? static_cast<float>(VertexKind::GlassRelief) + (glossy ? 0.25f : 0.0f) : reliefKind;
+        // the bevel (glass's own, where it has one)
+        v.border = std::max((glass && glassReliefs_->bevel >= 0 ? glassReliefs_->bevel : bevel) * t.scale, 0.5f);
+        // (glossy glass: its kind and a quarter; joined at its bottom, open there: an eighth more; Painter.hlsl's kind 6)
+        v.kind = glass ? static_cast<float>(VertexKind::GlassRelief) + (glossy ? 0.25f : 0.0f) + (joined.bottom ? 0.125f : 0.0f) : reliefKind;
         v.blur = height * t.scale;                          // the height
         v.color = packed;
         list_.vertices.push_back(v);
@@ -627,7 +628,8 @@ void Painter::fillArcRelief(Point center, float inner, float outer, float start,
     const float sides = whole ? -1.0f : half + 8.0f * std::round(gap * 16);
     // its bevel and its corners' radius, packed too (eighths of a dip above a bevel under 256: exact enough in a float)
     const float corners = std::round(std::clamp(corner * t.scale, 0.0f, 120.0f) * 8);
-    const float bevelAndCorners = std::clamp(bevel * t.scale, 0.5f, 255.0f) + 256.0f * corners;
+    const float edge = glass && glassReliefs_->bevel >= 0 ? glassReliefs_->bevel : bevel;
+    const float bevelAndCorners = std::clamp(edge * t.scale, 0.5f, 255.0f) + 256.0f * corners;
     for (Point local : {Point{lowX, lowY}, Point{highX, lowY}, Point{highX, highY}, Point{lowX, highY}}) {
         Vertex v;
         v.position = c + axis * local.x + across * local.y;

@@ -23,6 +23,8 @@
 //      toward its edge as a lens (along its slope, within its bevel and a little more), its colors parting a little
 //      there; tinted by its color a little; a thin bright rim at its edge, a highlight where its slope turns toward the
 //      light.
+//      Open at its bottom (kind 6.125, glossy too 6.375): a tab joined to its stack, its lower part (10 dips and its
+//      corners' radius) over the stack's top: no edge there nor along its sides there, one piece of glass with the stack.
 //      Glossy (kind 6.25): a sheen over its upper part, as a glass button's, and its lit edges glowing out of it a
 //      little (into the quad around it, added to what is under it), brightest toward the light.
 //   7  backdrop: made as it is drawn, for glass to show (Backdrop): over the color, soft glowing pools of color and faint
@@ -241,9 +243,20 @@ float4 fragmentMain(VertexOutput input) : SV_Target {
         // glass: what is under it, read where the pixel is (bent toward its edge, a lens), barely softened
         // (a sector's: across its ring)
         float2 out2 = sector ? arcSlope : roundedBoxGradient(input.uv, input.halfSize, input.shape.x);
+        // glossy (a quarter in its kind), and open at its bottom (an eighth: a tab joined to its stack, its lower part
+        // `joinDepth` and its corners' radius over the stack's top): no edge there, nor along its sides over the stack (one
+        // piece of glass with it), its sheen as the stack's top's
+        float kindPart = frac(input.shape.z);
+        bool glossy = kindPart > 0.2;
+        bool open = !sector && ((kindPart > 0.1 && kindPart < 0.2) || kindPart > 0.3);
+        const float joinDepth = 10.0;
+        float joinLine = input.halfSize.y - joinDepth - input.shape.x;
+        float far = 64.0;
+        float edged = !open ? d : input.uv.y > joinLine ? -100.0
+                                : roundedBox(input.uv - float2(0.0, far), input.halfSize + float2(0.0, far), input.shape.x);
         float across = sector ? 0.5 * (input.halfSize.y - input.halfSize.x) : min(input.halfSize.x, input.halfSize.y);
         float zone = bevel + min(6.0, 0.15 * across);
-        float bend = 1.0 - smoothstep(0.0, zone, max(-d, 0.0));
+        float bend = 1.0 - smoothstep(0.0, zone, max(-edged, 0.0));
         bend *= bend;
         float2 dipsPerPixel = max(perPixel, 1e-4);
         float2 shift = out2 * bend * min(zone * 0.5, 3.0) / dipsPerPixel;             // pixels, outward
@@ -265,23 +278,23 @@ float4 fragmentMain(VertexOutput input) : SV_Target {
         float3 pane = lerp(behind * 0.97 + 0.03, straight, lerp(0.07, 0.62, colored));
         // its edge: a thin bright line, a little brighter toward the light; a highlight where its slope turns toward it
         float facing = 0.78 + 0.22 * saturate(dot(out2, -normalize(toward.xy + 1e-5)) * 0.5 + 0.5);
-        float rim = exp(-max(-d, 0.0) / 1.0) * 0.22 * facing;
-        float t = saturate(-d / bevel);
+        float rim = exp(-max(-edged, 0.0) / 1.0) * 0.22 * facing;
+        float t = saturate(-edged / bevel);
         float3 n = normalize(float3(input.shape.w * 1.5707963 * cos(t * 1.5707963) / bevel * out2, 1.0));
         float3 halfway = normalize(toward + float3(0.0, 0.0, 1.0));
         float shine = max(0.0, pow(saturate(dot(n, halfway)), 60.0) - pow(saturate(halfway.z), 60.0)) * 0.8;
         float shade = bend * 0.035 * (1.0 - facing) / 0.22;
         // glossy: a sheen over its upper part (fading down to its middle, inside its rim), and its lit edges glowing out
         // of it, added to what is under it
-        bool glossy = frac(input.shape.z) > 0.1;
-        // (a sector's: in from its outer arc)
+        // (a sector's: in from its outer arc; open at its bottom: all of it as bright as its stack's top)
         float down = sector ? saturate((input.halfSize.y - length(input.uv)) / max(input.halfSize.y - input.halfSize.x, 1.0))
+                     : open ? 0.0
                             : saturate((input.uv.y + input.halfSize.y) / max(2.0 * input.halfSize.y, 1.0));
-        float sheen = glossy ? (1.0 - smoothstep(0.0, 0.55, down)) * smoothstep(0.0, 2.5, -d) * 0.16 : 0.0;
+        float sheen = glossy ? (1.0 - smoothstep(0.0, 0.55, down)) * smoothstep(0.0, 2.5, -edged) * 0.16 : 0.0;
         float3 glass = saturate(pane * (1.0 - shade) + rim * (glossy ? 1.15 : 1.0) + shine * (glossy ? 1.4 : 1.0) + sheen);
         float alpha = input.color.a * inside;
         float lightSide = saturate(dot(out2, -normalize(toward.xy + 1e-5)) * 0.6 + 0.4);
-        float glow = glossy ? exp(-max(d, 0.0) / 3.2) * (1.0 - inside) * 0.22 * lightSide * input.color.a : 0.0;
+        float glow = glossy && !(open && input.uv.y > joinLine) ? exp(-max(d, 0.0) / 3.2) * (1.0 - inside) * 0.11 * lightSide * input.color.a : 0.0;
         float3 glowColor = lerp(float3(1.0, 1.0, 1.0), straight, 0.35);
         return float4(glass * alpha + glowColor * glow, alpha);
     }

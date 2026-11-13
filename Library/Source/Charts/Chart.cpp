@@ -295,7 +295,7 @@ void Chart::beginEntrance() {
         return;
     const UiContext* ui = context();
     const std::chrono::milliseconds own = style().entrance;
-    entranceWay_ = ui && ui->theme.motion.varied ? randomWay(3) : 0;
+    entranceWay_ = ui && ui->theme.motion.varied ? randomWay(solidPieces() ? 7 : 3) : 0;
     entering_ = true;
     entrance_.set(0);
     entrance_.animateTo(scheduler(), 1, own.count() > 0 ? Duration(own) : normal * 4, Easing::Linear);
@@ -339,8 +339,67 @@ void Chart::placeArriving(paint::Painter& p, const paint::Painter::Mark& mark, f
     const float size = std::max(rect.width, rect.height);
     paint::Lifted lifted;
     Point pivot = rect.center();
+    // (the middle of all of it, its own coordinates; the way to its start side)
+    const Point middle{Widget::size().width / 2, Widget::size().height / 2};
+    const float start = rightToLeft() ? 1.0f : -1.0f;
+    const auto turned = [](Point v, float angle) {
+        const float c = std::cos(angle), s = std::sin(angle);
+        return Point{v.x * c - v.y * s, v.x * s + v.y * c};
+    };
     if (solidPieces()) {
         switch (entranceWay_) {
+        case 3: {
+            // turning in from edge on about its upright middle, up off the plot over an arc and down again (a little past
+            // facing, and back), the light sweeping across it as it turns
+            const float facing = outBack(u, 1.4f);
+            lifted = {.lift = std::min(36.0f + 0.25f * size, 90.0f) * std::sin(pi * e),
+                      .turn = paint::Quaternion::axisAngle({0, 1, 0}, start * 1.45f * (1 - facing)) * paint::towardLight(0.25f * std::sin(pi * e)),
+                      .alpha = smooth(u / 0.2f)};
+            break;
+        }
+        case 4: {
+            // spiralling in from far behind, round the middle of the chart: a part of a turn still to go round it, smaller
+            // and further the more is left; tipped as it comes round, flat as it lands
+            const float left = (1 - e) * (1 - e);
+            const float round = 1.7f * left;
+            const Point from = rect.center() - middle;
+            const Point at = middle + turned(from, -round);
+            lifted = {.lift = -std::min(160.0f + 0.6f * size, 380.0f) * left,
+                      .turn = paint::Quaternion::axisAngle({0, 0, 1}, -round) * paint::Quaternion::axisAngle({from.y, -from.x, 0}, 0.6f * left) *
+                              paint::towardLight(0.3f * std::sin(pi * e)),
+                      .shift = at - rect.center(),
+                      .alpha = smooth(u / 0.3f),
+                      .scale = 0.55f + 0.45f * outBack(u, 1.2f)};
+            break;
+        }
+        case 5: {
+            // a wave across the plot: from under it, up through it toward the one looking and back down onto it, rocking
+            // with the wave as it passes (its front edge up first)
+            const float z = -90 * (1 - u) * (1 - u) + 28 * std::sin(pi * u) * (1 - 0.4f * u);
+            const float rock = 0.5f * std::cos(pi * u) * (1 - u);
+            lifted = {.lift = z, .turn = paint::Quaternion::axisAngle({0, 1, 0}, -start * rock) * paint::towardLight(0.2f * std::sin(pi * u)),
+                      .alpha = smooth(u / 0.3f)};
+            break;
+        }
+        case 6: {
+            // thrown in from beyond its start side, high over the plot, tumbling over about its long middle, landing with
+            // a small bounce
+            constexpr float landed = 0.82f;
+            const float s = std::min(1.0f, u / landed);
+            const float c = 1 - (1 - s) * (1 - s);
+            float lift = std::min(110.0f + 0.4f * size, 220.0f) * std::sin(pi * 0.5f * (1 + c)) * (1 - c * 0.15f);
+            lift *= 1 - c;
+            if (u > landed) {
+                const float b = (u - landed) / (1 - landed);
+                lift = 5 * std::sin(pi * b) * (1 - b);
+            }
+            const paint::Float3 along = rect.width >= rect.height ? paint::Float3{1, 0, 0} : paint::Float3{0, 1, 0};
+            lifted = {.lift = lift,
+                      .turn = paint::Quaternion::axisAngle(along, 2 * pi * (1 - c)) * paint::towardLight(0.2f * std::sin(pi * c)),
+                      .shift = {start * (Widget::size().width * 0.75f) * (1 - c), -Widget::size().height * 0.25f * std::sin(pi * c)},
+                      .alpha = smooth(u / 0.15f)};
+            break;
+        }
         case 1: {
             // standing on its base toward the one looking, swinging down onto the plot (a little past, and back)
             const float angle = 1.35f * (1 - outBack(u, 1.3f));

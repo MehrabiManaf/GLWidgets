@@ -222,15 +222,18 @@ protected:
     Duration transition(bool fast = false) const;
 
     // ---- its pieces coming in ----
-    // The first time it shows something (and again at playEntrance) its pieces come in one after another, one of three
-    // ways (at random where the theme varies its motions, MotionStyle::varied; the first otherwise), over the style's
-    // entrance time: where its pieces are solids (the theme's relief bricks), in space: dropping in from in front,
-    // swinging down onto the plot from standing toward the one looking, rising from behind it; otherwise in its plane:
-    // growing out of where they stand, sliding in, settling from a little larger.
+    // The first time it shows something (and again at playEntrance) its pieces come in one after another, one of its ways
+    // (at random where the theme varies its motions, MotionStyle::varied; the first otherwise), over the style's entrance
+    // time: where its pieces are solids (the theme's relief bricks), one of seven in space: dropping in from in front,
+    // swinging down onto the plot from standing toward the one looking, rising from behind it, turning in from edge on
+    // over an arc, spiralling in from far behind round the middle of the chart, rising through the plot in a wave across
+    // it, thrown in from beyond its start side tumbling; otherwise one of three in its plane: growing out of where they
+    // stand, sliding in, settling from a little larger.
     // Begun by the chart's paint once it has something to show (nothing when it is not animated); once.
     void beginEntrance();
     bool entering() const { return entering_; }
-    // How far all of it has come (0 to 1; 1 when it is not coming in), and which of the ways it comes this time (0 to 2).
+    // How far all of it has come (0 to 1; 1 when it is not coming in), and which of the ways it comes this time (0 to 6;
+    // in its plane, 0 to 2).
     float entranceProgress() const;
     int entranceWay() const { return entranceWay_; }
     // How far a piece whose turn is at `order` (0 the first, 1 the last) has come, from 0 to 1 (1 when none comes).

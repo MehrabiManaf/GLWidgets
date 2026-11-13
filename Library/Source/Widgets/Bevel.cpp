@@ -45,7 +45,8 @@ void paintRaised(paint::Painter& p, const Rect& rect, float radius, Color backgr
         // a relief, lit: its shadow under it, a little down; pressed, it goes down (lower, its shadow going)
         const float down = std::min(pressed, 1.0f);
         const Color shadow = withAlpha(bevel.shadow, bevel.shadow.a * std::clamp(1 - down, 0.0f, 1.0f));
-        if (shadow.a > 0 && background.a >= 1)
+        // (none under glass: it would show through it, darker than what it is joined to)
+        if (shadow.a > 0 && background.a >= 1 && !p.glassAt(bevel.relief))
             p.drawShadow({rect.x, rect.y + bevel.relief * 0.5f, rect.width, rect.height}, radius, 1.5f + bevel.relief, shadow);
         p.fillRelief(rect, radius, bevel.relief * (1 - 0.7f * down), bevel.roundness, background, joined);
         if (outline.a > 0)
