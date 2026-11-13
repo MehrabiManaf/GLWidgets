@@ -230,13 +230,20 @@ void TableView::setStyle(std::optional<ItemViewStyle> style) {
     onStyleChanged();
 }
 
+void TableView::setThemeStyle(ItemViewStyle Theme::* which) {
+    if (themeStyle_ == which)
+        return;
+    themeStyle_ = which;
+    onStyleChanged();
+}
+
 const ItemViewStyle& TableView::style() const {
     if (style_)
         return *style_;
     if (const UiContext* ui = context())
-        return ui->theme.table;
-    static const ItemViewStyle unstyled = Theme::dark().table;
-    return unstyled;
+        return ui->theme.*themeStyle_;
+    static const Theme unstyled = Theme::dark();
+    return unstyled.*themeStyle_;
 }
 
 void TableView::setModel(std::shared_ptr<TableModel> model) {

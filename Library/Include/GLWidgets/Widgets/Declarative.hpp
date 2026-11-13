@@ -39,6 +39,7 @@
 #include <GLWidgets/Widgets/LineEdit.hpp>
 #include <GLWidgets/Widgets/Panel.hpp>
 #include <GLWidgets/Widgets/ScrollArea.hpp>
+#include <GLWidgets/Widgets/SearchField.hpp>
 #include <GLWidgets/Widgets/SpinBox.hpp>
 #include <GLWidgets/Widgets/Splitter.hpp>
 #include <GLWidgets/Widgets/TabView.hpp>
@@ -230,6 +231,10 @@ inline Element<glw::Button> Button(glw::Button::Props props) {
 
 inline Element<glw::LineEdit> LineEdit(glw::LineEdit::Props props) {
     return make<glw::LineEdit>(std::move(props));
+}
+
+inline Element<glw::SearchField> SearchField(glw::SearchField::Props props) {
+    return make<glw::SearchField>(std::move(props));
 }
 
 inline Element<glw::SpinBox> SpinBox(glw::SpinBox::Props props) {

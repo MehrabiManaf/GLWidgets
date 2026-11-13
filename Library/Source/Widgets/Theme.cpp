@@ -308,6 +308,9 @@ Theme Theme::of(ColorScheme scheme, ThemeStyle style) {
         e.comment = hex(0x7D7591);
         e.preprocessor = hex(0xE18FDB);
         e.function = hex(0xEADFA6);
+        e.success = hex(0x8FD3A0);
+        e.warning = hex(0xE8B98C);
+        e.error = hex(0xF28B82);
         break;
     case ColorScheme::Sand:
         t.chart.series = {hex(0xB5532F), hex(0x24766E), hex(0xC99A2E), hex(0x5F7418), hex(0x7A4C9A), hex(0x3E6FA8),
@@ -321,6 +324,9 @@ Theme Theme::of(ColorScheme scheme, ThemeStyle style) {
         e.comment = hex(0x968975);
         e.preprocessor = hex(0x7A4C9A);
         e.function = hex(0x5A4512);
+        e.success = hex(0x3F7F3A);
+        e.warning = hex(0x9A5A00);
+        e.error = hex(0xB5432F);
         break;
     case ColorScheme::Turquoise:
         t.chart.series = {hex(0xE3B04B), hex(0x4FD1D9), hex(0xF2A08F), hex(0x86ABFF), hex(0x7FE6B0), hex(0xC99CE8),
@@ -334,6 +340,9 @@ Theme Theme::of(ColorScheme scheme, ThemeStyle style) {
         e.comment = hex(0x6C97A6);
         e.preprocessor = hex(0xC99CE8);
         e.function = hex(0xF4DBA6);
+        e.success = hex(0x7FE6B0);
+        e.warning = hex(0xE9C27A);
+        e.error = hex(0xE86A7A);
         break;
     }
     return t;
@@ -497,6 +506,10 @@ Theme Theme::fromPalette(const Palette& p, ThemeStyle style) {
     t.textEdit.comment = hex(dark ? 0x6A9955 : 0x008000);
     t.textEdit.preprocessor = hex(dark ? 0xC586C0 : 0xAF00DB);
     t.textEdit.function = hex(dark ? 0xDCDCAA : 0x795E26);
+    t.textEdit.muted = p.mutedText;
+    t.textEdit.success = hex(dark ? 0x4EC98A : 0x2E7D32);
+    t.textEdit.warning = hex(dark ? 0xE5B550 : 0xA86400);
+    t.textEdit.error = hex(dark ? 0xF26D6D : 0xC62828);
     t.toolTip.background = t.menu.background;
     t.toolTip.border = p.outline;
     t.toolTip.text = p.text;

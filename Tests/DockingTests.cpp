@@ -377,6 +377,29 @@ TEST(aCenterKeepsItsPlace) {
     CHECK(near(center->size().width, area.size().width) && near(center->size().height, area.size().height));
 }
 
+// The application's say in a tab's menu: what it is for, its items changed or added before it shows.
+TEST(theApplicationChangesATabsMenu) {
+    Docked d;
+    std::vector<std::string> asked;
+    bool chosen = false;
+    d.area->setOnTabMenu([&](const std::string& id, std::vector<MenuItem>& items) {
+        asked.push_back(id);
+        for (MenuItem& item : items)
+            item.text = LocalizedText("[" + item.text.source + "]");
+        items.insert(items.begin(), MenuItem{.text = LocalizedText("Mine"), .onTriggered = [&] { chosen = true; }});
+    });
+    const Point tab = d.tab(*d.palette, 0);
+    d.root.dispatch(platform::MouseButtonChanged{1, platform::MouseButton::Right, true, 1, tab});
+    d.root.dispatch(platform::MouseButtonChanged{1, platform::MouseButton::Right, false, 1, tab});
+    CHECK(asked == std::vector<std::string>{"palette"} && d.host.open().size() == 1);
+    if (d.host.open().empty())
+        return;
+    UiRoot& menu = d.host.open()[0]->root;
+    for (platform::Key k : {platform::Key::Down, platform::Key::Enter})          // its first: the application's
+        menu.dispatch(platform::KeyChanged{1, k, platform::KeyModifiers::None, true, false});
+    CHECK(chosen && d.host.open().empty());
+}
+
 TEST(aStackOfOnePanelHidesItsTabBar) {
     Docked d;
     auto click = [&](Point at) {

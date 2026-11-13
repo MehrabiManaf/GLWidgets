@@ -204,6 +204,29 @@ TEST(aLogFollowsItsEndWhileItIsThere) {
     CHECK(e.edit->verticalOffset() == 0 && e.edit->lineCount() == 101);
 }
 
+// The lines of a log keep their tones as lines come, go or change around them.
+TEST(aLogsLinesKeepTheirTones) {
+    Edited e;
+    e.edit->setReadOnly(true);
+    e.edit->append("--- running ---", LineTone::Muted);
+    e.edit->append("Error: two\nlines", LineTone::Error);
+    e.edit->append("plain");
+    CHECK(e.edit->lineCount() == 4);
+    CHECK(e.edit->lineTone(0) == LineTone::Muted && e.edit->lineTone(1) == LineTone::Error && e.edit->lineTone(2) == LineTone::Error);
+    CHECK(e.edit->lineTone(3) == LineTone::Normal);
+    // a line taken out before them: they move with their lines
+    e.edit->replace({{0, 0}, {1, 0}}, "");
+    CHECK(e.edit->lineCount() == 3 && e.edit->line(0) == "Error: two" && e.edit->lineTone(0) == LineTone::Error);
+    CHECK(e.edit->lineTone(2) == LineTone::Normal);
+    // a new text: none
+    e.edit->setText("a\nb");
+    CHECK(e.edit->lineTone(0) == LineTone::Normal && e.edit->lineTone(1) == LineTone::Normal);
+    // painted in the theme's colors (it lays them out)
+    e.edit->append("Warning: w", LineTone::Warning);
+    e.root.layout();
+    CHECK(e.edit->lineTone(2) == LineTone::Warning);
+}
+
 TEST(cppIsHighlightedCommentsGoingOverLines) {
     const CppHighlighter cpp;
     std::vector<TokenSpan> spans;

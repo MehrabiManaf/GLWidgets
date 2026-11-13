@@ -400,6 +400,11 @@ struct TextEditStyle {
     Color comment;
     Color preprocessor;
     Color function;
+    // the lines of a log (TextEdit::append with a LineTone)
+    Color muted;
+    Color success;
+    Color warning;
+    Color error;
     float fontSize = 13;
     float tabWidth = 4;             // in spaces
 };

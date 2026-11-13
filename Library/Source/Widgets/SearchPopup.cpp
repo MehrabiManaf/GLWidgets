@@ -8,6 +8,7 @@
 #include <GLWidgets/Widgets/Layout.hpp>
 #include <GLWidgets/Widgets/LineEdit.hpp>
 #include <GLWidgets/Widgets/ListView.hpp>
+#include <GLWidgets/Widgets/SearchField.hpp>
 #include <GLWidgets/Widgets/UiRoot.hpp>
 
 #include <algorithm>
@@ -84,9 +85,11 @@ public:
         setPadding(Insets::all(6));
         setMinimumSize(options_.size);
         setMaximumSize(options_.size);
-        field_ = &add(std::make_unique<LineEdit>(LineEdit::Props{.text = options_.text,
-                                                                 .placeholder = options_.placeholder,
-                                                                 .onChanged = [this](const std::string&) { filter(); }}));
+        // a search field: its text cleared by its button (Escape closes the popup)
+        field_ = &add(std::make_unique<SearchField>(SearchField::Props{.text = options_.text,
+                                                                       .placeholder = options_.placeholder,
+                                                                       .onChanged = [this](const std::string&) { filter(); }}))
+                      .field();
         list_ = &add(std::make_unique<ListView>());
         list_->setStretch(1);
         list_->setFocusable(false);         // the field keeps the focus: the keys choose for it

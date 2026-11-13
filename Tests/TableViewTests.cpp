@@ -338,6 +338,29 @@ TEST(aColumnGivesWayBeforeTheTableScrolls) {
     CHECK(table.totalWidth() > table.list().viewport().width + 1);
 }
 
+// A table of the theme's lists' style follows the theme as it changes, its own style left alone.
+TEST(aTableTakesTheThemesListStyleAsTheThemeChanges) {
+    UiContext& ui = tests::testContext();
+    UiRoot root(ui);
+    auto made = std::make_unique<TableView>();
+    TableView& table = *made;
+    root.setContent(std::move(made));
+    CHECK(table.style().headerLine == ui.theme.table.headerLine && &table.style() == &ui.theme.table);
+    table.setThemeStyle(&Theme::itemView);
+    CHECK(&table.style() == &ui.theme.itemView);
+    // another theme: its lists' style
+    const Theme saved = ui.theme;
+    ui.theme.itemView.selected = Color{0.25f, 0.5f, 0.75f, 1};
+    root.styleChanged();
+    CHECK(table.style().selected == (Color{0.25f, 0.5f, 0.75f, 1}));
+    // its own wins
+    ItemViewStyle own = ui.theme.table;
+    own.selected = Color{1, 0, 0, 1};
+    table.setStyle(own);
+    CHECK(table.style().selected == (Color{1, 0, 0, 1}));
+    ui.theme = saved;
+}
+
 TEST(columnsFitTheirContentOrStretch) {
     std::vector<std::pair<std::string, std::string>> rows{{"Speed", "float"}, {"Name", "string"}};
     class Members final : public TableModel {

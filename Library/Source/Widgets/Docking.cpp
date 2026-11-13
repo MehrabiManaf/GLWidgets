@@ -112,6 +112,9 @@ protected:
             items.push_back(MenuItem::separatorItem());
             items.push_back({.text = tr("Close"), .onTriggered = [area, id] { area->closePanel(id); }});
         }
+        // the home's handler, for a tab of a floating window too
+        if (DockArea* handling = area->home() ? area->home() : area; handling->onTabMenu())
+            handling->onTabMenu()(id, items);
         showContextMenu(*this, at, std::move(items));
     }
 

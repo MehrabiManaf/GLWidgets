@@ -88,6 +88,7 @@ const TextEditStyle& TextEdit::style() const {
 
 void TextEdit::setText(std::string_view text) {
     lines_ = splitLines(text);
+    tones_.assign(lines_.size(), LineTone::Normal);
     caret_ = anchor_ = {};
     column_.reset();
     undo_.clear();
@@ -126,6 +127,8 @@ TextPosition TextEdit::apply(const Edit& edit) {
     const std::string prefix = lines_[edit.at.line].substr(0, edit.at.column);
     const std::string suffix = lines_[end.line].substr(end.column);
     const TextPosition after{edit.at.line + put.size() - 1, (put.size() == 1 ? edit.at.column : 0) + put.back().size()};
+    // the tone of the line it starts on: its own, or the one its text comes from when all of it is what came after the edit
+    const LineTone firstTone = prefix.empty() && put.size() == 1 && put.front().empty() ? lineTone(end.line) : lineTone(edit.at.line);
     put.front() = prefix + put.front();
     put.back() += suffix;
     const std::size_t removedLines = end.line - edit.at.line + 1;
@@ -134,12 +137,16 @@ TextPosition TextEdit::apply(const Edit& edit) {
     const std::size_t common = std::min(put.size(), removedLines);
     for (std::size_t i = 0; i < common; ++i)
         lines_[edit.at.line + i] = std::move(put[i]);
-    if (added > 0)
-        lines_.insert(lines_.begin() + static_cast<std::ptrdiff_t>(edit.at.line + common), std::make_move_iterator(put.begin() + static_cast<std::ptrdiff_t>(common)),
+    const auto first = static_cast<std::ptrdiff_t>(edit.at.line + common);
+    if (added > 0) {
+        lines_.insert(lines_.begin() + first, std::make_move_iterator(put.begin() + static_cast<std::ptrdiff_t>(common)),
                       std::make_move_iterator(put.end()));
-    else if (added < 0)
-        lines_.erase(lines_.begin() + static_cast<std::ptrdiff_t>(edit.at.line + common),
-                     lines_.begin() + static_cast<std::ptrdiff_t>(edit.at.line + removedLines));
+        tones_.insert(tones_.begin() + first, static_cast<std::size_t>(added), LineTone::Normal);
+    } else if (added < 0) {
+        lines_.erase(lines_.begin() + first, lines_.begin() + static_cast<std::ptrdiff_t>(edit.at.line + removedLines));
+        tones_.erase(tones_.begin() + first, tones_.begin() + static_cast<std::ptrdiff_t>(edit.at.line + removedLines));
+    }
+    tones_[edit.at.line] = firstTone;
     changed(edit.at.line, added);
     return after;
 }
@@ -205,13 +212,17 @@ TextPosition TextEdit::replace(const TextRange& range, std::string_view text) {
     return caret_;
 }
 
-void TextEdit::append(std::string_view text) {
+void TextEdit::append(std::string_view text, LineTone tone) {
     // following the end: still at it after
     const bool atEnd = offsetY_ >= maximumOffsetY() - 0.5;
     const TextPosition end{lines_.size() - 1, lines_.back().size()};
-    const std::string put = (lines_.size() == 1 && lines_.back().empty() ? "" : "\n") + normalized(text);
+    const bool empty = lines_.size() == 1 && lines_.back().empty();
+    const std::string put = (empty ? "" : "\n") + normalized(text);
     Step step{.edits = {{end, std::string(), put}}, .anchorBefore = anchor_, .caretBefore = caret_, .anchorAfter = anchor_, .caretAfter = caret_};
     apply(step.edits.front());
+    // its lines' tone (an empty text: its first line is the one that was there)
+    for (std::size_t l = empty ? 0 : end.line + 1; l < tones_.size(); ++l)
+        tones_[l] = tone;
     record(std::move(step));
     if (atEnd) {
         offsetY_ = std::max(0.0, static_cast<double>(lines_.size()) * lineHeight_ - text_.height);
@@ -511,7 +522,15 @@ const TextEdit::Laid& TextEdit::laid(std::size_t line) {
     options.direction = text::TextDirection::LeftToRight;
     laid.layout = std::make_unique<text::TextLayout>(lines_[line], text::TextStyle{fonts(), style().fontSize}, options);
     widest_ = std::max(widest_, laid.layout->size().width);
-    if (highlighter_) {
+    if (const LineTone tone = lineTone(line); tone != LineTone::Normal) {
+        // a line of a log: all of it in its tone's color
+        const TextEditStyle& s = style();
+        const Color color = tone == LineTone::Muted     ? s.muted
+                            : tone == LineTone::Success ? s.success
+                            : tone == LineTone::Warning ? s.warning
+                                                        : s.error;
+        laid.colors.push_back({0, static_cast<std::uint32_t>(lines_[line].size()), color});
+    } else if (highlighter_) {
         highlightTo(line);
         std::vector<TokenSpan> tokens;
         highlighter_->highlight(lines_[line], states_[line], tokens);

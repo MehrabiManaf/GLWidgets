@@ -45,6 +45,7 @@
 #include <GLWidgets/Export.hpp>
 #include <GLWidgets/Widgets/Animation.hpp>
 #include <GLWidgets/Widgets/Localization.hpp>
+#include <GLWidgets/Widgets/Menu.hpp>
 #include <GLWidgets/Widgets/Splitter.hpp>
 #include <GLWidgets/Widgets/Theme.hpp>
 #include <GLWidgets/Widgets/Widget.hpp>
@@ -246,6 +247,12 @@ public:
     void setOnPanelClosed(std::function<void(DockPanel)> handler) { onPanelClosed_ = std::move(handler); }
     // A stack of the area (or of its floating windows) shows another panel: its id (the document the user went to).
     void setOnPanelShown(std::function<void(DockTabs&, const std::string&)> handler) { onPanelShown_ = std::move(handler); }
+    // A tab's menu (the right button on it) is about to show, for the panel of `id` (of the area or of its floating
+    // windows): `handler` may change its items - their icons, items of its own - before it does.
+    void setOnTabMenu(std::function<void(const std::string& id, std::vector<MenuItem>& items)> handler) {
+        onTabMenu_ = std::move(handler);
+    }
+    const std::function<void(const std::string&, std::vector<MenuItem>&)>& onTabMenu() const { return onTabMenu_; }
 
     // The arrangement as JSON: nodes, their shares, the panels of each stack by id, the tab shown. Not the floating windows'.
     std::string saveLayout() const;
@@ -379,6 +386,7 @@ private:
     std::optional<Guides> guides_;
     Widget* buttons_ = nullptr;             // a floating area's window buttons, over its node
     std::function<void(DockPanel)> onPanelClosed_;
+    std::function<void(const std::string&, std::vector<MenuItem>&)> onTabMenu_;
     std::function<void(DockTabs&, const std::string&)> onPanelShown_;
     friend class DockTabs;
     // A stack of the group, but its center stack: where a panel goes by default.

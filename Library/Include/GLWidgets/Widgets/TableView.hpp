@@ -189,6 +189,9 @@ public:
 
     // Its own (no cells' borders, say), or none: the theme's table.
     void setStyle(std::optional<ItemViewStyle> style);
+    // Without one of its own, the theme's style of another kind of view rather than its table's - Theme::itemView, a list's
+    // (no cells' borders) - followed as the theme changes.
+    void setThemeStyle(ItemViewStyle Theme::* which);
     const ItemViewStyle& style() const;
 
 protected:
@@ -264,6 +267,7 @@ private:
     Strip* header_ = nullptr;
     std::optional<float> rowHeight_;
     std::optional<ItemViewStyle> style_;
+    ItemViewStyle Theme::* themeStyle_ = &Theme::table;
 
     std::vector<float> widths_;             // as set (0: the theme's)
     std::vector<ColumnSizing> sizing_;      // each column's (Fixed when not set)

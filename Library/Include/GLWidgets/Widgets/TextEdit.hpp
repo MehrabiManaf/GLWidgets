@@ -24,6 +24,7 @@
 
 #include <compare>
 #include <cstddef>
+#include <cstdint>
 #include <functional>
 #include <memory>
 #include <optional>
@@ -52,6 +53,15 @@ struct TextRange {
     bool empty() const { return from == to; }
 };
 
+// What a line of a log is (TextEdit::append): drawn in the theme's color for it (TextEditStyle), whatever colors it.
+enum class LineTone : std::uint8_t {
+    Normal,
+    Muted,
+    Success,
+    Warning,
+    Error,
+};
+
 class GLW_EXPORT TextEdit : public Widget {
 public:
     TextEdit();
@@ -67,8 +77,11 @@ public:
     std::string text(const TextRange& range) const;
     // `range` replaced by `text` (undone as one edit): where the text put ends.
     TextPosition replace(const TextRange& range, std::string_view text);
-    // At its end, on lines of their own after what is there (a log); it stays scrolled to its end when it was there.
-    void append(std::string_view text);
+    // At its end, on lines of their own after what is there (a log), of `tone` (its errors red, say: in the theme's colors
+    // as it changes); it stays scrolled to its end when it was there. An edit keeps the tones of the lines it does not
+    // add (those it adds, an undo or a redo too, are Normal).
+    void append(std::string_view text, LineTone tone = LineTone::Normal);
+    LineTone lineTone(std::size_t line) const { return line < tones_.size() ? tones_[line] : LineTone::Normal; }
     // Called after it changed (by the user or by the calls above but setText).
     void setOnChanged(std::function<void()> handler) { onChanged_ = std::move(handler); }
 
@@ -203,6 +216,7 @@ private:
     void updateInputArea();
 
     std::vector<std::string> lines_{std::string()};
+    std::vector<LineTone> tones_{LineTone::Normal};     // each line's (append)
     TextPosition caret_, anchor_;
     std::optional<float> column_;           // where Up and Down keep the caret (dips from the text's start)
     std::vector<Step> undo_, redo_;
