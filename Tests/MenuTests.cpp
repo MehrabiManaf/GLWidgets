@@ -11,10 +11,12 @@
 #include <GLWidgets/Widgets/Label.hpp>
 #include <GLWidgets/Widgets/Layout.hpp>
 #include <GLWidgets/Widgets/LineEdit.hpp>
+#include <GLWidgets/Widgets/ListView.hpp>
 #include <GLWidgets/Widgets/Menu.hpp>
 #include <GLWidgets/Widgets/SearchPopup.hpp>
 #include <GLWidgets/Widgets/UiRoot.hpp>
 
+#include <functional>
 #include <memory>
 #include <optional>
 #include <string>
@@ -294,6 +296,20 @@ TEST(aSearchPopupFiltersAsItIsTypedAndChooses) {
     open();
     Menued::key(m.popup(0), platform::Key::Escape);
     CHECK(chosen.size() == 2 && m.popups().empty() && closed == 3);
+    // a click on an item takes it
+    open();
+    m.popup(0).layout();
+    ListView* rows = nullptr;
+    std::function<void(Widget&)> find = [&](Widget& w) {
+        if (auto* l = dynamic_cast<ListView*>(&w); l && !rows)
+            rows = l;
+        for (const auto& c : w.children())
+            find(*c);
+    };
+    find(*m.popup(0).content());
+    if (const Widget* row = rows ? rows->rowWidget(2) : nullptr)
+        Menued::click(m.popup(0), row->mapToRoot({row->size().width / 2, row->size().height / 2}));
+    CHECK(chosen == (std::vector<std::size_t>{1, 1, 2}) && m.popups().empty());
 }
 
 // Searchable: a click, or typing into it, opens a search popup; only its texts can be chosen.
@@ -326,6 +342,69 @@ TEST(aSearchableComboBoxChoosesBySearching) {
     m.root.dispatch(platform::TextInput{1, "zz"});
     Menued::key(m.popup(0), platform::Key::Escape);
     CHECK(box.current() == 2 && changed.size() == 2 && !box.isOpen());
+}
+
+// Items in folders, in a tree of them: closed while nothing is typed (a folder opened by Enter), what is found under them
+// open, the best item chosen.
+TEST(aSearchPopupShowsItsItemsInATreeOfFolders) {
+    Menued m;
+    std::vector<std::size_t> chosen;
+    const auto item = [](const char* text, std::vector<LocalizedText> path) {
+        return SearchItem{.text = LocalizedText(text), .path = std::move(path)};
+    };
+    const auto open = [&] {
+        return showSearchPopup(*m.content, {40, 50, 0, 0},
+                               {.items = {item("Print String", {"Text"}), item("Add", {"Math", "Float"}), item("Branch", {"Flow"}),
+                                          item("Multiply", {"Math", "Float"}), item("Modulo", {"Math", "Integer"})},
+                                .onChosen = [&](std::size_t i) { chosen.push_back(i); },
+                                .tree = true});
+    };
+    CHECK(open());
+    UiRoot& popup = m.popup(0);
+    popup.layout();
+    // the folders only, in order: Flow, Math, Text; Enter on the first opens it, its item comes under it
+    Menued::key(popup, platform::Key::Enter);           // Flow opened
+    Menued::key(popup, platform::Key::Down);            // Branch
+    Menued::key(popup, platform::Key::Enter);
+    CHECK(chosen == std::vector<std::size_t>{2} && m.popups().empty());
+    // typed: the folders of what is found, open, the best item chosen
+    open();
+    m.popup(0).dispatch(platform::TextInput{1, "mul"});
+    Menued::key(m.popup(0), platform::Key::Enter);
+    CHECK(chosen == (std::vector<std::size_t>{2, 3}));
+    // Up from the best item: its folder (Float), Enter closes it, nothing chosen
+    open();
+    m.popup(0).dispatch(platform::TextInput{1, "mo"});
+    Menued::key(m.popup(0), platform::Key::Up);
+    Menued::key(m.popup(0), platform::Key::Enter);
+    CHECK(chosen.size() == 2 && m.popups().size() == 1);
+    Menued::key(m.popup(0), platform::Key::Escape);
+    // by the mouse: a folder clicked opens, an item clicked is taken
+    open();
+    UiRoot& clicked = m.popup(0);
+    clicked.layout();
+    ListView* rows = nullptr;
+    std::function<void(Widget&)> find = [&](Widget& w) {
+        if (auto* l = dynamic_cast<ListView*>(&w); l && !rows)
+            rows = l;
+        for (const auto& c : w.children())
+            find(*c);
+    };
+    find(*clicked.content());
+    CHECK(rows != nullptr);
+    if (!rows)
+        return;
+    const auto clickRow = [&](std::size_t row) {
+        clicked.layout();
+        const Widget* w = rows->rowWidget(row);
+        CHECK(w != nullptr);
+        if (w)
+            Menued::click(clicked, w->mapToRoot({w->size().width / 2, w->size().height / 2}));
+    };
+    clickRow(0);                                        // Flow: opened, Branch under it
+    CHECK(m.popups().size() == 1 && rows->rowWidget(1) != nullptr);
+    clickRow(1);                                        // Branch
+    CHECK(chosen == (std::vector<std::size_t>{2, 3, 2}) && m.popups().empty());
 }
 
 // An application that finds its items itself: by words they do not show ("+" for Add), in its order.

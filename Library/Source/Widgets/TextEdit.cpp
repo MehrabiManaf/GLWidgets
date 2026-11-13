@@ -861,6 +861,22 @@ void TextEdit::onHoverChanged(bool hovered) {
     }
 }
 
+void TextEdit::showMenu(Point at) {
+    const auto keys = [](platform::Key key) { return LocalizedText(Shortcut{key, platform::shortcutModifier}.text()); };
+    const bool any = lines_.size() > 1 || !lines_.front().empty();
+    std::vector<MenuItem> items;
+    if (!readOnly_)
+        items.push_back({.text = tr("Cut"), .onTriggered = [this] { cut(); }, .shortcut = keys(platform::Key::X), .enabled = hasSelection()});
+    items.push_back({.text = tr("Copy"), .onTriggered = [this] { copy(); }, .shortcut = keys(platform::Key::C), .enabled = hasSelection()});
+    if (!readOnly_)
+        items.push_back({.text = tr("Paste"), .onTriggered = [this] { paste(); }, .shortcut = keys(platform::Key::V)});
+    items.push_back(MenuItem::separatorItem());
+    items.push_back({.text = tr("Select All"), .onTriggered = [this] { selectAll(); }, .shortcut = keys(platform::Key::A), .enabled = any});
+    if (onContextMenu_)
+        onContextMenu_(items);
+    showContextMenu(*this, at, std::move(items));
+}
+
 void TextEdit::onMouse(MouseEvent& event) {
     switch (event.type) {
     case MouseEventType::Wheel: {
@@ -887,6 +903,12 @@ void TextEdit::onMouse(MouseEvent& event) {
         break;
     }
     case MouseEventType::Press: {
+        if (event.button == platform::MouseButton::Right) {
+            event.handled = true;
+            focus();
+            showMenu(event.position);
+            return;
+        }
         if (event.button != platform::MouseButton::Left)
             return;
         event.handled = true;

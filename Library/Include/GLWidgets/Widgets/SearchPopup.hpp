@@ -8,7 +8,8 @@
 // with what is typed come first, then those with a word that does, then the others, each in their order. Up and Down
 // (Page Up, Page Down) choose in the list while the field keeps the focus; Enter or a click on an item takes it and closes
 // the popup; Escape closes it without one. An application with words of its own for its items (a node's keywords: "+"
-// for Add, its English name in Persian) finds and orders them itself (SearchOptions::search).
+// for Add, its English name in Persian) finds and orders them itself (SearchOptions::search). Items in folders (a node's
+// category) show in a tree of them (SearchOptions::tree).
 //
 //   glw::showSearchPopup(*this, {mouse.x, mouse.y, 0, 0},
 //                        {.items = {{"Add", "Math"}, {"Branch", "Flow"}}, .onChosen = [this](std::size_t i) { ... }});
@@ -28,6 +29,8 @@ namespace glw {
 struct SearchItem {
     LocalizedText text;
     LocalizedText detail;                   // shown muted at its end (a category); searched too
+    // Its folders, the outermost first: where it is in a tree of them (SearchOptions::tree).
+    std::vector<LocalizedText> path;
 };
 
 struct SearchOptions {
@@ -42,6 +45,11 @@ struct SearchOptions {
     // The items `query` (what the field has) finds, best first: their indices in `items`. None: those with every word of
     // it in their text or detail (searchTexts).
     std::function<std::vector<std::size_t>(const std::string& query)> search;
+    // The items in a tree of their folders (SearchItem::path) rather than a list, their details not shown: while nothing
+    // is typed, every item, the folders in order, closed (open: `expanded`); what is found, under its folders open, each
+    // folder where its best item comes, the best item chosen. Enter or a click on a folder opens or closes it.
+    bool tree = false;
+    bool expanded = false;
 };
 
 // Opens it under `anchor` (the widget's coordinates). False where the widget's window has no popups.

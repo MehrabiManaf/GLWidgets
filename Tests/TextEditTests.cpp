@@ -227,6 +227,35 @@ TEST(aLogsLinesKeepTheirTones) {
     CHECK(e.edit->lineTone(2) == LineTone::Warning);
 }
 
+// Its menu: Copy and Select All read only (Cut and Paste too, editable), and what the application adds to it.
+TEST(aTextEditsMenuCopiesSelectsAndTakesTheApplicationsItems) {
+    Edited e;
+    e.edit->setReadOnly(true);
+    e.edit->append("one");
+    e.edit->append("two");
+    bool cleared = false;
+    std::size_t shown = 0;
+    e.edit->setOnContextMenu([&](std::vector<MenuItem>& items) {
+        shown = items.size();
+        items.push_back({.text = LocalizedText("Clear"), .onTriggered = [&] { cleared = true; }});
+    });
+    const auto menu = [&](std::initializer_list<platform::Key> keys) {
+        e.root.dispatch(platform::MouseButtonChanged{1, platform::MouseButton::Right, true, 1, {40, 10}});
+        e.root.dispatch(platform::MouseButtonChanged{1, platform::MouseButton::Right, false, 1, {40, 10}});
+        const auto open = e.host.open();
+        if (open.empty())
+            return false;
+        for (const platform::Key k : keys)
+            open[0]->root.dispatch(platform::KeyChanged{1, k, platform::KeyModifiers::None, true, false});
+        return true;
+    };
+    // read only: Copy (nothing selected: off), a separator, Select All
+    CHECK(menu({platform::Key::Down, platform::Key::Enter}) && shown == 3);
+    CHECK(e.edit->hasSelection());
+    CHECK(menu({platform::Key::Down, platform::Key::Enter}) && e.host.clipboard == "one\ntwo");
+    CHECK(menu({platform::Key::Down, platform::Key::Down, platform::Key::Down, platform::Key::Enter}) && cleared);
+}
+
 TEST(cppIsHighlightedCommentsGoingOverLines) {
     const CppHighlighter cpp;
     std::vector<TokenSpan> spans;

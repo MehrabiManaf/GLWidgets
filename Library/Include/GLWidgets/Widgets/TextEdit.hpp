@@ -18,6 +18,7 @@
 #include <GLWidgets/Text/DrawText.hpp>
 #include <GLWidgets/Widgets/Animation.hpp>
 #include <GLWidgets/Widgets/Highlighter.hpp>
+#include <GLWidgets/Widgets/Menu.hpp>
 #include <GLWidgets/Widgets/ScrollBar.hpp>
 #include <GLWidgets/Widgets/Theme.hpp>
 #include <GLWidgets/Widgets/Widget.hpp>
@@ -95,6 +96,9 @@ public:
     void selectAll();
     // The selection to the clipboard (cut: and out of the text, unless read only); the clipboard's text over it.
     void cut();
+    // Its menu (the right button): Cut, Copy, Paste (Copy alone, read only), Select All. `handler` may change its items
+    // before it shows - their icons, items of its own (a log's Clear).
+    void setOnContextMenu(std::function<void(std::vector<MenuItem>& items)> handler) { onContextMenu_ = std::move(handler); }
     void copy();
     void paste();
 
@@ -221,6 +225,8 @@ private:
     std::optional<float> column_;           // where Up and Down keep the caret (dips from the text's start)
     std::vector<Step> undo_, redo_;
     std::function<void()> onChanged_;
+    std::function<void(std::vector<MenuItem>&)> onContextMenu_;
+    void showMenu(Point at);                // its menu, at `at`
 
     bool readOnly_ = false;
     bool lineNumbers_ = true;
