@@ -136,7 +136,7 @@ private:
         bool folder = false;
         std::size_t item = 0;
         std::optional<std::size_t> parent;
-        std::vector<std::size_t> children;
+        std::vector<std::size_t> children{};
     };
     std::size_t add(Node node) {
         const std::size_t index = nodes_.size();

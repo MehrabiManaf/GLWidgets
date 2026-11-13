@@ -376,11 +376,6 @@ void Painter::arriveFrom(const Mark& mark, float t, const Rect& area, const Rect
     for (std::size_t i = mark.sceneVertices; i + 3 < list_.sceneVertices.size(); i += 4) {
         SceneVertex* four = &list_.sceneVertices[i];
         const Point c{four[0].center[0], four[0].center[1]};
-        std::uint32_t seed = static_cast<std::uint32_t>(std::lround(c.x * 7.0f)) * 73856093u ^ static_cast<std::uint32_t>(std::lround(c.y * 7.0f)) * 19349663u;
-        const auto next = [&] {
-            seed = seed * 1664525u + 1013904223u;
-            return static_cast<float>(seed >> 8) / static_cast<float>(1u << 24);       // 0 to 1
-        };
         const float large = largeIn(four[0], area);
         const Motion m = motion(pieces.stageOf(four[0], area), c.y, large);
         const Point start = was(c);

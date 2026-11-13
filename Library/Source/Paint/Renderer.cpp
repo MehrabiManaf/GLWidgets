@@ -241,7 +241,8 @@ std::vector<std::size_t> Renderer::backdropCaptures(const DrawList& list) {
         }
         return Rect{left, top, right - left, bottom - top}.intersected(cmd.clip);
     };
-    std::optional<Rect> drawn;          // since the last capture (none before the first)
+    Rect drawn;                         // since the last capture (none before the first: anyDrawn)
+    bool anyDrawn = false;
     bool captured = false;
     for (std::size_t c = 0; c < list.commands.size(); ++c) {
         const DrawCommand& cmd = list.commands[c];
@@ -250,13 +251,15 @@ std::vector<std::size_t> Renderer::backdropCaptures(const DrawList& list) {
         const Rect covers = bounds(cmd);
         // (glass joined onto the glass before it reads what that one read: none of its own, unless none was read yet)
         const bool joined = cmd.texture == joinedBackdropTexture;
-        if ((cmd.texture == backdropTexture && (!captured || (drawn && drawn->intersects(covers)))) || (joined && !captured)) {
+        if ((cmd.texture == backdropTexture && (!captured || (anyDrawn && drawn.intersects(covers)))) || (joined && !captured)) {
             captures.push_back(c);
             captured = true;
-            drawn.reset();
+            anyDrawn = false;
         }
-        if (!covers.empty())
-            drawn = drawn ? drawn->united(covers) : covers;
+        if (!covers.empty()) {
+            drawn = anyDrawn ? drawn.united(covers) : covers;
+            anyDrawn = true;
+        }
     }
     return captures;
 }

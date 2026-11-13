@@ -132,7 +132,7 @@ enum class RisingMotion : std::uint8_t { FromBehind, Pop, Turn, Unfold };
 struct Arrival {
     float progress = 0;
     bool fromBehind = false;
-    std::optional<Rect> from;
+    std::optional<Rect> from{};
     LandingMotion landing = LandingMotion::Cascade;
     RisingMotion rising = RisingMotion::FromBehind;
     paint::Edge hinge = paint::Edge::Top;

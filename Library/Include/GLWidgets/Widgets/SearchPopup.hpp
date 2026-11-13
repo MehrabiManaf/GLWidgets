@@ -30,7 +30,7 @@ struct SearchItem {
     LocalizedText text;
     LocalizedText detail;                   // shown muted at its end (a category); searched too
     // Its folders, the outermost first: where it is in a tree of them (SearchOptions::tree).
-    std::vector<LocalizedText> path;
+    std::vector<LocalizedText> path{};
 };
 
 struct SearchOptions {
