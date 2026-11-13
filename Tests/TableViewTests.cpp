@@ -292,6 +292,52 @@ TEST(aTableFollowsItsModel) {
 
 // Names and their types: the types' column as wide as the widest (measured again as the rows change), the names' all the
 // rest, whatever the table's width; a drag of the fitting column's edge sets it as the user says from then on.
+// Names as wide as they need, a long text beside them all the rest: narrower than both, the text gives way (cut) before
+// the table scrolls across.
+TEST(aColumnGivesWayBeforeTheTableScrolls) {
+    std::vector<std::pair<std::string, std::string>> rows{
+        {"Order", "{Id, Customer, Street, City, Postcode, Country, Phone, Email, Quantity, Price}"}};
+    class Members final : public TableModel {
+    public:
+        explicit Members(std::vector<std::pair<std::string, std::string>>& rows) : rows_(rows) {}
+        std::size_t rowCount() const override { return rows_.size(); }
+        std::size_t columnCount() const override { return 2; }
+
+    private:
+        std::vector<std::pair<std::string, std::string>>& rows_;
+    };
+    UiRoot root{tests::testContext()};
+    auto made = std::make_unique<TableView>();
+    TableView& table = *made;
+    table.setModel(std::make_shared<Members>(rows));
+    table.setDelegate(std::make_unique<TableTextDelegate>(
+        [&rows](std::size_t r, std::size_t c) { return LocalizedText(c == 0 ? rows[r].first : rows[r].second); }));
+    table.setColumnSizing(0, ColumnSizing::FitContent);
+    table.setColumnSizing(1, ColumnSizing::FitContent);
+    table.setColumnYields(1, true);
+    table.setStretchLastColumn(false);
+    root.setSize({240, 200});
+    root.setContent(std::move(made));
+    root.layout();
+    const auto widthOf = [&](std::size_t column) {
+        const Widget* header = table.headerWidget(column);
+        return header ? header->size().width : 0.0f;
+    };
+    // narrow: the names as they need, the text the rest (cut), nothing to scroll
+    const float view = table.list().viewport().width;
+    CHECK(near(widthOf(0), table.contentWidth(0)) && near(widthOf(0) + widthOf(1), view));
+    CHECK(near(table.totalWidth(), view));
+    // wide: the text as it needs
+    root.setSize({1200, 200});
+    root.layout();
+    CHECK(near(widthOf(1), table.contentWidth(1)));
+    // not giving way: the table scrolls across when narrow
+    table.setColumnYields(1, false);
+    root.setSize({240, 200});
+    root.layout();
+    CHECK(table.totalWidth() > table.list().viewport().width + 1);
+}
+
 TEST(columnsFitTheirContentOrStretch) {
     std::vector<std::pair<std::string, std::string>> rows{{"Speed", "float"}, {"Name", "string"}};
     class Members final : public TableModel {

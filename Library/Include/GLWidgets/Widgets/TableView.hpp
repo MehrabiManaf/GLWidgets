@@ -110,6 +110,10 @@ public:
     // How wide a column is (Fixed by default).
     void setColumnSizing(std::size_t column, ColumnSizing sizing);
     ColumnSizing columnSizing(std::size_t column) const;
+    // A column that gives way (off by default): the columns wider than the view, it shows narrower (down to
+    // minimumColumnWidth), what it has cut there, before the view scrolls across - a column of long texts beside the
+    // names. Those that give way give it from the last.
+    void setColumnYields(std::size_t column, bool yields);
     void setHeaderVisible(bool visible);
     bool headerVisible() const { return headerVisible_; }
     // The width of all columns, the last one as it shows.
@@ -263,6 +267,7 @@ private:
 
     std::vector<float> widths_;             // as set (0: the theme's)
     std::vector<ColumnSizing> sizing_;      // each column's (Fixed when not set)
+    std::vector<bool> yields_;              // each column's: it gives way (setColumnYields)
     mutable std::vector<double> lefts_;     // where each starts, one more: where the last ends (as shown)
     mutable std::vector<float> shown_;      // how wide each shows
     mutable float shownFor_ = -1;           // the view's width they were worked out for (-1: to be worked out)

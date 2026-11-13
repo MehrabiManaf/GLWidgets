@@ -144,6 +144,20 @@ void Canvas::centerOn(Point point) {
     setOrigin(Point{size().width / 2, size().height / 2} - point * zoom_);
 }
 
+void Canvas::centerOn(Point point, bool animated) {
+    if (size().width <= 0 || size().height <= 0) {
+        pendingCenter_ = point;
+        return;
+    }
+    const Point middle{size().width / 2, size().height / 2};
+    if (const UiContext* ui = context(); animated && ui) {
+        moveView(zoom_, point, middle, ui->theme.motion.slow);
+        return;
+    }
+    viewMotion_.set(1);
+    centerOn(point);
+}
+
 void Canvas::frame(const Rect& area, float margin, bool animated) {
     if (area.empty())
         return;
@@ -209,6 +223,8 @@ void Canvas::arrangeContent(const Rect&) {
             frame(*std::exchange(pendingFrame_, std::nullopt), 0, false);     // what it shows first: at once
         if (pendingItemsFrame_)
             frame(itemsBounds(), *std::exchange(pendingItemsFrame_, std::nullopt), false);
+        if (pendingCenter_)
+            centerOn(*std::exchange(pendingCenter_, std::nullopt), false);
     }
 }
 

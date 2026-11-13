@@ -140,6 +140,30 @@ TEST(aCanvasZoomsAndFramesEased) {
     tests::testScheduler().setAnimationsEnabled(false);
 }
 
+// Centered on a point eased (its zoom kept), or at once; asked before it had a size, done when it has one.
+TEST(aCanvasCentersOnAPointEased) {
+    tests::testScheduler().setAnimationsEnabled(true);
+    Canvased c;
+    c.canvas->addItem(std::make_unique<Box>(), {100, 50});
+    c.root.layout();
+    c.canvas->setZoom(0.5f, Point{0, 0});
+    const Point middle{c.canvas->size().width / 2, c.canvas->size().height / 2};
+    c.canvas->centerOn({1000, 800}, true);
+    CHECK(tests::testScheduler().animating());
+    tests::advance(std::chrono::milliseconds(400));
+    CHECK(near(c.canvas->zoom(), 0.5) && near(c.canvas->fromCanvas({1000, 800}), middle));
+    c.canvas->centerOn({0, 0}, false);
+    CHECK(!tests::testScheduler().animating() && near(c.canvas->fromCanvas({0, 0}), middle));
+    tests::testScheduler().setAnimationsEnabled(false);
+    // a canvas not laid out yet: centered when it is
+    auto later = std::make_unique<Canvas>();
+    Canvas& canvas = *later;
+    canvas.centerOn({500, 500}, true);
+    c.root.setContent(std::move(later));
+    c.root.layout();
+    CHECK(near(canvas.fromCanvas({500, 500}), {canvas.size().width / 2, canvas.size().height / 2}));
+}
+
 TEST(aCanvasPaintsTheItemsThatShowOnly) {
     Canvased c;
     // ten thousand boxes, a grid of 100 x 100, 200 apart

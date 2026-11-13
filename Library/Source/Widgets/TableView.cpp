@@ -273,6 +273,7 @@ void TableView::setSelectionMode(SelectionMode mode) {
 void TableView::resetColumns() {
     widths_.resize(model_ ? model_->columnCount() : 0, 0.0f);
     sizing_.resize(widths_.size(), ColumnSizing::Fixed);
+    yields_.resize(widths_.size(), false);
     refitLater();
     updateLefts();
 }
@@ -304,6 +305,16 @@ const std::vector<double>& TableView::lefts() const {
         total += shown_[i];
         stretching += stretches(i) ? 1 : 0;
     }
+    // wider than the view: the columns that give way narrower, from the last, before it scrolls across
+    if (view > 0 && total > view) {
+        for (std::size_t i = widths_.size(); i-- > 0 && total > view;) {
+            if (i >= yields_.size() || !yields_[i])
+                continue;
+            const float given = std::min(total - view, std::max(0.0f, shown_[i] - minimumColumnWidth));
+            shown_[i] -= given;
+            total -= given;
+        }
+    }
     if (stretching > 0 && view > total) {
         const float more = (view - total) / static_cast<float>(stretching);
         for (std::size_t i = 0; i < widths_.size(); ++i)
@@ -321,6 +332,15 @@ void TableView::setColumnSizing(std::size_t column, ColumnSizing sizing) {
     sizing_[column] = sizing;
     if (sizing == ColumnSizing::FitContent)
         refitLater();
+    updateLefts();
+    rearrangeStrips();
+    invalidateLayout();
+}
+
+void TableView::setColumnYields(std::size_t column, bool yields) {
+    if (column >= yields_.size() || yields_[column] == yields)
+        return;
+    yields_[column] = yields;
     updateLefts();
     rearrangeStrips();
     invalidateLayout();

@@ -67,6 +67,9 @@ public:
     void setOrigin(Point origin);
     // Panned so that the canvas's `point` is at its middle.
     void centerOn(Point point);
+    // ... eased there (the theme's slow motion), its zoom kept, when `animated`; asked before it has a size, done when
+    // it has one (at once: what it shows first).
+    void centerOn(Point point, bool animated);
     // Zoomed (not past 1) and panned so that `area` of the canvas shows whole, `margin` dips around it: eased there
     // (the theme's slow motion), at once when `animated` is false or before it has a size.
     void frame(const Rect& area, float margin = 32, bool animated = true);
@@ -124,6 +127,7 @@ private:
     bool grid_ = true;
     std::optional<Rect> pendingFrame_;      // framed before it had a size: when it has one
     std::optional<float> pendingItemsFrame_;    // its items framed before they were laid out: the margin
+    std::optional<Point> pendingCenter_;    // centered on before it had a size: when it has one
 
     enum class Pan { None, Middle, Right };
     Pan panning_ = Pan::None;
