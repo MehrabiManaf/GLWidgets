@@ -145,7 +145,25 @@ ToolButton& CollapsiblePanel::addAction(std::shared_ptr<Action> action) {
     return button;
 }
 
+void CollapsiblePanel::setExpandable(bool expandable, bool animated) {
+    if (expandable == expandable_)
+        return;
+    if (!expandable) {
+        wanted_ = expanded_;
+        setExpanded(false, animated);
+        expandable_ = false;
+    } else {
+        expandable_ = true;
+        setExpanded(wanted_, animated);
+    }
+    invalidatePaint();
+}
+
 void CollapsiblePanel::setExpanded(bool expanded, bool animated) {
+    if (!expandable_) {
+        wanted_ = expanded;                 // for when it opens again
+        return;
+    }
     if (expanded == expanded_ && (progress_.running() || progress_.value() == (expanded ? 1.0f : 0.0f)))
         return;
     expanded_ = expanded;
@@ -165,6 +183,8 @@ void CollapsiblePanel::setExpanded(bool expanded, bool animated) {
 }
 
 void CollapsiblePanel::toggle() {
+    if (!expandable_)
+        return;
     setExpanded(!expanded_);
     if (onToggled_)
         onToggled_(expanded_);
@@ -255,7 +275,7 @@ void CollapsiblePanel::paint(PaintContext& context) {
     Point points[] = {{-2.0f * d, -4}, {2.0f * d, 0}, {-2.0f * d, 4}};
     for (Point& q : points)
         q = {c.x + q.x * cs - q.y * sn, c.y + q.x * sn + q.y * cs};
-    p.drawPolyline(points, 1.5f, s.arrow);
+    p.drawPolyline(points, 1.5f, expandable_ ? s.arrow : withAlpha(s.arrow, s.arrow.a * 0.35f));
     title_->setColor(s.title);
 }
 

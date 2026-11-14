@@ -124,6 +124,8 @@ public:
     // The whole screen it is on, without the system's frame and bars (a presentation, a canvas to work on); off, as it was.
     // A platform that cannot: nothing happens.
     virtual void setFullScreen(bool fullScreen) { (void)fullScreen; }
+    // The least the user can resize it to (dips; none: 0 by 0).
+    virtual void setMinimumSize(Size size) { (void)size; }
     virtual bool fullScreen() const { return false; }
 
     // What each point of a borderless window is. None (the default): all of it is client area.

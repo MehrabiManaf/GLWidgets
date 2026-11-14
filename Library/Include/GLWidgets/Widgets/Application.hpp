@@ -97,6 +97,9 @@ private:
     Window(Application& app, const WindowOptions& options, std::unique_ptr<Widget> content, Window* owner = nullptr,
            bool overlay = false, bool focus = true);
     void languageChanged();
+    // Its minimum size (the system's: what the user can resize it to) as its content's least, when that changed.
+    void keepLeast();
+    Size least_;
     // With the system's chrome: what holds the bars over its content (made when there is one).
     Widget& bars();
 

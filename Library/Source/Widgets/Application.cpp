@@ -397,8 +397,10 @@ struct Application::Impl final : DockingHost {
         inFrame = true;
         renderer->setLighting(context->theme.lighting);     // what lights reliefs (a style's that has them)
         renderer->setEnvironment({.exposure = 1, .dark = context->theme.isDark()});       // ... and bricks
-        for (Window* w : which)
+        for (Window* w : which) {
             w->root_.paint(w->list_);       // paint fills the glyph atlas: before the atlas goes to the GPU
+            w->keepLeast();                 // (laid out by then)
+        }
         auto commands = device->beginCommands();
         const bool glyphsAgain = atlas->upload(*device, *commands, *renderer);
         const bool iconsAgain = icons->upload(*device, *commands, *renderer);
@@ -1054,6 +1056,26 @@ void Window::minimizeWindow() {
     window_->minimize();
 }
 
+void Window::keepLeast() {
+    if (popup_ || tooltip_)
+        return;
+    const Widget* content = root_.content();
+    Size least = content ? content->leastSize() : Size{};
+    if (content) {
+        least.width += content->margin().horizontal();
+        least.height += content->margin().vertical();
+    }
+    // never more than the screen has
+    const Size screen = window_->screenSize();
+    if (screen.width > 0 && screen.height > 0)
+        least = {std::min(least.width, screen.width), std::min(least.height, screen.height)};
+    least = {std::ceil(least.width), std::ceil(least.height)};
+    if (least == least_)
+        return;
+    least_ = least;
+    window_->setMinimumSize(least);
+}
+
 void Window::saveImage(std::string path, std::function<void(const std::string& error)> done) {
     imagePath_ = std::move(path);
     imageSaved_ = std::move(done);
@@ -1075,21 +1097,26 @@ void Window::toggleMaximizeWindow() {
         window_->maximize();
 }
 
-// A popup's text is typed in the window it came from (which keeps the keyboard), and routed to it.
+// A popup's text is typed in the window that has the keyboard, and routed to the popup: the window it came from where
+// that keeps the keyboard (Windows, macOS), the popup itself where the system gives a popup menu the keyboard (X11,
+// Wayland). Text input goes on (and off) in both, its area set in both.
 void Window::startTextInput() {
     base().window_->startTextInput();
+    if (&base() != this)
+        window_->startTextInput();
 }
 
 void Window::stopTextInput() {
     base().window_->stopTextInput();
+    if (&base() != this)
+        window_->stopTextInput();
 }
 
 void Window::setTextInputArea(const Rect& area) {
+    window_->setTextInputArea(area);
     Window& in = base();
-    if (&in == this) {
-        window_->setTextInputArea(area);
+    if (&in == this)
         return;
-    }
     const Point corner = in.window_->fromScreen(window_->toScreen({area.x, area.y}));
     in.window_->setTextInputArea({corner.x, corner.y, area.width, area.height});
 }

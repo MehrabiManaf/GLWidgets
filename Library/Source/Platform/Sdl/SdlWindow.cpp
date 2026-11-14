@@ -225,6 +225,11 @@ void SdlWindow::setSize(Size size) {
         cutCorners();
 }
 
+void SdlWindow::setMinimumSize(Size size) {
+    const float f = dipsPerUnit(window_);
+    SDL_SetWindowMinimumSize(window_, size.width > 0 ? sizeInUnits(size.width, f) : 0, size.height > 0 ? sizeInUnits(size.height, f) : 0);
+}
+
 PixelSize SdlWindow::pixelSize() const {
     PixelSize pixels;
     SDL_GetWindowSizeInPixels(window_, &pixels.width, &pixels.height);

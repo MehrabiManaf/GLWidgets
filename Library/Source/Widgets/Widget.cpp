@@ -194,6 +194,16 @@ bool Widget::rightToLeft() const {
     return r && r->rightToLeft();
 }
 
+Size Widget::leastSize() const {
+    Size least = minimumSize_;
+    if (layout_) {
+        const Size children = layout_->leastSize(*this);
+        least.width = std::max(least.width, children.width + padding_.horizontal());
+        least.height = std::max(least.height, children.height + padding_.vertical());
+    }
+    return least;
+}
+
 Size Widget::measure(Size available) {
     if (!visible_) {
         measureDirty_ = true;       // (none kept: measureEvenHidden measures it again)

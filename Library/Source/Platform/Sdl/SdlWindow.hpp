@@ -40,6 +40,7 @@ public:
     void minimize() override;
     void maximize() override;
     void setFullScreen(bool fullScreen) override;
+    void setMinimumSize(Size size) override;
     bool fullScreen() const override;
     void restore() override;
     void setHitTest(HitTest hitTest) override;

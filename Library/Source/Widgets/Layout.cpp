@@ -69,6 +69,29 @@ Size StackLayout::measure(Widget& widget, Size available) {
     return vertical ? Size{across, along} : Size{along, across};
 }
 
+Size Layout::leastSize(const Widget&) const {
+    return {};
+}
+
+Size StackLayout::leastSize(const Widget& widget) const {
+    const bool vertical = orientation_ == Orientation::Vertical;
+    float along = 0, across = 0;
+    std::size_t count = 0;
+    for (const auto& child : widget.children()) {
+        if (!child->visible())
+            continue;
+        ++count;
+        const Insets m = child->margin();
+        const Size least = child->leastSize();
+        const Size desired = child->desiredSize();
+        const float own = vertical ? least.height : least.width;
+        along += (child->stretch() > 0 ? own : std::max(own, vertical ? desired.height : desired.width)) + (vertical ? m.vertical() : m.horizontal());
+        across = std::max(across, (vertical ? least.width : least.height) + (vertical ? m.horizontal() : m.vertical()));
+    }
+    along += spacing_ * static_cast<float>(count > 0 ? count - 1 : 0);
+    return vertical ? Size{across, along} : Size{along, across};
+}
+
 void StackLayout::arrange(Widget& widget, const Rect& content) {
     const bool vertical = orientation_ == Orientation::Vertical;
     const bool rtl = widget.rightToLeft();

@@ -50,6 +50,10 @@ public:
     // Opened or closed: eased (the theme's motion), or at once.
     void setExpanded(bool expanded, bool animated = true);
     bool expanded() const { return expanded_; }
+    // Whether it opens (true by default). A panel with nothing in it says no: it closes, its arrow faded, and neither the
+    // user nor setExpanded opens it; said yes again, it is as it was - or as setExpanded said meanwhile.
+    void setExpandable(bool expandable, bool animated = true);
+    bool expandable() const { return expandable_; }
     // How open it shows now, from 0 (closed) to 1 (open).
     float openness() const { return progress_.value(); }
     void setOnToggled(std::function<void(bool)> handler) { onToggled_ = std::move(handler); }
@@ -83,6 +87,8 @@ private:
     std::optional<paint::Lifted> rowLifted(const Widget& child) const;
     Widget* content_ = nullptr;
     bool expanded_ = false;
+    bool expandable_ = true;
+    bool wanted_ = false;                   // open or closed, when it is expandable again
     bool headerHovered_ = false;
     bool pressed_ = false;
     Animation progress_{[this] { stepped(); }};

@@ -161,6 +161,26 @@ TEST(scrollBarOnTheLeftInRightToLeft) {
     CHECK(s.root.widgetAt({bar / 2, 50}) == s.area);
 }
 
+// A stack's least: its children's along it (one that does not stretch keeps its desired length), the most of them across,
+// its spacing and padding - what a window made of it keeps at least.
+TEST(aStackNeedsWhatItsChildrenNeed) {
+    UiRoot root(tests::testContext());
+    root.setSize({400, 300});
+    auto box = std::make_unique<Widget>();
+    Widget& stack = *box;
+    stack.setLayout(std::make_unique<StackLayout>(Orientation::Vertical, 6.0f));
+    stack.setPadding(Insets::all(4));
+    stack.add(std::make_unique<Block>(Size{50, 20}));
+    stack.add(std::make_unique<Block>(Size{80, 30})).setStretch(1);
+    root.setContent(std::move(box));
+    root.layout();
+    const Size least = stack.leastSize();
+    CHECK(near(least.width, 80 + 8) && near(least.height, 20 + 6 + 30 + 8));
+    // its own minimum, when larger
+    stack.setMinimumSize({200, 10});
+    CHECK(near(stack.leastSize().width, 200) && near(stack.leastSize().height, least.height));
+}
+
 TEST(splitterSharesAndDragging) {
     UiRoot root(tests::testContext());
     const float t = tests::testContext().theme.splitter.thickness;

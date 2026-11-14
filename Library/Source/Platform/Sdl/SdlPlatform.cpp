@@ -18,6 +18,7 @@
 #include <SDL3/SDL_hints.h>
 #include <SDL3/SDL_mouse.h>
 #include <SDL3/SDL_surface.h>
+#include <SDL3/SDL_timer.h>
 #include <SDL3/SDL_init.h>
 #include <SDL3/SDL_version.h>
 #include <SDL3/SDL_video.h>
@@ -453,9 +454,16 @@ bool SdlPlatform::translate(const SDL_Event& in, Event& out) const {
 
     case SDL_EVENT_KEY_DOWN:
     case SDL_EVENT_KEY_UP:
+        // a repeat due more than a fifth of a second ago: one of those made up at once to catch up after the program was
+        // busy (a key held then is not typed dozens of times), it and its text dropped
+        lateRepeat_ = in.key.repeat && in.key.down && SDL_GetTicksNS() > in.key.timestamp + 200'000'000;
+        if (lateRepeat_)
+            return false;
         out = KeyChanged{in.key.windowID, toKey(in.key.key), toModifiers(in.key.mod), in.key.down, in.key.repeat};
         return true;
     case SDL_EVENT_TEXT_INPUT:
+        if (std::exchange(lateRepeat_, false))
+            return false;
         out = TextInput{in.text.windowID, in.text.text ? in.text.text : ""};
         return true;
     case SDL_EVENT_TEXT_EDITING:

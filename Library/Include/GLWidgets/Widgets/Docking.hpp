@@ -313,6 +313,8 @@ private:
     };
 
     Widget* node() const;                   // its first child: the root of the tree
+    // Its tree's least (each stack's, each split's), with its padding.
+    Size leastSize() const override;
     DockTabs* firstTabs() const;
     DockingHost* host() const;
     // A host that places windows: windows follow the mouse, and a tab is looked for in all of them.

@@ -147,3 +147,16 @@ TEST(aCollapsiblePanelsHeaderButtonsHaveTheStylesSizeAndRoom) {
     CHECK(std::abs(at(more).x - (at(add).x + s.actionSize) - s.actionMargin) < 0.5f); // the room between them
     CHECK(std::abs(at(add).y + s.actionSize / 2 - s.headerHeight / 2) < 0.5f);        // in the middle of the header
 }
+
+// A panel with nothing in it: closed, not opened by a click nor by setExpanded; open again as it was once it has something.
+TEST(aPanelThatIsNotExpandableStaysClosed) {
+    Panelled p(true);
+    CHECK(p.panel->expanded());
+    p.panel->setExpandable(false, false);
+    CHECK(!p.panel->expanded() && !p.panel->expandable() && near(p.height(), 30));
+    p.click({150, 15});                     // the header
+    p.panel->setExpanded(true, false);
+    CHECK(!p.panel->expanded() && p.toggled.empty() && near(p.height(), 30));
+    p.panel->setExpandable(true, false);
+    CHECK(p.panel->expanded() && near(p.height(), 138));
+}

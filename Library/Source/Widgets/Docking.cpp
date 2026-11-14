@@ -1596,6 +1596,17 @@ void DockArea::makeButtons() {
     buttons_ = &addChild(std::move(buttons));       // last: over the node
 }
 
+Size DockArea::leastSize() const {
+    Size least = minimumSize();
+    if (const Widget* n = node()) {
+        const Size tree = n->leastSize();
+        const Insets m = n->margin(), p = padding();
+        least.width = std::max(least.width, tree.width + m.horizontal() + p.horizontal());
+        least.height = std::max(least.height, tree.height + m.vertical() + p.vertical());
+    }
+    return least;
+}
+
 void DockArea::arrangeContent(const Rect& content) {
     const bool rtl = rightToLeft();
     Widget* n = node();

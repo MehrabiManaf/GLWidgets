@@ -22,6 +22,8 @@ public:
     virtual Size measure(Widget& widget, Size available) = 0;
     // Arranges the children of `widget` in `content` (the widget's coordinates).
     virtual void arrange(Widget& widget, const Rect& content) = 0;
+    // The least the children of `widget` need together (without its padding): none by default.
+    virtual Size leastSize(const Widget& widget) const;
 };
 
 enum class Orientation : std::uint8_t { Horizontal, Vertical };
@@ -34,6 +36,9 @@ public:
 
     Size measure(Widget& widget, Size available) override;
     void arrange(Widget& widget, const Rect& content) override;
+    // Along it, each child's least - a child that does not stretch, its desired length (what it gives up only when the
+    // others have none left to give) - and the spacing; across, the most of them.
+    Size leastSize(const Widget& widget) const override;
 
     Orientation orientation() const { return orientation_; }
     float spacing() const { return spacing_; }

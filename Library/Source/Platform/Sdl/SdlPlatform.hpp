@@ -57,6 +57,9 @@ private:
     std::function<void(WindowId)> exposeHandler_;
     std::function<void(WindowId)> moveHandler_;
     mutable Uint64 preciseWheel_ = 0;       // when the wheel last turned by a fraction of a step (nanoseconds)
+    // A key's repeat that comes long after it was due (made up at once for a while the program did not read its events:
+    // Wayland's repeats are SDL's own), and the text it types: dropped
+    mutable bool lateRepeat_ = false;
     bool watching_ = false;
     std::array<SDL_Cursor*, cursorCount> cursors_{};       // made the first time they are shown
     Cursor cursor_ = Cursor::Arrow;

@@ -124,10 +124,19 @@ protected:
             const Color mark = !item.enabled ? s.disabledText : chosen ? s.highlightText : s.mark;
             const float middle = row.y + row.height / 2;
             if (!item.icon.empty()) {
-                // its icon where the mark goes; checked, on a soft square
+                // its icon where the mark goes; checked, on a key pressed in (a style's of reliefs: sunk into the menu as
+                // its highlight is raised on it), or on a square of the highlight's color with its edge
                 const float x = rtl ? width - textInset - markRoom / 2 : textInset + markRoom / 2 - 2;
-                if (item.checked.value_or(false))
-                    p.fillRoundedRect({x - 10, middle - 10, 20, 20}, s.cornerRadius, chosen ? withAlpha(s.highlightText, 0.22f) : withAlpha(s.highlight, 0.30f));
+                if (item.checked.value_or(false)) {
+                    const Rect key{x - 11, middle - 11, 22, 22};
+                    const float radius = std::min(s.cornerRadius, 6.0f);
+                    if (s.highlightBevel.relief > 0) {
+                        paintSunken(p, key, radius, chosen ? lit(s.highlight, -0.18f) : s.highlight, lit(s.highlight, -0.3f), s.highlightBevel);
+                    } else {
+                        p.fillRoundedRect(key, radius, chosen ? withAlpha(s.highlightText, 0.25f) : withAlpha(s.highlight, 0.45f));
+                        p.strokeRoundedRect(key, radius, 1, chosen ? withAlpha(s.highlightText, 0.6f) : s.highlight);
+                    }
+                }
                 // a monochrome one in the mark's color; one of its own colors faded when disabled
                 item.icon.draw(context, {x - 8, middle - 8, 16, 16},
                                item.icon.monochrome() ? mark : Color{1, 1, 1, item.enabled ? 1.0f : 0.35f});
