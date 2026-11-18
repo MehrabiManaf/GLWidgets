@@ -30,6 +30,12 @@ std::size_t codePointBytes(const std::string& s, int count) {
     return i;
 }
 
+// The width of a line's text with the spaces it ends with (a layout's size leaves them out): typed at its end, they are
+// room the caret goes past.
+float typedWidth(const text::TextLayout& layout) {
+    return std::max(layout.size().width, layout.caret(layout.text().size()).top.x);
+}
+
 // One line: line feeds of pasted text become spaces.
 std::string oneLine(std::string text) {
     std::erase(text, '\r');
@@ -184,7 +190,7 @@ Point LineEdit::textOrigin() {
     const text::TextLayout* layout = textLayout();
     if (!layout)
         return {content_.x, content_.y};
-    const Size size = layout->size();
+    const Size size{typedWidth(*layout), layout->size().height};
     // its line's height in the middle: the caret and the selection, which span it (its letters are moved by its optical
     // offset where they are drawn)
     const float y = content_.y + (content_.height - size.height) / 2;
@@ -216,7 +222,7 @@ void LineEdit::scrollToCaret() {
     const text::TextLayout* layout = textLayout();
     if (!layout)
         return;
-    const float width = layout->size().width, room = content_.width;
+    const float width = typedWidth(*layout), room = content_.width;
     if (width <= room) {
         scroll_ = 0;
         return;

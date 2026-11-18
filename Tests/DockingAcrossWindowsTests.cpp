@@ -1337,3 +1337,89 @@ TEST(aTabDraggedAlongItsBarMovesAmongTheOthers) {
     CHECK(screen.all.size() == 1 && t.graph->count() == 3);
     CHECK(t.graph->indexOf("graph") == 2u && t.graph->indexOf("props") == 0u && t.graph->indexOf("notes") == 1u);
 }
+
+namespace {
+
+// The point of `area`'s guide at its bottom edge, in its window.
+Point bottomEdge(const DockArea& area) {
+    const Point at = area.mapToRoot({});
+    return {at.x + area.size().width / 2, at.y + area.size().height - 10 - 14};
+}
+
+// The panel `id`'s tab dragged out of its floating window `w`, the system's drag from then on, and let go at `local`
+// (`w`'s coordinates).
+void systemDropInto(Screen& screen, Screen::Win& w, const DockArea& area, const std::string& id, Point local) {
+    const Point tab = panelTab(screen, area, id);
+    screen.press(w, tab);
+    screen.moveTo(w, {tab.x + 10, tab.y});
+    screen.moveTo(w, {tab.x + 900, tab.y + 900});
+    CHECK(screen.systemDrag.has_value());
+    if (!screen.systemDrag)
+        return;
+    const DockingHost::SystemDrag drag = *std::exchange(screen.systemDrag, std::nullopt);
+    drag.moved(w.root.get(), local);
+    drag.ended(w.root.get(), local);
+    screen.closeWindows();
+    screen.layout();
+}
+
+} // namespace
+
+TEST(aPanelDroppedOnTheEdgeOfTheSplitItLeavesGoesAlongAllOfIt) {
+    // where windows are not placed, dragged in its window: the split of the palette and it gives way to the palette
+    Screen screen;
+    screen.places = false;
+    Tools t(screen, {0, 0});
+    screen.drag(*t.window, panelTab(screen, *t.area, "graph"), bottomEdge(*t.area) + t.window->position);
+    DockTabs* graph = t.area->tabsOf("graph");
+    const auto* split = graph ? dynamic_cast<const DockSplit*>(graph->parent()) : nullptr;
+    CHECK(split && split->parent() == t.area && split->orientation() == Orientation::Vertical);
+    CHECK(split && split->children().size() == 2 && split->children().back().get() == graph);
+    CHECK(split && split->children().size() == 2 && split->children().front().get() == t.area->tabsOf("palette"));
+}
+
+TEST(aFloatingWindowsOnlyPanelDraggedOverItGoesNowhere) {
+    Screen screen;
+    screen.places = false;
+    Tools t(screen, {0, 0});
+    screen.drag(*t.window, panelTab(screen, *t.area, "palette"), {1200, 300});
+    CHECK(screen.all.size() == 2);
+    Screen::Win& floating = *screen.all.front();
+    DockArea* area = t.area->tabsOf("palette")->area();
+    CHECK(area && area->floating());
+    if (!area)
+        return;
+
+    // the system's drag over its own window's edge, let go there: no guide there, the panel stays as it is
+    screen.carries = true;
+    systemDropInto(screen, floating, *area, "palette", bottomEdge(*area));
+    CHECK(screen.all.size() == 2 && !screen.closing(*floating.root));
+    DockTabs* palette = t.area->tabsOf("palette");
+    CHECK(palette && palette->area() == area && palette->parent() == area && palette->count() == 1);
+}
+
+TEST(aPanelOfAFloatingWindowDroppedOnItsEdgeGoesAlongAllOfIt) {
+    Screen screen;
+    screen.places = false;
+    Tools t(screen, {0, 0});
+    screen.drag(*t.window, panelTab(screen, *t.area, "palette"), {1200, 300});
+    Screen::Win& floating = *screen.all.front();
+    DockArea* area = t.area->tabsOf("palette")->area();
+    CHECK(area && area->floating());
+    if (!area)
+        return;
+    // a second panel in it, beside the palette (the window wide enough for their tabs and its buttons)
+    area->addPanel(panel("messages"), area->tabsOf("palette"), DockSide::End, 0.5f);
+    floating.root->setSize({600, 560});
+    screen.layout();
+
+    // the messages' tab by the system's drag onto the window's bottom edge: the window's split gives way to the palette
+    screen.carries = true;
+    systemDropInto(screen, floating, *area, "messages", bottomEdge(*area));
+    CHECK(screen.all.size() == 2 && !screen.closing(*floating.root));
+    DockTabs* log = t.area->tabsOf("messages");
+    const auto* split = log ? dynamic_cast<const DockSplit*>(log->parent()) : nullptr;
+    CHECK(log && log->area() == area);
+    CHECK(split && split->parent() == area && split->orientation() == Orientation::Vertical);
+    CHECK(split && split->children().size() == 2 && split->children().front().get() == t.area->tabsOf("palette"));
+}

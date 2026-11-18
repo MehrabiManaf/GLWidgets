@@ -1308,7 +1308,11 @@ void DockArea::move(const std::string& id, Widget& target, DockSide side, bool r
     auto* stack = dynamic_cast<DockTabs*>(&target);
     if (!source || (side == DockSide::Center && (!stack || stack == source)))
         return;
+    if (stack == source && source->count() == 1)
+        return;             // beside itself: where it is
     DockArea* from = source->area();
+    // the target's window, read now: the target may go with what the panel leaves (a split of one giving way to the rest)
+    const UiRoot* targetRoot = target.root();
     // where it is on the screen: a panel docked from a floating window comes from there
     const std::optional<Rect> was = screenRect(*source);
     DockPanel panel = source->take(*source->indexOf(id));
@@ -1326,8 +1330,8 @@ void DockArea::move(const std::string& id, Widget& target, DockSide side, bool r
     }
     prune(*source);         // after: a split it leaves may give way to the target
     from->closeIfEmpty();
-    if (DockingHost* h = group_->host; raise && h && target.root() && target.root() != root())
-        h->raiseWindow(*target.root());
+    if (DockingHost* h = group_->host; raise && h && targetRoot && targetRoot != root())
+        h->raiseWindow(*targetRoot);
 }
 
 DockArea* DockArea::floatPanels(const std::vector<std::string>& ids, const std::string& shown, Point position, Size size, bool focus) {
@@ -1910,6 +1914,13 @@ void DockArea::showDrop(const UiRoot* over, Point at, DockArea* shown) {
         shown->clearDrop();
     if (!area)
         return;
+    // an area (of no center) with nothing but what is dragged, its own window over (a floating one, where the system
+    // carries the drag and the window stays): nowhere they could go in it
+    if (!drag_->window && !area->center_ && drag_->source && drag_->source->area() == area && area->panelCount() <= drag_->ids.size()) {
+        if (shown == area)
+            area->clearDrop();
+        return;
+    }
 
     // the guides at the area's edges: on one, along that edge of all of it (on a stack's tabs: into the stack, first)
     const auto* barOf = dynamic_cast<const DockTabs*>(node);
