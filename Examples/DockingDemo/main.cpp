@@ -42,7 +42,7 @@
 
 namespace {
 
-// The window's area over a dark wallpaper: a deep gradient and a few soft glows of color, to see glass over (the Glass
+// The window's area over a wallpaper: a gradient and a few soft glows of color, to see glass over (the Glass
 // style's panels and controls blur what is under them).
 class Wallpapered final : public glw::DockArea {
 public:
@@ -52,7 +52,11 @@ protected:
     void paint(glw::PaintContext& context) override {
         glw::paint::Painter& p = context.painter;
         const glw::Size s = size();
-        p.fillRoundedRect({0, 0, s.width, s.height}, 0, glw::Color{0.05f, 0.06f, 0.09f, 1}, glw::Color{0.02f, 0.02f, 0.04f, 1});
+        const auto& theme = context.ui.theme;
+        const bool dark = theme.isDark();
+        const auto top = dark ? glw::Color{0.05f, 0.06f, 0.09f, 1} : theme.palette.window;
+        const auto bottom = dark ? glw::Color{0.02f, 0.02f, 0.04f, 1} : theme.palette.titleBar;
+        p.fillRoundedRect({0, 0, s.width, s.height}, 0, top, bottom);
         // soft glows: blurred discs of color
         const struct {
             float x, y, r;
@@ -61,7 +65,10 @@ protected:
                      {0.55f, 0.75f, 0.25f, {0.10f, 0.75f, 0.60f, 0.40f}}, {0.90f, 0.80f, 0.16f, {0.95f, 0.65f, 0.15f, 0.40f}}};
         for (const auto& g : glows) {
             const float r = g.r * std::max(s.width, s.height);
-            p.drawShadow({g.x * s.width - r, g.y * s.height - r, 2 * r, 2 * r}, r, r * 0.8f, g.color);
+            auto tint = g.color;
+            if (!dark)
+                tint.a *= 0.35f;
+            p.drawShadow({g.x * s.width - r, g.y * s.height - r, 2 * r, 2 * r}, r, r * 0.8f, tint);
         }
         // a fine grid of lines, faint
         for (float x = 0; x < s.width; x += 24)

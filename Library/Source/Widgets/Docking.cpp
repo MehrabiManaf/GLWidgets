@@ -798,9 +798,10 @@ void DockTabs::arrive(std::chrono::milliseconds duration, bool fromBehind, std::
     landingMotion_ = LandingMotion::Cascade;
     risingMotion_ = RisingMotion::FromBehind;
     if (ui->theme.dock.variedArrivals) {
-        const int pick = randomWay(3);
-        landingMotion_ = static_cast<LandingMotion>(pick);
-        risingMotion_ = static_cast<RisingMotion>(pick);
+        if (fromBehind)
+            risingMotion_ = static_cast<RisingMotion>(randomWay(3));
+        else
+            landingMotion_ = static_cast<LandingMotion>(randomWay(4));
     }
     landing_.set(0);
     landing_.animateTo(ui->scheduler, 1, Duration(duration), Easing::Linear);

@@ -322,6 +322,7 @@ void PieChart::setFocus(std::vector<std::size_t> path) {
     // from what shows now
     fromLow_ = lastLow_;
     fromHigh_ = lastHigh_;
+    levelMotion_.redirect(zoom_.value(), focus_.size(), path.size());
     fromDepth_ = lastDepth_;
     fromRings_ = lastRings_;
     focus_ = std::move(path);
@@ -383,6 +384,7 @@ void PieChart::paint(PaintContext& context) {
     const std::vector<PieSlice>* parts = partsOf(focus_);
     const float toRings = static_cast<float>(props_.rings > 0 ? props_.rings : std::clamp(parts ? ringsUnder(*parts) : 1, 1, mostRings));
     const float z = zoom_.value();
+    const float levelLift = solidPieces() ? levelMotion_.amount(z) : 0;
     const double low = fromLow_ + (toLow - fromLow_) * z, high = fromHigh_ + (toHigh - fromHigh_) * z;
     const float depth = fromDepth_ + (static_cast<float>(focus_.size()) - fromDepth_) * z;
     const float rings = fromRings_ + (toRings - fromRings_) * z;
@@ -432,7 +434,7 @@ void PieChart::paint(PaintContext& context) {
         if (raised)
             color = mix(color, Color{1, 1, 1, color.a}, 0.10f);
         // (higher under the mouse); coming in, one after another around (flat, the first way sweeps around instead)
-        const paint::Painter::Mark mark = coming || lifts ? p.markHere() : paint::Painter::Mark{};
+        const paint::Painter::Mark mark = coming || lifts || levelLift != 0 ? p.markHere() : paint::Painter::Mark{};
         paintArc(p, at, r0, r1, a0, sweep, gap, color, raised ? 1.6f : 1.0f);
         shown_.push_back({k, r0, r1, a0, sweep, at});
         // its share of what shows in it, where it fits
@@ -451,6 +453,8 @@ void PieChart::paint(PaintContext& context) {
             placeLifted(p, mark, pieceLift(item.key), {middlePoint.x - extent / 2, middlePoint.y - extent / 2, extent, extent},
                         piecePress(item.key));
         }
+        if (levelLift != 0)
+            tiltLevelPiece(p, mark, at + direction * ((r0 + r1) / 2), {-direction.y, direction.x}, levelLift);
         if (coming && (entranceWay() != 0 || solidPieces())) {
             const float order = static_cast<float>(((item.from + item.to) / 2 - low) / (high - low));
             // (as large as the slice is, about: how far it comes from)

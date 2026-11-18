@@ -107,11 +107,11 @@ Palette Palette::dark(ThemeStyle style) {
 Palette Palette::light(ThemeStyle style) {
     if (style == ThemeStyle::Fluid) {
         return {
-            .window = hex(0xF2F3F5),
-            .layer = hex(0xFFFFFF),
-            .surface = hex(0xFFFFFF),
-            .base = hex(0xFFFFFF),
-            .titleBar = hex(0xE8EAED),
+            .window = hex(0xE1E3E5),
+            .layer = hex(0xEBEDEF),
+            .surface = hex(0xF3F4F5),
+            .base = hex(0xF8F9FA),
+            .titleBar = hex(0xD5D7DA),
             .text = hex(0x16181B),
             .mutedText = hex(0x5E6570),
             .disabledText = hex(0xA9AEB6),
@@ -127,11 +127,11 @@ Palette Palette::light(ThemeStyle style) {
     }
     if (style == ThemeStyle::Metal) {
         return {
-            .window = hex(0xD3D6DA),
-            .layer = hex(0xE0E3E6),
-            .surface = hex(0xC6CBD1),
-            .base = hex(0xF2F3F5),
-            .titleBar = hex(0xC4C8CD),
+            .window = hex(0xCBCED2),
+            .layer = hex(0xDBDEE1),
+            .surface = hex(0xBCC1C7),
+            .base = hex(0xEBECEE),
+            .titleBar = hex(0xBCC0C5),
             .text = hex(0x1C1F23),
             .mutedText = hex(0x565D66),
             .disabledText = hex(0x9AA0A8),
@@ -147,11 +147,11 @@ Palette Palette::light(ThemeStyle style) {
     }
     if (style == ThemeStyle::Plain) {
         return {
-            .window = hex(0xECECEC),
-            .layer = hex(0xF4F4F4),
-            .surface = hex(0xFAFAFA),
-            .base = hex(0xFFFFFF),
-            .titleBar = hex(0xDFDFDF),
+            .window = hex(0xDDDDDD),
+            .layer = hex(0xE8E8E8),
+            .surface = hex(0xF1F1F1),
+            .base = hex(0xF8F8F8),
+            .titleBar = hex(0xCFCFCF),
             .text = hex(0x1E1E1E),
             .mutedText = hex(0x606060),
             .disabledText = hex(0xA8A8A8),
@@ -166,11 +166,11 @@ Palette Palette::light(ThemeStyle style) {
         };
     }
     return {
-        .window = hex(0xE7E9EC),
-        .layer = hex(0xF2F3F5),
-        .surface = hex(0xF7F8F9),
-        .base = hex(0xFFFFFF),
-        .titleBar = hex(0xDBDEE3),
+        .window = hex(0xDADCE0),
+        .layer = hex(0xE6E7E9),
+        .surface = hex(0xEFF0F1),
+        .base = hex(0xF7F8F9),
+        .titleBar = hex(0xCED1D6),
         .text = hex(0x1D2026),
         .mutedText = hex(0x5E6570),
         .disabledText = hex(0xA4AAB2),
@@ -240,11 +240,11 @@ Palette Palette::of(ColorScheme scheme, ThemeStyle style) {
         break;
     case ColorScheme::Sand:
         p = {
-            .window = hex(0xE9E2D4),
-            .layer = hex(0xF4EFE5),
-            .surface = hex(0xFAF7F0),
-            .base = hex(0xFFFDF8),
-            .titleBar = hex(0xDDD3C1),
+            .window = hex(0xDDD6C8),
+            .layer = hex(0xEAE5DB),
+            .surface = hex(0xF3F0E9),
+            .base = hex(0xF9F7F2),
+            .titleBar = hex(0xD2C8B6),
             .text = hex(0x2B251E),
             .mutedText = hex(0x6E6455),
             .disabledText = hex(0xAEA492),
@@ -359,7 +359,7 @@ Theme Theme::fromPalette(const Palette& p, ThemeStyle style) {
     const Color black{0, 0, 0, 1};
     const Color glow = withAlpha(p.accent, dark ? 0.45f : 0.35f);
     // lit from above: raised, a light line inside along the top and a soft shadow; sunken, a shadow inside along the top
-    const Bevel raised{.gradient = dark ? 0.05f : 0.07f, .highlight = withAlpha(white, dark ? 0.08f : 0.85f),
+    const Bevel raised{.gradient = dark ? 0.05f : 0.07f, .highlight = withAlpha(white, dark ? 0.08f : 0.58f),
                        .shadow = withAlpha(black, dark ? 0.30f : 0.10f)};
     const Bevel sunken{.highlight = withAlpha(white, dark ? 0.045f : 0.6f), .shadow = withAlpha(black, dark ? 0.30f : 0.07f)};
 
@@ -424,9 +424,9 @@ Theme Theme::fromPalette(const Palette& p, ThemeStyle style) {
     t.dock.border = dark ? withAlpha(black, 0.35f) : withAlpha(black, 0.10f);
     t.dock.separator = dark ? withAlpha(black, 0.30f) : withAlpha(black, 0.07f);
     t.dock.tab = {.normal = clear, .hovered = p.hover, .pressed = p.pressed};
-    t.dock.selectedTab = dark ? lit(p.layer, 0.09f) : lit(p.layer, 0.7f);
+    t.dock.selectedTab = dark ? lit(p.layer, 0.09f) : lit(p.layer, 0.36f);
     t.dock.selectedTabBorder = dark ? withAlpha(black, 0.45f) : withAlpha(black, 0.16f);
-    t.dock.selectedTabHighlight = withAlpha(white, dark ? 0.08f : 0.9f);
+    t.dock.selectedTabHighlight = withAlpha(white, dark ? 0.08f : 0.65f);
     t.dock.activeLine = p.accent;
     t.dock.splitter = t.splitter;
     t.dock.splitter.handle = clear;          // the gap shows the window: no line
@@ -800,7 +800,7 @@ void Theme::plastic(Theme& t, bool dark) {
     t.lighting = {.x = -0.42f, .y = -0.62f, .z = 0.66f,
                   .ambient = dark ? 0.58f : 0.64f,
                   .diffuse = dark ? 0.42f : 0.36f,
-                  .specular = dark ? 0.42f : 0.50f,
+                  .specular = dark ? 0.42f : 0.38f,
                   .shininess = 42,
                   .rimShadow = dark ? 0.45f : 0.30f};
 }

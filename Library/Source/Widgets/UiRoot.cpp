@@ -293,6 +293,8 @@ void paintArriving(paint::Painter& painter, const paint::Painter::Mark& mark, co
             painter.unfoldIn(mark, arrival.progress, area, arrival.hinge);
         else
             painter.riseIn(mark, arrival.progress, area);
+    } else if (arrival.landing == LandingMotion::Glide) {
+        painter.glideIn(mark, arrival.progress, area, arrival.from.value_or(area));
     } else if (arrival.from && arrival.landing == LandingMotion::Swing) {
         painter.swingIn(mark, arrival.progress, area, *arrival.from);
     } else if (arrival.from && arrival.landing == LandingMotion::Gather) {

@@ -634,6 +634,21 @@ void Painter::swingIn(const Mark& mark, float t, const Rect& area, const Rect& f
     place(mark, hinge, lifted);
 }
 
+void Painter::glideIn(const Mark& mark, float t, const Rect& area, const Rect& from) {
+    if (t >= 1 || area.empty() || from.empty())
+        return;
+    const float progress = smooth01(t);
+    const float arc = 4 * progress * (1 - progress);
+    const Point center = area.center();
+    const float fit = std::min(from.width / area.width, from.height / area.height);
+    const Lifted glide{.lift = std::min(16.0f, area.height * 0.05f) * arc,
+                       .turn = towardLight(0.08f * arc),
+                       .shift = (from.center() - center) * (1 - progress),
+                       .scale = fit + (1 - fit) * progress};
+    placeClips(mark, center, glide);
+    place(mark, center, glide);
+}
+
 void Painter::gatherIn(const Mark& mark, float t, const Rect& area, const Rect& from) {
     t = std::clamp(t, 0.0f, 1.0f);
     if (t >= 1 || area.empty() || from.empty())

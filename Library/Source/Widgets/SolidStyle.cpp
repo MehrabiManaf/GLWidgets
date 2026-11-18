@@ -96,7 +96,7 @@ void Theme::solid(Theme& t, bool dark) {
     // panels docked from a floating window fall into their places; floated, they rise into their window from behind it
     t.dock.landing = std::chrono::milliseconds(750);
     t.dock.rising = std::chrono::milliseconds(500);
-    t.dock.variedArrivals = true;           // each one of three ways, at random
+    t.dock.variedArrivals = true;           // vary the arrival on each docking operation
     // a chart's bars, tiles and slices (solids) coming in a little slower than the rest: one after another, in space
     t.chart.entrance = std::chrono::milliseconds(1100);
 }

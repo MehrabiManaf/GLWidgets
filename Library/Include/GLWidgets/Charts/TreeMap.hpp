@@ -88,7 +88,7 @@ private:
     // Its tiles laid out in `area`, for the node of `path` and the levels under it.
     void layOut(const TreeMapNode& node, std::vector<std::size_t>& path, const std::string& key, Rect area, int level,
                 Color color, std::vector<Tile>& out) const;
-    void changed(bool eased);
+    void changed(std::size_t oldDepth);
     Rect shownRect(const Tile& tile) const;
     std::string format(double value) const;
     float headerHeight() const;
@@ -102,6 +102,7 @@ private:
     bool eased_ = false;                                // the next layout eased to from what shows
     std::unordered_map<std::string, Rect> from_;        // where the tiles were when it changed
     Animation progress_;
+    LevelMotion levelMotion_;
     std::optional<Point> mouse_;
     std::optional<std::size_t> hovered_;                // in tiles_
     struct Crumb {

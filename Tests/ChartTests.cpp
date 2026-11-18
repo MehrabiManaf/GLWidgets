@@ -1536,6 +1536,53 @@ TEST(aChartsPiecesComeInWhenItFirstShowsThemAndWhenAskedAgain) {
     tests::testScheduler().setAnimationsEnabled(false);
 }
 
+TEST(solidChartsLiftOnDrillDownAndRecedeOnReturn) {
+    UiContext& ui = tests::testContext();
+    const Theme saved = ui.theme;
+    ui.theme = Theme::dark(ThemeStyle::Solid);
+    tests::testScheduler().setAnimationsEnabled(true);
+    {
+        Shown<PieChart> pie;
+        pie.chart->setSlices({group("folder", {leaf("a", 3), leaf("b", 2)}), leaf("c", 1)});
+        Shown<TreeMap> tree;
+        TreeMapNode folder{.label = "folder", .children = {{.label = "a", .value = 3}, {.label = "b", .value = 2}}};
+        tree.chart->setRoot({.label = "root", .children = {folder, {.label = "c", .value = 1}}});
+        const auto checkZoom = [&](auto& view) {
+            view.paint();
+            tests::advance(std::chrono::seconds(3));
+            view.paint();
+            // Once the first values have arrived, the chart can start its entrance.
+            tests::advance(std::chrono::seconds(3));
+            view.paint();
+            const auto front = [&] {
+                paint::DrawList list;
+                view.root.paint(list);
+                float highest = -1e6f;
+                for (const auto& vertex : list.sceneVertices)
+                    highest = std::max(highest, vertex.center[2]);
+                CHECK(!list.sceneVertices.empty());
+                return highest;
+            };
+            view.chart->setFocus({0});
+            view.paint();
+            tests::advance(ui.theme.motion.normal);
+            CHECK(front() > 0);
+            tests::advance(std::chrono::seconds(2));
+            CHECK(front() <= 0);
+            CHECK(view.chart->zoomOut());
+            view.paint();
+            tests::advance(ui.theme.motion.normal);
+            CHECK(front() < -5);
+            tests::advance(std::chrono::seconds(2));
+            CHECK(front() > -5);
+        };
+        checkZoom(pie);
+        checkZoom(tree);
+    }
+    tests::testScheduler().setAnimationsEnabled(false);
+    ui.theme = saved;
+}
+
 TEST(aGaugeAHistogramAndARaceComeInAsTheOtherChartsDo) {
     tests::testScheduler().setAnimationsEnabled(true);
     {

@@ -6,6 +6,7 @@
 #include "Check.hpp"
 #include "TestUi.hpp"
 
+#include <GLWidgets/Charts/Gauge.hpp>
 #include <GLWidgets/Paint/DrawList.hpp>
 #include <GLWidgets/Widgets/Docking.hpp>
 #include <GLWidgets/Widgets/DockingHost.hpp>
@@ -1201,6 +1202,45 @@ TEST(somethingIsDraggedFromOneWindowToAnother) {
     CHECK((t.target->dropped == std::vector<std::string>{"A"}) && t.target->droppedAt == Point{70, 120});
     CHECK(!t.target->over && t.screen.captures == 0);
     CHECK((t.source->finished == std::vector<DropAction>{DropAction::Copy}));
+}
+
+TEST(aChartReplaysWhenShownAndWhenItsPanelFloatsOrDocks) {
+    struct TestGauge : Gauge {
+        using Chart::entranceProgress;
+    };
+    tests::testScheduler().setAnimationsEnabled(true);
+    Screen screen;
+    screen.context.theme = Theme::dark(ThemeStyle::Solid);
+    Tools t(screen, {0, 0});
+    auto content = std::make_unique<Widget>();
+    Widget& container = *content;
+    auto& gauge = container.add(std::make_unique<TestGauge>());
+    t.area->addPanel({"meter", LocalizedText("Meter"), std::move(content)}, t.graph);
+    paint::DrawList list;
+    const auto checkEntrance = [&] {
+        gauge.root()->paint(list);
+        CHECK(gauge.entranceProgress() == 0);
+        tests::advance(std::chrono::milliseconds(150));
+        gauge.root()->paint(list);
+        CHECK(gauge.entranceProgress() > 0 && gauge.entranceProgress() < 1);
+        tests::advance(std::chrono::seconds(2));
+        gauge.root()->paint(list);
+        CHECK(gauge.entranceProgress() == 1);
+    };
+    checkEntrance();
+    container.setVisible(false);
+    gauge.setVisible(false);
+    gauge.setVisible(true);
+    tests::advance(std::chrono::seconds(2));
+    container.setVisible(true);
+    checkEntrance();
+    t.area->toggleFloating("meter");
+    CHECK(gauge.root() != t.window->root.get());
+    checkEntrance();
+    t.area->tabsOf("meter")->area()->toggleFloating("meter");
+    CHECK(gauge.root() == t.window->root.get());
+    checkEntrance();
+    tests::testScheduler().setAnimationsEnabled(false);
 }
 
 TEST(aWindowThatClosesDuringADragIsLeftOut) {

@@ -148,6 +148,7 @@ private:
     double fromLow_ = 0, fromHigh_ = 1;
     float fromDepth_ = 0, fromRings_ = 1;
     Animation zoom_;
+    LevelMotion levelMotion_;
     std::vector<Shown> shown_;                          // as last painted
     std::vector<Item> painted_;
     std::unordered_map<std::string, std::unique_ptr<Animation>> out_;   // how far each slice is out (the one under the mouse)

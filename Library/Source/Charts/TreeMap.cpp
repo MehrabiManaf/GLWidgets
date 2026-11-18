@@ -105,26 +105,28 @@ void TreeMap::setRoot(TreeMapNode root) {
     for (const TreeMapNode* node = &root_; valid < focus_.size() && focus_[valid] < node->children.size(); ++valid)
         node = &node->children[focus_[valid]];
     focus_.resize(valid);
-    changed(true);
+    changed(focus_.size());
 }
 
 void TreeMap::setDepth(int depth) {
     props_.depth = std::max(1, depth);
-    changed(true);
+    changed(focus_.size());
 }
 
 void TreeMap::setFocus(std::vector<std::size_t> path) {
     if (!nodeOf(path) || path == focus_)
         return;
+    const auto oldDepth = focus_.size();
     focus_ = std::move(path);
-    changed(true);
+    changed(oldDepth);
 }
 
 bool TreeMap::zoomOut() {
     if (focus_.empty())
         return false;
-    focus_.pop_back();
-    changed(true);
+    auto parent = focus_;
+    parent.pop_back();
+    setFocus(std::move(parent));
     return true;
 }
 
@@ -153,13 +155,16 @@ const TreeMapNode* TreeMap::nodeOf(std::span<const std::size_t> path) const {
     return node;
 }
 
-void TreeMap::changed(bool eased) {
+void TreeMap::changed(std::size_t oldDepth) {
+    levelMotion_.redirect(stale_ ? 0.0f : progress_.value(), oldDepth, focus_.size());
     // from where they show now
-    from_.clear();
-    if (eased)
+    if (!stale_) {
+        decltype(from_) shown;
         for (const Tile& t : tiles_)
-            from_[t.key] = shownRect(t);
-    eased_ = eased;
+            shown.emplace(t.key, shownRect(t));
+        from_ = std::move(shown);
+    }
+    eased_ = true;
     stale_ = true;
     hovered_.reset();
     invalidatePaint();
@@ -295,6 +300,7 @@ void TreeMap::paint(PaintContext& context) {
     // as they are eased; one that fitted where its tile was and does not where it goes (or the other way) fades between,
     // cut by its tile meanwhile; the others stay as they are.
     const float progress = progress_.value();
+    const float levelLift = solidPieces() ? levelMotion_.amount(progress) : 0;
     const auto eased = [&](const Tile& t, auto&& fit) {
         const float to = fit(t.rect) ? 1.0f : 0.0f;
         if (progress >= 1)
@@ -367,10 +373,12 @@ void TreeMap::paint(PaintContext& context) {
             return;
         // coming in: from the start corner across, each tile with its name (by its own start corner: a group no later
         // than what is in it)
-        const paint::Painter::Mark mark = coming || lifts ? p.markHere() : paint::Painter::Mark{};
+        const paint::Painter::Mark mark = coming || lifts || levelLift != 0 ? p.markHere() : paint::Painter::Mark{};
         paintTile(i, t, r);
         if (lifts && !t.parent)
             placeLifted(p, mark, pieceLift(t.key), r, piecePress(t.key));       // (leaning where the mouse is on it)
+        if (levelLift != 0)
+            tiltLevelPiece(p, mark, r.center(), {1, 0}, levelLift);
         if (coming && area.width > 0 && area.height > 0) {
             const float across = ((rtl ? area.right() - r.right() : r.x - area.x)) / area.width;
             const float order = (across + (r.y - area.y) / area.height) / 2;

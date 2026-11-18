@@ -150,6 +150,8 @@ public:
     // from `from` (where it was, as fallIn takes it), swung down onto its place as a lid hinged on its top edge (a little
     // past flat, and back), growing to its size;
     void swingIn(const Mark& mark, float t, const Rect& area, const Rect& from);
+    // Move the panel as one slab from its previous bounds, lifting slightly during the glide.
+    void glideIn(const Mark& mark, float t, const Rect& area, const Rect& from);
     // ... its pieces scattered about where they were, each a little turned and nearer the camera, gathering into their
     // places one after another (its 2D showing as they come);
     void gatherIn(const Mark& mark, float t, const Rect& area, const Rect& from);

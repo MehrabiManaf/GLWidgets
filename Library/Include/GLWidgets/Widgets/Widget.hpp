@@ -126,7 +126,7 @@ struct TextEvent {
 // floating window, where it was in that window), moving from there to its place.
 // How what lands from somewhere comes (Painter::fallIn from it, swingIn, gatherIn); how what rises comes (Painter::riseIn,
 // popIn, turnIn, unfoldIn on its `hinge` edge).
-enum class LandingMotion : std::uint8_t { Cascade, Swing, Gather };
+enum class LandingMotion : std::uint8_t { Cascade, Swing, Gather, Glide };
 enum class RisingMotion : std::uint8_t { FromBehind, Pop, Turn, Unfold };
 
 struct Arrival {

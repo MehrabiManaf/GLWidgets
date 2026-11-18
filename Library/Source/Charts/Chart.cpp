@@ -105,6 +105,14 @@ void Chart::onStyleChanged() {
 
 void Chart::onRootChanged() {
     texts_.clear();
+    // Moving a panel detaches its subtree before attaching it to its destination.
+    if (!root() && entered_)
+        playEntrance();
+}
+
+void Chart::onVisibleChanged(bool visible) {
+    if (!visible && entered_)
+        playEntrance();
 }
 
 void Chart::onLanguageChanged() {
@@ -277,6 +285,24 @@ void Chart::paintArc(paint::Painter& p, Point at, float r0, float r1, float a0, 
     }
 }
 
+void Chart::LevelMotion::redirect(float progress, std::size_t oldDepth, std::size_t newDepth) {
+    from = amount(progress);
+    peak = newDepth > oldDepth ? 1.0f : newDepth < oldDepth ? -1.0f : 0.0f;
+}
+
+float Chart::LevelMotion::amount(float progress) const {
+    // Pass through the signed peak halfway through the zoom and settle flat at its end.
+    const bool rising = progress < 0.5f;
+    const float t = rising ? 2 * progress : 2 * progress - 1;
+    const float eased = t * t * (3 - 2 * t);
+    return rising ? from + (peak - from) * eased : peak * (1 - eased);
+}
+
+void Chart::tiltLevelPiece(paint::Painter& p, const paint::Painter::Mark& mark, Point pivot, Point axis, float amount) {
+    p.place(mark, p.transform().map(pivot), {.lift = 10 * amount,
+            .turn = paint::Quaternion::axisAngle({axis.x, axis.y, 0}, 0.09f * amount)});
+}
+
 // ---- its pieces coming in ----
 
 void Chart::playEntrance() {
@@ -295,7 +321,7 @@ void Chart::beginEntrance() {
         return;
     const UiContext* ui = context();
     const std::chrono::milliseconds own = style().entrance;
-    entranceWay_ = ui && ui->theme.motion.varied ? randomWay(solidPieces() ? 7 : 3) : 0;
+    entranceWay_ = ui && ui->theme.motion.varied ? randomWay(solidPieces() ? 8 : 3) : 0;
     entering_ = true;
     entrance_.set(0);
     entrance_.animateTo(scheduler(), 1, own.count() > 0 ? Duration(own) : normal * 4, Easing::Linear);
@@ -348,6 +374,15 @@ void Chart::placeArriving(paint::Painter& p, const paint::Painter::Mark& mark, f
     };
     if (solidPieces()) {
         switch (entranceWay_) {
+        case 7: {
+            // Settle onto the plot from just above it with the leading edge slightly raised.
+            const float remaining = 1 - smooth(u);
+            lifted = {.lift = std::min(18.0f, 5.0f + size * 0.08f) * remaining,
+                      .turn = paint::Quaternion::axisAngle({-way.y, way.x, 0}, 0.12f * remaining),
+                      .shift = way * (4.0f * remaining),
+                      .alpha = smooth(u / 0.22f)};
+            break;
+        }
         case 3: {
             // turning in from edge on about its upright middle, up off the plot over an arc and down again (a little past
             // facing, and back), the light sweeping across it as it turns
