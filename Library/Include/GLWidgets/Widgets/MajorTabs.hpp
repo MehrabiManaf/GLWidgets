@@ -33,6 +33,7 @@
 
 namespace glw {
 
+class DockingHost;
 class MajorTabStrip;
 
 class GLW_EXPORT MajorTabs : public Widget {
@@ -127,6 +128,9 @@ private:
     // Where a tab dropped at `point` would go: an index from 0 to the number of tabs, and its x on the strip.
     std::pair<std::size_t, float> slotAt(Point point) const;
     // The strip a dragged tab would go to (this one, another window's, or none), and where in it.
+    void updateDrag(Point point, bool allowSystemDrag);
+    void finishDrag(Point point);
+    void cancelSystemDrag();
     void setTarget(MajorTabStrip* target, Point point);
     void showInsertion(std::optional<float> x);
     // Where a tab let go at `point` (the root's) would open a window of its own: its position and size.
@@ -135,6 +139,8 @@ private:
     MajorTabs* tabs_;
     Widget* row_ = nullptr;
     std::optional<std::size_t> dragging_;
+    DockingHost* systemDragHost_ = nullptr;
+    MajorTabStrip* insertionSource_ = nullptr;
     bool movingWindow_ = false;         // the only tab dragged: the window follows the mouse
     bool systemMoving_ = false;         // the system moves the window, by its title bar
     Point grab_;                        // the mouse on the screen less the window's position, while it moves

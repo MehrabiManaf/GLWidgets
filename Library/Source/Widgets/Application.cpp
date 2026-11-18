@@ -688,6 +688,8 @@ struct Application::Impl final : DockingHost {
 
     std::optional<SystemDrag> systemDrag;
 
+    bool supportsSystemDrag() const override { return platform->supportsSystemDrag(); }
+
     bool startSystemDrag(const UiRoot& from, SystemDrag drag) override {
         Window* w = find(from);
         if (!w || !platform->startDrag(*w->window_))

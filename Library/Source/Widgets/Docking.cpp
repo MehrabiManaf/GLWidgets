@@ -896,7 +896,7 @@ void DockTabs::arrangeContent(const Rect& content) {
 void DockTabs::setTitleArea(bool title, float reserve, bool left) {
     // where the system places windows, it moves them too: there, the title is its caption
     const UiContext* ui = context();
-    const bool system = title && ui && ui->docking && !ui->docking->placesWindows();
+    const bool system = title && ui && ui->docking && !ui->docking->placesWindows() && !ui->docking->supportsSystemDrag();
     const platform::HitArea caption = system ? platform::HitArea::Caption : platform::HitArea::Client;
     bar_->setWindowArea(caption);
     setWindowArea(caption);
@@ -1718,6 +1718,10 @@ void DockArea::beginTitleDrag() {
         for (std::size_t i = 0; i < tabs.count(); ++i)
             ids.push_back(tabs.panelId(i));
     });
+    if (!h->placesWindows()) {
+        startDrag(*first, std::move(ids), first->panelId(first->active()));
+        return;
+    }
     drag_ = Drag{first, std::move(ids), first->panelId(first->active())};
     drag_->window = r;
     drag_->grab = h->mouseOnScreen() - h->windowPosition(*r);
@@ -1766,7 +1770,7 @@ void DockArea::onMouse(MouseEvent& event) {
         if (!tabs || tabs == center_)
             return;         // (a center stack's bar: its documents are not floated as one)
         const bool window = floating_ && tabs->title_;
-        if (window && !placesWindows())
+        if (window && !placesWindows() && (!host() || !host()->supportsSystemDrag()))
             return;     // where the system places windows, it moves them by their title itself
         event.handled = true;
         if (window && event.clicks == 2) {

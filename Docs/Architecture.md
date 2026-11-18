@@ -1201,14 +1201,11 @@ So docking has two modes:
   of the application. A panel's window opens at once instead, shown without the focus (`NewWindow::focus`): the window
   dragged from keeps it, and with it the mouse, so the drag goes on (the dock area takes the mouse from the tab, which
   goes with its panel: `UiRoot::captureMouse`).
-- **Restricted** (Wayland, where `Platform::placesWindows` is false): a tab is dragged in its window only, with the same
-  guides and drops. Let go out of its window, a panel floats in a window the compositor places; a major tab opens in a
-  window of its own. No window follows the mouse and nothing is seen through: a floating window is moved by its title as
-  any window, by the compositor (its tab bars are its caption), and its float button docks its panel back. A tab dragged
-  out of its window is handed to the compositor as Wayland's own drag-and-drop (`Platform::startDrag`, `DockingHost::
-  startSystemDrag`): the application's other windows are told it is over them and where (`DragMoved`, `DragLeft`), so
-  that the same guides show there, and that it was let go (`DragDropped`): it docks there. Let go elsewhere (or
-  cancelled: `DragEnded`), it floats as before. On SDL's connection (`SDL_PROP_GLOBAL_VIDEO_WAYLAND_WL_DISPLAY_POINTER`),
+- **Restricted** (Wayland, where `Platform::placesWindows` is false): the compositor carries drags between windows.
+  Drop a major tab on another window's strip to merge it, or away from a strip to detach it. Drag a panel by its tab,
+  or a floating group by its title, onto a docking guide. The source window stays in place during the drag. Where the
+  native drag backend is unavailable, the floating title moves its window and the float button docks its panel back.
+  On SDL's connection (`SDL_PROP_GLOBAL_VIDEO_WAYLAND_WL_DISPLAY_POINTER`),
   GLWidgets binds its own seat, pointer (for the serial of the press a drag starts from) and data device, in a queue of
   its own (`Platform/Sdl/WaylandDrag.cpp`, built with wayland-client); the data is of its own kind and nothing is sent.
   A window that follows the mouse meanwhile would need `xdg-toplevel-drag` (KDE Plasma's): not done.

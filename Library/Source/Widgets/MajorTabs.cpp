@@ -54,6 +54,8 @@ public:
         label_->setAlignment(Alignment::Start, Alignment::Center);
     }
 
+    void clearPress() { pressed_ = dragging_ = false; }
+
     void setActive(bool active) {
         active_ = active;
         invalidatePaint();
@@ -358,6 +360,10 @@ MajorTabStrip::MajorTabStrip(MajorTabs& tabs) : tabs_(&tabs) {
 }
 
 MajorTabStrip::~MajorTabStrip() {
+    cancelSystemDrag();
+    setTarget(nullptr, {});
+    if (insertionSource_)
+        insertionSource_->setTarget(nullptr, {});
     if (tabs_ && tabs_->strip_ == this)
         tabs_->strip_ = nullptr;
 }
@@ -373,6 +379,7 @@ void MajorTabStrip::onStyleChanged() {
 }
 
 void MajorTabStrip::rebuild() {
+    cancelSystemDrag();
     while (!row_->children().empty())
         row_->removeChild(*row_->children().back());
     if (!tabs_)
@@ -506,8 +513,23 @@ std::pair<Point, Size> MajorTabStrip::tearPlace(Point point) const {
     return {host->toScreen(*r, point) - grabbed, r->size()};
 }
 
+void MajorTabStrip::cancelSystemDrag() {
+    if (auto* host = std::exchange(systemDragHost_, nullptr)) {
+        host->cancelSystemDrag();
+        host->captureMouse(false);
+        if (UiRoot* r = root())
+            r->releaseMouse();
+        dragging_.reset();
+        setTarget(nullptr, {});
+    }
+}
+
 void MajorTabStrip::dragTo(Point point) {
-    if (!dragging_)
+    updateDrag(point, true);
+}
+
+void MajorTabStrip::updateDrag(Point point, bool allowSystemDrag) {
+    if (!dragging_ || systemDragHost_)
         return;
     UiRoot* r = root();
     DockingHost* host = dockingOf(*this);
@@ -532,7 +554,21 @@ void MajorTabStrip::dragTo(Point point) {
         return;
     }
     if (!host->placesWindows()) {
-        setTarget(nullptr, point);      // the other windows are not known where they are: out of the strip, a window of its own
+        setTarget(nullptr, point);
+        if (allowSystemDrag && host->startSystemDrag(*r, {
+                .moved = [this](const UiRoot* over, Point at) {
+                    setTarget(over ? stripAt(*over, at) : nullptr, at);
+                },
+                .ended = [this, point](const UiRoot* over, Point at) {
+                    systemDragHost_ = nullptr;
+                    setTarget(over ? stripAt(*over, at) : nullptr, at);
+                    if (UiRoot* source = root())
+                        source->releaseMouse();
+                    finishDrag(point);
+                }})) {
+            systemDragHost_ = host;
+            static_cast<MajorTab&>(*row_->children()[*dragging_]).clearPress();
+        }
         return;
     }
     const DockingHost::Hit hit = host->windowAt(host->toScreen(*r, point));
@@ -548,9 +584,13 @@ void MajorTabStrip::dragTo(Point point) {
 }
 
 void MajorTabStrip::endDrag(Point point) {
-    if (!dragging_)
+    if (!dragging_ || systemDragHost_)
         return;
-    dragTo(point);
+    updateDrag(point, false);
+    finishDrag(point);
+}
+
+void MajorTabStrip::finishDrag(Point point) {
     const std::size_t from = *dragging_;
     MajorTabStrip* target = target_;
     const Point at = targetPoint_;
@@ -636,12 +676,16 @@ void MajorTabStrip::endDrag(Point point) {
 }
 
 void MajorTabStrip::setTarget(MajorTabStrip* target, Point point) {
-    if (target != target_ && target_)
+    if (target != target_ && target_) {
+        target_->insertionSource_ = nullptr;
         target_->showInsertion(std::nullopt);
+    }
     target_ = target;
     targetPoint_ = point;
-    if (target_)
+    if (target_) {
+        target_->insertionSource_ = this;
         target_->showInsertion(target_->slotAt(point).second);
+    }
 }
 
 void MajorTabStrip::showInsertion(std::optional<float> x) {

@@ -142,6 +142,14 @@ void SdlPlatform::setMoveHandler(std::function<void(WindowId)> handler) {
         watching_ = SDL_AddEventWatch(&SdlPlatform::watch, this);
 }
 
+bool SdlPlatform::supportsSystemDrag() const {
+#ifdef GLW_HAVE_WAYLAND
+    return wayland_ != nullptr;
+#else
+    return false;
+#endif
+}
+
 bool SdlPlatform::startDrag(Window& from) {
 #ifdef GLW_HAVE_WAYLAND
     auto* window = dynamic_cast<SdlWindow*>(&from);

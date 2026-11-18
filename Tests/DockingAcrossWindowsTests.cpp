@@ -149,6 +149,7 @@ struct Screen final : DockingHost {
         return {};
     }
     void captureMouse(bool capture) override { captures += capture ? 1 : -1; }
+    bool supportsSystemDrag() const override { return carries; }
     bool startSystemDrag(const UiRoot&, SystemDrag drag) override {
         if (!carries)
             return false;
@@ -978,6 +979,26 @@ TEST(whereTheSystemCarriesDragsAPanelGoesIntoAnotherWindow) {
     }
 }
 
+TEST(theSystemCarriesTheLastMajorTabBackToAnotherStrip) {
+    Screen screen;
+    screen.places = false;
+    screen.carries = true;
+    Documents a(screen, {0, 0}, {"one"});
+    Documents b(screen, {1000, 0}, {"two"});
+    const Point from = majorTab(screen, *a.tabs, 0);
+    screen.press(*a.window, from);
+    screen.moveTo(*a.window, from + Point{0, 90});
+    CHECK(screen.systemDrag.has_value());
+    if (!screen.systemDrag)
+        return;
+    const auto drag = *std::exchange(screen.systemDrag, std::nullopt);
+    const Point at = majorTab(screen, *b.tabs, 0) - b.window->position;
+    drag.moved(b.window->root.get(), at);
+    drag.ended(b.window->root.get(), at);
+    screen.closeWindows();
+    CHECK(screen.all.size() == 1 && b.tabs->count() == 2 && screen.captures == 0);
+}
+
 TEST(whereWindowsAreNotPlacedAMajorTabOpensAWindowOfItsOwn) {
     Screen screen;
     screen.places = false;
@@ -1066,6 +1087,32 @@ TEST(whereWindowsAreNotPlacedAStacksTitleFloatsItsGroupOutOfTheWindow) {
     CHECK(screen.all.size() == 2);
     DockTabs* floated = g.area->tabsOf("palette");
     CHECK(floated && floated == g.area->tabsOf("inspector") && floated->area()->floating());
+}
+
+TEST(theSystemCarriesAFloatingGroupByItsTitle) {
+    Screen screen;
+    screen.places = false;
+    Grouped g(screen);
+    screen.drag(*g.window, titleOf(screen, *g.tools), {1500, 300});
+    screen.carries = true;
+    Screen::Win& floating = *screen.all.front();
+    floating.root->setSize({700, 480});
+    screen.layout();
+    DockTabs* stack = g.area->tabsOf("palette");
+    const Point title = titleOf(screen, *stack);
+    CHECK(floating.root->windowHitTest(title - floating.position) == platform::HitArea::Client);
+    screen.press(floating, title);
+    screen.moveTo(floating, title + Point{0, 20});
+    screen.moveTo(floating, title + Point{800, 100});
+    CHECK(screen.systemDrag.has_value());
+    if (!screen.systemDrag)
+        return;
+    const auto drag = *std::exchange(screen.systemDrag, std::nullopt);
+    const Point at = panelTab(screen, *g.area, "graph") - g.window->position;
+    drag.moved(g.window->root.get(), at);
+    drag.ended(g.window->root.get(), at);
+    screen.closeWindows();
+    CHECK(screen.all.size() == 1 && g.area->tabsOf("palette") == g.graph && g.area->tabsOf("inspector") == g.graph);
 }
 
 TEST(aFloatingWindowKeepsItsTabBar) {

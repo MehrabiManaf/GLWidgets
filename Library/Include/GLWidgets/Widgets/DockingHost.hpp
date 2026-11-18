@@ -49,6 +49,7 @@ public:
         std::function<void(const UiRoot* over, Point at)> moved;
         std::function<void(const UiRoot* over, Point at)> ended;
     };
+    virtual bool supportsSystemDrag() const { return false; }
     virtual bool startSystemDrag(const UiRoot& from, SystemDrag drag) { return false; }
     virtual void cancelSystemDrag() {}
 

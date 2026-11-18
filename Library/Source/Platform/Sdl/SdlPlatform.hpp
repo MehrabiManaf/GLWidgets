@@ -30,6 +30,7 @@ public:
     void setExposeHandler(std::function<void(WindowId)> handler) override;
     void setMoveHandler(std::function<void(WindowId)> handler) override;
     bool placesWindows() const override;
+    bool supportsSystemDrag() const override;
     bool startDrag(Window& from) override;
     Point mousePosition() const override;
     bool mouseHeld() const override;
