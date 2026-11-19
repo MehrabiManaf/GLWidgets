@@ -430,6 +430,7 @@ struct MotionStyle {
     // from under its header, falling flat one after another, or dropping in; a check box's mark (its checkDrop) dropping
     // in, turning in, or growing.
     bool varied = false;
+    bool variedMenus = false;           // menus can vary even when the other entrances are fixed
     // None of them: every motion at once (Plain).
     bool still() const { return fast.count() == 0 && normal.count() == 0 && slow.count() == 0 && scroll.count() == 0; }
 };

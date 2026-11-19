@@ -635,7 +635,7 @@ TEST(everyWayToComeStartsAwayAndEndsWhereItIs) {
 
 TEST(theSolidStyleVariesDockArrivals) {
     const Theme solid = Theme::dark(ThemeStyle::Solid);
-    CHECK(!solid.motion.varied && solid.dock.variedArrivals);
+    CHECK(!solid.motion.varied && solid.motion.variedMenus && solid.dock.variedArrivals);
     CHECK(solid.dock.landing == std::chrono::milliseconds(750) && solid.dock.rising == std::chrono::milliseconds(500));
     CHECK(solid.chart.entrance == std::chrono::milliseconds(380));
 }

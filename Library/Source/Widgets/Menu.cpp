@@ -311,7 +311,7 @@ private:
         UiRoot* opened = host->openPopup({.content = std::make_unique<MenuView>(items_[index].items, this, 0.0f, nullptr),
                                           .anchor = {corner.x, corner.y, size().width, rows_[index].height + 2 * s.padding},
                                           .placement = PopupPlacement::After,
-                                          .windowRadius = 0.0f});
+                                          .windowRadius = 0.0f, .menu = true});
         if (!opened)
             return;
         submenu_ = static_cast<MenuView*>(opened->content());
@@ -388,7 +388,7 @@ UiRoot* open(Widget& from, const Rect& anchor, std::vector<MenuItem> items, floa
     UiRoot* opened = host->openPopup({.content = std::make_unique<MenuView>(std::move(items), nullptr, minimumWidth, std::move(options.onClosed),
                                                                           std::move(options.onAcross)),
                                       .anchor = from.transformToRoot().map(anchor),
-                                      .windowRadius = 0.0f});       // a menu: square in every style
+                                      .windowRadius = 0.0f, .menu = true});       // a menu: square in every style
     if (!opened)
         return nullptr;
     opened->content()->focus();

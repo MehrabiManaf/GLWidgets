@@ -883,7 +883,8 @@ Window::Window(Application& app, PopupRequest request, Window& parent)
         // or (a style's) rising into its window, or landing in it
         entranceKind_ = request.modal ? ui.theme.motion.dialogEntrance : ui.theme.motion.popupEntrance;
         // which way (a style's that varies them): one of three at random; unfolding from the side toward its anchor
-        entranceWay_ = ui.theme.motion.varied && entranceKind_ != PopupEntrance::Slide ? randomWay(3) : 0;
+        const bool varied = ui.theme.motion.varied || (request.menu && ui.theme.motion.variedMenus);
+        entranceWay_ = varied && entranceKind_ != PopupEntrance::Slide ? randomWay(3) : 0;
         hinge_ = paint::Edge::Top;
         if (request.placement == PopupPlacement::Below)
             hinge_ = at.y >= request.anchor.y ? paint::Edge::Top : paint::Edge::Bottom;

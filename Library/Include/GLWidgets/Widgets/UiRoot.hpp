@@ -71,6 +71,7 @@ struct PopupRequest {
     // How round its window's corners are (where the system rounds windows); none: the theme's (WindowFrameStyle::
     // popupRadius). A menu's: square.
     std::optional<float> windowRadius;
+    bool menu = false;
 };
 
 // What a root asks of the window it is in.
