@@ -492,8 +492,8 @@ struct ChartStyle {
     float barRadius = 2;            // the corners of a bar, of a tile
     float gap = 2;                  // between tiles, slices, the bars of a stack
     Bevel barBevel;                 // bars and tiles, raised as the style's controls are
-    // its pieces (bars, tiles, slices) coming in when it first shows them (Chart::playEntrance): over this long; four
-    // times the theme's normal motion when 0 (none where there is no motion)
+    // its pieces (bars, tiles, slices) coming in when it first shows them (Chart::playEntrance): over this long; twice
+    // the theme's normal motion, up to 450 ms, when 0 (none where there is no motion)
     std::chrono::milliseconds entrance{0};
 };
 

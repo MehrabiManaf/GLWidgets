@@ -7,7 +7,9 @@
 #include "TestUi.hpp"
 
 #include <GLWidgets/Charts/Gauge.hpp>
+#include <GLWidgets/Charts/LineChart.hpp>
 #include <GLWidgets/Paint/DrawList.hpp>
+#include <GLWidgets/Paint/Painter.hpp>
 #include <GLWidgets/Widgets/Docking.hpp>
 #include <GLWidgets/Widgets/DockingHost.hpp>
 #include <GLWidgets/Widgets/MajorTabs.hpp>
@@ -280,11 +282,11 @@ struct Tools {
     DockTabs* graph = nullptr;
     Screen::Win* window = nullptr;
 
-    Tools(Screen& screen, Point position) {
+    Tools(Screen& screen, Point position, DockPanel palette = panel("palette")) {
         auto a = std::make_unique<DockArea>();
         area = a.get();
         graph = &area->addPanel(panel("graph"));
-        area->addPanel(panel("palette"), graph, DockSide::Start, 0.3f);
+        area->addPanel(std::move(palette), graph, DockSide::Start, 0.3f);
         window = &screen.open(std::move(a), position, {800, 600});
     }
 };
@@ -650,7 +652,7 @@ TEST(aPanelDockedBackLandsAsItsStyleSays) {
     for (const ThemeStyle style : {ThemeStyle::Studio, ThemeStyle::Solid, ThemeStyle::Glass}) {
         Screen screen;
         screen.context.theme = Theme::dark(style);
-        screen.context.theme.dock.variedArrivals = false;      // (the first ways: cascading, from behind)
+        screen.context.theme.dock.variedArrivals = false;          // exercise the cascading and rising alternatives
         Tools t(screen, {0, 0});
         const auto floatButton = [&](DockTabs& tabs) -> Point {
             const Widget& button = *tabs.children()[1]->children().back();
@@ -1204,7 +1206,7 @@ TEST(somethingIsDraggedFromOneWindowToAnother) {
     CHECK((t.source->finished == std::vector<DropAction>{DropAction::Copy}));
 }
 
-TEST(aChartReplaysWhenShownAndWhenItsPanelFloatsOrDocks) {
+TEST(aChartStaysReadableWhenShownAgainAndWhenItsPanelFloatsOrDocks) {
     struct TestGauge : Gauge {
         using Chart::entranceProgress;
     };
@@ -1217,29 +1219,64 @@ TEST(aChartReplaysWhenShownAndWhenItsPanelFloatsOrDocks) {
     auto& gauge = container.add(std::make_unique<TestGauge>());
     t.area->addPanel({"meter", LocalizedText("Meter"), std::move(content)}, t.graph);
     paint::DrawList list;
-    const auto checkEntrance = [&] {
-        gauge.root()->paint(list);
-        CHECK(gauge.entranceProgress() == 0);
-        tests::advance(std::chrono::milliseconds(150));
-        gauge.root()->paint(list);
-        CHECK(gauge.entranceProgress() > 0 && gauge.entranceProgress() < 1);
-        tests::advance(std::chrono::seconds(2));
+    const auto checkReady = [&] {
         gauge.root()->paint(list);
         CHECK(gauge.entranceProgress() == 1);
     };
-    checkEntrance();
+    gauge.root()->paint(list);
+    CHECK(gauge.entranceProgress() == 0);
     container.setVisible(false);
     gauge.setVisible(false);
     gauge.setVisible(true);
     tests::advance(std::chrono::seconds(2));
     container.setVisible(true);
-    checkEntrance();
+    checkReady();
     t.area->toggleFloating("meter");
     CHECK(gauge.root() != t.window->root.get());
-    checkEntrance();
+    checkReady();
     t.area->tabsOf("meter")->area()->toggleFloating("meter");
     CHECK(gauge.root() == t.window->root.get());
-    checkEntrance();
+    checkReady();
+    tests::testScheduler().setAnimationsEnabled(false);
+}
+
+TEST(reselectingAChartTabShowsThePlotImmediately) {
+    struct TestLine : LineChart {
+        using Chart::entranceProgress;
+    };
+    tests::testScheduler().setAnimationsEnabled(true);
+    Screen screen;
+    Tools t(screen, {0, 0});
+    auto line = std::make_unique<TestLine>();
+    auto& chart = *line;
+    auto& series = chart.addSeries({.name = "CPU"});
+    series.append(0, 1);
+    series.append(1, 2);
+    t.area->addPanel({"measures", LocalizedText("Measures"), std::move(line)}, t.graph);
+    paint::DrawList list;
+    const auto clickTab = [&](const char* id) {
+        const Point at = panelTab(screen, *t.area, id);
+        screen.press(*t.window, at);
+        screen.release(*t.window, at);
+        t.window->root->paint(list);
+    };
+    t.window->root->paint(list);
+    tests::advance(std::chrono::seconds(3));
+    clickTab("graph");
+    CHECK(!chart.visibleInTree());
+    tests::advance(std::chrono::seconds(3));
+    clickTab("measures");
+    CHECK(chart.visibleInTree() && chart.entranceProgress() == 1);
+    tests::advance(std::chrono::milliseconds(100));
+    t.window->root->paint(list);
+    CHECK(chart.entranceProgress() == 1);
+    clickTab("measures");
+    chart.playEntrance();
+    t.window->root->paint(list);
+    CHECK(chart.entranceProgress() == 0);
+    tests::advance(std::chrono::seconds(3));
+    t.window->root->paint(list);
+    CHECK(chart.entranceProgress() == 1);
     tests::testScheduler().setAnimationsEnabled(false);
 }
 
@@ -1283,8 +1320,13 @@ TEST(aFloatingWindowLetGoOnAGuideLandsFromWhereItWas) {
     tests::testScheduler().setAnimationsEnabled(true);
     Screen screen;
     screen.context.theme = Theme::dark(ThemeStyle::Solid);
-    screen.context.theme.dock.variedArrivals = false;          // (cascading)
-    Tools t(screen, {0, 0});
+    screen.context.theme.dock.variedArrivals = false;
+    struct Marker final : Widget {
+        void paint(PaintContext& context) override {
+            context.painter.drawBrick({.center = {60, 70, -2}, .halfSize = {14, 11, 2}, .color = {1, 0, 1, 1}, .shadow = 0});
+        }
+    };
+    Tools t(screen, {0, 0}, {"palette", LocalizedText("palette"), std::make_unique<Marker>()});
     screen.layout();
     screen.drag(*t.window, panelTab(screen, *t.area, "palette"), {1200, 300});
     Screen::Win& floating = *screen.all.front();
@@ -1305,15 +1347,24 @@ TEST(aFloatingWindowLetGoOnAGuideLandsFromWhereItWas) {
     screen.layout();
     paint::DrawList list;
     t.window->root->paint(list);
-    const paint::SceneVertex first = list.sceneVertices.front();
-    // landed: the stack's slab (its first brick) where it is, as large as the stack is wide
+    auto marker = [&] {
+        auto it = std::find_if(list.sceneVertices.begin(), list.sceneVertices.end(), [](const paint::SceneVertex& v) {
+            return v.color == paint::packColor({1, 0, 1, 1});
+        });
+        CHECK(it != list.sceneVertices.end());
+        return it == list.sceneVertices.end() ? paint::SceneVertex{} : *it;
+    };
+    const auto first = marker();
+    const auto slab = list.sceneVertices.front();
     tests::advance(screen.context.theme.dock.landing + std::chrono::milliseconds(50));
     t.window->root->paint(list);
-    const paint::SceneVertex landed = list.sceneVertices.front();
-    CHECK(std::abs(landed.halfSize[0] - t.graph->size().width / 2) < 1);
-    // at the start, seen from the camera: its part of the stack where that part was in the floating window (the stack made
-    // as small as fits in it, in its middle), as large
-    const Rect area{t.graph->mapToRoot({}).x, t.graph->mapToRoot({}).y, t.graph->size().width, t.graph->size().height};
+    const auto landed = marker();
+    const auto settledSlab = list.sceneVertices.front();
+    CHECK(std::equal(slab.center, slab.center + 3, settledSlab.center));
+    CHECK(std::equal(slab.halfSize, slab.halfSize + 3, settledSlab.halfSize));
+    const Widget& content = *t.graph->panelContent(t.graph->active());
+    const Point origin = content.mapToRoot({});
+    const Rect area{origin.x, origin.y, content.size().width, content.size().height};
     const float sx = std::min(was.width / area.width, was.height / area.height), sy = sx;
     const Point expected{was.center().x + (landed.center[0] - area.center().x) * sx, was.center().y + (landed.center[1] - area.center().y) * sy};
     const float eye = 0.9f * std::max(t.window->root->size().width, t.window->root->size().height);

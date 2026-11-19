@@ -633,8 +633,14 @@ TEST(everyWayToComeStartsAwayAndEndsWhereItIs) {
     CHECK(bottom < 174 && bottom > 140);
 }
 
-TEST(theSolidStyleVariesHowThingsCome) {
-    CHECK(Theme::dark(ThemeStyle::Solid).motion.varied && !Theme::dark(ThemeStyle::Plastic).motion.varied);
+TEST(theSolidStyleVariesDockArrivals) {
+    const Theme solid = Theme::dark(ThemeStyle::Solid);
+    CHECK(!solid.motion.varied && solid.dock.variedArrivals);
+    CHECK(solid.dock.landing == std::chrono::milliseconds(750) && solid.dock.rising == std::chrono::milliseconds(500));
+    CHECK(solid.chart.entrance == std::chrono::milliseconds(380));
+}
+
+TEST(randomWaySelectsAmongTheRequestedWays) {
     // one of the ways each time: all of them, in a while
     bool seen[3] = {};
     for (int i = 0; i < 200; ++i) {

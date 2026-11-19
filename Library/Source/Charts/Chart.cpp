@@ -105,14 +105,27 @@ void Chart::onStyleChanged() {
 
 void Chart::onRootChanged() {
     texts_.clear();
-    // Moving a panel detaches its subtree before attaching it to its destination.
-    if (!root() && entered_)
-        playEntrance();
+    if (!root())
+        finishEntrance();
 }
 
 void Chart::onVisibleChanged(bool visible) {
-    if (!visible && entered_)
-        playEntrance();
+    if (!visible)
+        finishEntrance();
+}
+
+void Chart::onPreviewMouse(MouseEvent& event) {
+    if (event.type == MouseEventType::Press || event.type == MouseEventType::Wheel)
+        finishEntrance();
+}
+
+void Chart::finishEntrance() {
+    if (!entering_ && !replayRequested_)
+        return;
+    entered_ = true;
+    entering_ = replayRequested_ = false;
+    entrance_.set(1);
+    invalidatePaint();
 }
 
 void Chart::onLanguageChanged() {
@@ -201,6 +214,26 @@ Rect Chart::paintFrame(PaintContext& context) {
         area.height = std::max(0.0f, area.height - height);
     }
     return area;
+}
+
+Chart::PlotReveal::PlotReveal(Chart& chart, paint::Painter& painter, Rect area) {
+    if (area.empty())
+        return;
+    chart.beginEntrance();
+    const float progress = chart.entranceProgress();
+    if (progress >= 1)
+        return;
+    const float width = area.width * progress;
+    if (chart.rightToLeft())
+        area.x += area.width - width;
+    area.width = width;
+    painter.pushClip(area);
+    clipped_ = &painter;
+}
+
+Chart::PlotReveal::~PlotReveal() {
+    if (clipped_)
+        clipped_->popClip();
 }
 
 bool Chart::legendMouse(MouseEvent& event) {
@@ -306,6 +339,7 @@ void Chart::tiltLevelPiece(paint::Painter& p, const paint::Painter::Mark& mark, 
 // ---- its pieces coming in ----
 
 void Chart::playEntrance() {
+    replayRequested_ = true;
     entered_ = false;
     entering_ = false;
     entrance_.set(1);
@@ -316,15 +350,23 @@ void Chart::beginEntrance() {
     if (entered_)
         return;
     entered_ = true;
+    const bool replay = replayRequested_;
+    replayRequested_ = false;
     const Duration normal = transition();
     if (normal <= Duration::zero())
         return;
     const UiContext* ui = context();
     const std::chrono::milliseconds own = style().entrance;
-    entranceWay_ = ui && ui->theme.motion.varied ? randomWay(solidPieces() ? 8 : 3) : 0;
-    entering_ = true;
+    const bool solid = solidPieces();
+    entranceWay_ = solid ? 7 : 0;
+    if (replay && (solid || (ui && ui->theme.motion.varied)))
+        entranceWay_ = randomWay(solid ? 8 : 3);
+    Duration duration = own.count() > 0 ? Duration(own) : std::min(normal * 2, Duration(std::chrono::milliseconds(450)));
+    if (replay)
+        duration = std::max(duration, normal * 4);
     entrance_.set(0);
-    entrance_.animateTo(scheduler(), 1, own.count() > 0 ? Duration(own) : normal * 4, Easing::Linear);
+    entrance_.animateTo(scheduler(), 1, duration, Easing::Linear);
+    entering_ = entrance_.running();
 }
 
 float Chart::entranceProgress() const {

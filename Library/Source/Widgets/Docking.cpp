@@ -733,6 +733,8 @@ void DockTabs::add(DockPanel panel, std::size_t index) {
 }
 
 DockPanel DockTabs::take(std::size_t index) {
+    if (arrivalTarget_ == entries_[index].content || arrivalTarget_ == this)
+        arrivalTarget_ = nullptr;
     Entry entry = std::move(entries_[index]);
     entries_.erase(entries_.begin() + static_cast<std::ptrdiff_t>(index));
     std::unique_ptr<Widget> content = removeChild(*entry.content);
@@ -760,7 +762,18 @@ void DockTabs::moveTab(std::size_t from, std::size_t to) {
 void DockTabs::setActive(std::size_t index) {
     if (entries_.empty())
         return;
-    active_ = std::min(index, entries_.size() - 1);
+    const auto next = std::min(index, entries_.size() - 1);
+    if (arrivalTarget_ && (arrivalTarget_ == this ? next != active_ : arrivalTarget_ != entries_[next].content))
+        arrivalTarget_ = nullptr;
+    if (next != active_ && paintedTab_) {
+        const auto* ui = context();
+        if (ui && ui->theme.reliefBricks && style().tabsJoined) {
+            selectionFrom_ = *paintedTab_;
+            selectionMove_.set(0);
+            selectionMove_.animateTo(scheduler(), 1, std::chrono::milliseconds(100), Easing::OutCubic);
+        }
+    }
+    active_ = next;
     for (std::size_t i = 0; i < entries_.size(); ++i)
         entries_[i].content->setVisible(i == active_);
     // the tabs are told in place: one of them may be the one pressed, in its own handler
@@ -777,21 +790,21 @@ void DockTabs::setActive(std::size_t index) {
     }
 }
 
-void DockTabs::land(std::optional<Rect> from) {
+void DockTabs::land(std::optional<Rect> from, bool wholeStack) {
     if (const UiContext* ui = context())
-        arrive(ui->theme.dock.landing, false, from);
+        arrive(wholeStack ? *this : *entries_[active_].content, ui->theme.dock.landing, false, from);
 }
 
 void DockTabs::rise() {
     if (const UiContext* ui = context())
-        arrive(ui->theme.dock.rising, true);
+        arrive(*this, ui->theme.dock.rising, true);
 }
 
-void DockTabs::arrive(std::chrono::milliseconds duration, bool fromBehind, std::optional<Rect> from) {
+void DockTabs::arrive(const Widget& target, std::chrono::milliseconds duration, bool fromBehind, std::optional<Rect> from) {
     const UiContext* ui = context();
     if (!ui || !ui->scheduler || duration.count() <= 0)
         return;
-    landed_ = false;
+    arrivalTarget_ = &target;
     fromBehind_ = fromBehind;
     from_ = from;
     // which way it comes: one of them at random, where the style varies them
@@ -808,7 +821,15 @@ void DockTabs::arrive(std::chrono::milliseconds duration, bool fromBehind, std::
 }
 
 std::optional<Arrival> DockTabs::arrival() const {
-    if (landed_ || landing_.value() >= 1)
+    return arrivalFor(*this);
+}
+
+std::optional<Arrival> DockTabs::childArrival(const Widget& child) const {
+    return arrivalFor(child);
+}
+
+std::optional<Arrival> DockTabs::arrivalFor(const Widget& target) const {
+    if (arrivalTarget_ != &target || landing_.value() >= 1)
         return std::nullopt;
     return Arrival{landing_.value(), fromBehind_, from_, landingMotion_, risingMotion_};
 }
@@ -850,6 +871,8 @@ void DockTabs::renamePanel(std::size_t index, std::string id, LocalizedText titl
 }
 
 void DockTabs::rebuildBar() {
+    paintedTab_.reset();
+    selectionMove_.set(1);
     while (!bar_->children().empty())
         bar_->removeChild(*bar_->children().back());
     for (std::size_t i = 0; i < entries_.size(); ++i)
@@ -921,6 +944,12 @@ void DockTabs::paint(PaintContext& context) {
         const Point at = mapFromRoot(tab.mapToRoot({}));
         activeTab = Rect{at.x, at.y, tab.size().width, tab.size().height};
     }
+    if (activeTab && selectionMove_.running()) {
+        const float t = selectionMove_.value();
+        activeTab->x = std::lerp(selectionFrom_.x, activeTab->x, t);
+        activeTab->width = std::lerp(selectionFrom_.width, activeTab->width, t);
+    }
+    paintedTab_ = activeTab;
     const Point rowAt = mapFromRoot(bar_->mapToRoot({}));
     const Rect row{rowAt.x, rowAt.y, bar_->size().width, bar_->size().height};
     tabs::paintStack(context, style(), size(), bar, activeTab, row);
@@ -1314,21 +1343,11 @@ void DockArea::move(const std::string& id, Widget& target, DockSide side, bool r
     DockArea* from = source->area();
     // the target's window, read now: the target may go with what the panel leaves (a split of one giving way to the rest)
     const UiRoot* targetRoot = target.root();
-    // where it is on the screen: a panel docked from a floating window comes from there
-    const std::optional<Rect> was = screenRect(*source);
     DockPanel panel = source->take(*source->indexOf(id));
     if (side == DockSide::Center)
         stack->add(std::move(panel));
     else
         insertBeside(std::move(panel), target, side, share);
-    // from a floating window into a docked place: it lands there
-    DockArea* into = nullptr;
-    for (Widget* w = &target; w && !into; w = w->parent())
-        into = dynamic_cast<DockArea*>(w);
-    if (from->floating_ && into && !into->floating_) {
-        if (DockTabs* tabs = into->tabsOf(id))
-            tabs->land(inRoot(*tabs, was));
-    }
     prune(*source);         // after: a split it leaves may give way to the target
     from->closeIfEmpty();
     if (DockingHost* h = group_->host; raise && h && targetRoot && targetRoot != root())
@@ -1346,6 +1365,7 @@ DockArea* DockArea::floatPanels(const std::vector<std::string>& ids, const std::
         move(ids[i], *stack, DockSide::Center, false);      // its window not raised: a drag may go on
     if (const auto index = stack->indexOf(shown))
         stack->setActive(*index);
+    stack->rise();
     return floated;
 }
 
@@ -1368,14 +1388,14 @@ void DockArea::toggleFloating(std::string_view id) {
             DockPanel panel = tabs->take(*tabs->indexOf(id));
             prune(*tabs);
             DockTabs& landed = to->placeBack(std::move(panel));
-            landed.land(inRoot(landed, was));
+            landed.land(inRoot(landed, was), landed.count() == 1);
             from->closeIfEmpty();
             h->raiseWindow(*to->root());
             return;
         }
         // by where its stack is, a little in from its corner, as large
         const Point position = h->toScreen(*r, tabs->mapToRoot({24, 24}));
-        floatPanel(id, position, {std::max(tabs->size().width, 240.0f), std::max(tabs->size().height, 160.0f)});
+        floatPanels({id}, id, position, {std::max(tabs->size().width, 240.0f), std::max(tabs->size().height, 160.0f)}, true);
     };
     if (UiRoot* r = root())
         r->defer(std::move(apply));
@@ -1383,13 +1403,21 @@ void DockArea::toggleFloating(std::string_view id) {
         apply();
 }
 
-void DockArea::move(const std::vector<std::string>& ids, Widget& target, DockSide side, float share) {
+void DockArea::move(const std::vector<std::string>& ids, const std::string& shown, Widget& target, DockSide side, float share) {
     if (ids.empty())
         return;
+    DockTabs* source = tabsOf(shown);
+    const bool docking = source && (source != &target || (side != DockSide::Center && source->count() > ids.size()));
+    const auto was = docking ? screenRect(*source) : std::nullopt;
     move(ids.front(), target, side, true, share);
     for (std::size_t i = 1; i < ids.size(); ++i) {
         if (DockTabs* into = tabsOf(ids.front()))
             move(ids[i], *into, DockSide::Center);
+    }
+    if (DockTabs* stack = tabsOf(shown)) {
+        stack->setActive(*stack->indexOf(shown));
+        if (docking)
+            stack->land(inRoot(*stack, was), stack->count() == ids.size());
     }
 }
 
@@ -1543,9 +1571,6 @@ DockArea* DockArea::floatPanel(const std::string& id, Point position, Size size,
                    .owner = owner,
                    .titleBar = false,
                    .focus = focus});
-    // in its window now: rising into it from behind
-    if (DockTabs* tabs = floated->tabsOf(id))
-        tabs->rise();
     from->closeIfEmpty();
     return floated;
 }
@@ -2036,9 +2061,7 @@ void DockArea::systemDragEnded(const UiRoot* over, Point at) {
     std::function<void()> apply;
     if (done.target) {
         apply = [this, ids = done.ids, shown = done.shown, target = done.target, side = done.side, share = done.share] {
-            move(ids, *target, side, share);
-            if (DockTabs* tabs = tabsOf(shown))
-                tabs->setActive(*tabs->indexOf(shown));
+            move(ids, shown, *target, side, share);
         };
     } else if (!over && !(floating_ && panelCount() == done.ids.size())) {
         // let go out of the application's windows: a window of its own, where the system puts it (the panels of a
@@ -2076,9 +2099,7 @@ void DockArea::endDrag(Point point, bool drop) {
     std::function<void()> apply;
     if (done.target) {
         apply = [this, ids = done.ids, shown = done.shown, target = done.target, side = done.side, share = done.share] {
-            move(ids, *target, side, share);
-            if (DockTabs* tabs = tabsOf(shown))
-                tabs->setActive(*tabs->indexOf(shown));
+            move(ids, shown, *target, side, share);
         };
     } else if (h && done.window && done.window != r) {
         apply = [h, window = done.window] { h->raiseWindow(*window); };    // torn off: it has the focus now

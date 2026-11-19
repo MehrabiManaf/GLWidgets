@@ -283,7 +283,9 @@ void TreeMap::paint(PaintContext& context) {
             for (Tile& t : tiles_)
                 t.rect.x = area.x + area.right() - t.rect.right();
         laidOutIn_ = area;
-        const Duration duration = stale_ && eased_ ? transition() * 2 : Duration::zero();
+        Duration duration = stale_ && eased_ ? transition() * 2 : Duration::zero();
+        if (levelMotion_.peak != 0)
+            duration = std::min(duration, Duration(std::chrono::milliseconds(300)));
         stale_ = eased_ = false;
         if (duration > Duration::zero()) {
             progress_.set(0);
@@ -436,7 +438,7 @@ void TreeMap::onMouse(MouseEvent& event) {
     // the tile of the top level under a point: what a click goes into
     const auto topAt = [&]() -> std::optional<std::vector<std::size_t>> {
         const auto path = nodeAt(at);
-        if (!path || path->size() <= focus_.size())
+        if (!path || path->size() <= focus_.size() || !std::equal(focus_.begin(), focus_.end(), path->begin()))
             return std::nullopt;
         return std::vector<std::size_t>(path->begin(), path->begin() + static_cast<std::ptrdiff_t>(focus_.size() + 1));
     };
@@ -483,8 +485,6 @@ void TreeMap::onMouse(MouseEvent& event) {
         return;
     case MouseEventType::Wheel:
         event.handled = true;
-        if (progress_.running())        // a level at a time: not again while it goes there
-            return;
         if (event.wheelDelta.y > 0) {
             if (const auto top = topAt())
                 if (const TreeMapNode* node = nodeOf(*top); node && !node->children.empty())

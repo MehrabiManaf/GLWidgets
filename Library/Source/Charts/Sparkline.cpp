@@ -103,6 +103,7 @@ ChartRange Sparkline::shownRange() const {
 
 void Sparkline::paint(PaintContext& context) {
     const Rect area = paintFrame(context);
+    const PlotReveal reveal(*this, context.painter, area);
     paint::Painter& p = context.painter;
     const ChartStyle& s = style();
     // its range: fitted to its values, eased there

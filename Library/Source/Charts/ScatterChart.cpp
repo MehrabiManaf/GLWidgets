@@ -310,6 +310,7 @@ void ScatterChart::resetView() {
 
 void ScatterChart::paint(PaintContext& context) {
     const Rect area = paintFrame(context);
+    const PlotReveal reveal(*this, context.painter, area);
     paint::Painter& p = context.painter;
     const ChartStyle& s = style();
     const float ppd = p.pixelsPerDip();

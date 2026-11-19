@@ -332,7 +332,7 @@ void PieChart::setFocus(std::vector<std::size_t> path) {
             found->second->animateTo(scheduler(), 0, transition(true));
     hovered_.reset();
     zoom_.set(0);
-    zoom_.animateTo(scheduler(), 1, transition() * 2, Easing::InOutCubic);
+    zoom_.animateTo(scheduler(), 1, std::min(transition() * 2, Duration(std::chrono::milliseconds(300))), Easing::InOutCubic);
     invalidatePaint();
 }
 

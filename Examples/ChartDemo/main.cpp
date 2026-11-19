@@ -679,8 +679,15 @@ struct Demo {
     }
 
     void replay() {
-        for (glw::Chart* chart : std::initializer_list<glw::Chart*>{pie, bars, tree, race, histogram, flame, candles, gauges[0], gauges[1], gauges[2]})
-            chart->playEntrance();
+        const auto replayVisible = [](glw::Chart* chart) {
+            if (chart->root() && chart->visibleInTree())
+                chart->playEntrance();
+        };
+        for (glw::Chart* chart : std::initializer_list<glw::Chart*>{line, pie, race, bars, tree, gauges[0], gauges[1], gauges[2], latency, weekly,
+                                                                    traffic, candles, histogram, boxes, scatter, trace, flame, flow})
+            replayVisible(chart);
+        for (auto* spark : sparks)
+            replayVisible(spark);
     }
 
     void animate(bool on) {

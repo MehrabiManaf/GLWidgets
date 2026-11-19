@@ -126,6 +126,16 @@ protected:
 
     // Its background, its title and its legend painted; what is left of it for the data (its own coordinates).
     Rect paintFrame(PaintContext& context);
+    // For plots without a per-piece entrance: reveal the plot from its reading edge while it is painted.
+    class PlotReveal {
+    public:
+        PlotReveal(Chart& chart, paint::Painter& painter, Rect area);
+        ~PlotReveal();
+        PlotReveal(const PlotReveal&) = delete;
+        PlotReveal& operator=(const PlotReveal&) = delete;
+    private:
+        paint::Painter* clipped_ = nullptr;
+    };
     // A legend's item clicked (a press on it): handled. What the charts' onMouse ask first.
     bool legendMouse(MouseEvent& event);
 
@@ -231,14 +241,8 @@ protected:
     static void tiltLevelPiece(paint::Painter& painter, const paint::Painter::Mark& mark, Point pivot, Point axis, float amount);
 
     // ---- its pieces coming in ----
-    // When first shown, shown again, moved to a new parent, or replayed with playEntrance, its pieces come in one after another, one of its ways
-    // (at random where the theme varies its motions, MotionStyle::varied; the first otherwise), over the style's entrance
-    // time: where its pieces are solids (the theme's relief bricks), one of eight in space: dropping in from in front,
-    // swinging down onto the plot from standing toward the one looking, rising from behind it, turning in from edge on
-    // over an arc, spiralling in from far behind round the middle of the chart, rising through the plot in a wave across
-    // it, tumbling in from the side, or settling gently from above; otherwise one of three in its plane: growing out of where they
-    // stand, sliding in, settling from a little larger.
-    // Begun by the chart's paint once it has something to show (nothing when it is not animated); once.
+    // Called by paint when data is ready. Automatic entry runs once; an explicit replay can use a
+    // longer, varied motion. Hiding or moving the chart ends an entrance already in progress.
     void beginEntrance();
     bool entering() const { return entering_; }
     // How far all of it has come (0 to 1; 1 when it is not coming in), and which of the ways it comes this time (0 to 7;
@@ -279,6 +283,7 @@ protected:
     void onStyleChanged() override;
     void onRootChanged() override;
     void onVisibleChanged(bool visible) override;
+    void onPreviewMouse(MouseEvent& event) override;
     void onLanguageChanged() override;
     Size measureContent(Size available) override;
 
@@ -302,6 +307,8 @@ private:
     std::optional<Point> loweredPress_;
     Animation lifting_{[this] { invalidatePaint(); }};
     Animation lowering_{[this] { invalidatePaint(); }};
+    void finishEntrance();
+    bool replayRequested_ = false;
     bool entered_ = false;
     bool entering_ = false;
     int entranceWay_ = 0;

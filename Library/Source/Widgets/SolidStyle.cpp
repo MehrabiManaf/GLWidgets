@@ -53,8 +53,7 @@ void Theme::solid(Theme& t, bool dark) {
     t.menu.highlightBevel = {.shadow = {0, 0, 0, dark ? 0.5f : 0.22f}, .relief = 1.2f, .roundness = 1.5f};
     t.motion.popupEntrance = PopupEntrance::Rise;
     t.motion.dialogEntrance = PopupEntrance::Land;
-    // and each time one of their ways, at random: a popup's, a dialog's, a panel's cascade, a check box's mark
-    t.motion.varied = true;
+    t.motion.varied = false;
     // a table's column headers keys of their own; the selection moving from row to row (a brick sliding)
     for (ItemViewStyle* view : {&t.itemView, &t.table}) {
         view->headerGap = 2;
@@ -98,7 +97,7 @@ void Theme::solid(Theme& t, bool dark) {
     t.dock.rising = std::chrono::milliseconds(500);
     t.dock.variedArrivals = true;           // vary the arrival on each docking operation
     // a chart's bars, tiles and slices (solids) coming in a little slower than the rest: one after another, in space
-    t.chart.entrance = std::chrono::milliseconds(1100);
+    t.chart.entrance = std::chrono::milliseconds(380);
 }
 
 void Theme::glass(Theme& t, bool dark) {

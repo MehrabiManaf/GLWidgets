@@ -144,6 +144,7 @@ protected:
     void onHoverChanged(bool hovered) override;
     void onRootChanged() override;
     std::optional<Arrival> arrival() const override;
+    std::optional<Arrival> childArrival(const Widget& child) const override;
 
 private:
     friend class DockArea;
@@ -151,9 +152,10 @@ private:
     // (DockStyle::landing; none when it is zero). Floated into a window of its own: it rises into it from behind
     // (DockStyle::rising).
     // `from`: where it was (its root's dips), to come from there.
-    void land(std::optional<Rect> from = std::nullopt);
+    void land(std::optional<Rect> from, bool wholeStack);
     void rise();
-    void arrive(std::chrono::milliseconds duration, bool fromBehind, std::optional<Rect> from = std::nullopt);
+    std::optional<Arrival> arrivalFor(const Widget& target) const;
+    void arrive(const Widget& target, std::chrono::milliseconds duration, bool fromBehind, std::optional<Rect> from = std::nullopt);
     struct Entry {
         std::string id;
         LocalizedText title;
@@ -178,11 +180,14 @@ private:
     bool reserveLeft_ = false;
     bool title_ = false;
     bool barHidden_ = false;
+    std::optional<Rect> paintedTab_;
+    Rect selectionFrom_;
+    Animation selectionMove_{[this] { invalidatePaint(); }};
     Animation barShown_{[this] { barStepped(); }};      // how much of the bar shows, from 0 to 1
     bool cornerHovered_ = false;
     Animation cornerGrown_{[this] { invalidatePaint(); }};      // the tongue under the mouse: from 0 to 1
     Animation landing_{[this] { invalidatePaint(); }};          // panels docked from a floating window: 0 to 1
-    bool landed_ = true;
+    const Widget* arrivalTarget_ = nullptr;
     bool fromBehind_ = false;
     std::optional<Rect> from_;
     LandingMotion landingMotion_ = LandingMotion::Cascade;
@@ -336,7 +341,7 @@ private:
     // (Its window raised when it is another: not while a drag goes on, which would lose the mouse.)
     void move(const std::string& id, Widget& target, DockSide side, bool raise = true, float share = 0.5f);
     // All of them: the first as `move`, the others in its stack.
-    void move(const std::vector<std::string>& ids, Widget& target, DockSide side, float share = 0.5f);
+    void move(const std::vector<std::string>& ids, const std::string& shown, Widget& target, DockSide side, float share = 0.5f);
     // The panel `id` into a floating window at `position` (the screen) of `size` (dips); its area.
     DockArea* floatPanel(const std::string& id, Point position, Size size, bool focus = true);
     // All of them, in one stack of one floating window, `shown` shown; its area.

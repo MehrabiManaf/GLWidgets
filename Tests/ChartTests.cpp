@@ -1565,13 +1565,13 @@ TEST(solidChartsLiftOnDrillDownAndRecedeOnReturn) {
             };
             view.chart->setFocus({0});
             view.paint();
-            tests::advance(ui.theme.motion.normal);
+            tests::advance(std::chrono::milliseconds(150));
             CHECK(front() > 0);
             tests::advance(std::chrono::seconds(2));
             CHECK(front() <= 0);
             CHECK(view.chart->zoomOut());
             view.paint();
-            tests::advance(ui.theme.motion.normal);
+            tests::advance(std::chrono::milliseconds(150));
             CHECK(front() < -5);
             tests::advance(std::chrono::seconds(2));
             CHECK(front() > -5);

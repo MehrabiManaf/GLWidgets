@@ -359,13 +359,15 @@ void UiRoot::paintTree(Widget& widget, PaintContext& context, const Rect& visibl
     if (!widget.visible_ || !widget.bounds_.inflated(overhang).intersects(visible))
         return;
     paint::Painter& painter = context.painter;
-    if (later && widget.arrival()) {
+    auto arrival = widget.parent_ ? widget.parent_->childArrival(widget) : std::nullopt;
+    if (!arrival)
+        arrival = widget.arrival();
+    if (later && arrival) {
         later->push_back({&widget, painter.transform()});
         return;
     }
     // arriving: all of what it paints falls in (Painter::fallIn), its bricks tested by depth as they pass one another; or
     // rises from behind (Painter::riseIn), drawn over what is already there as they come (not hidden behind it)
-    const std::optional<Arrival> arrival = widget.arrival();
     const paint::Painter::Mark mark = arrival ? painter.mark() : paint::Painter::Mark{};
     const Point corner = painter.transform().map(Point{widget.bounds_.x, widget.bounds_.y});
     painter.pushTransform({1, {widget.bounds_.x, widget.bounds_.y}});
