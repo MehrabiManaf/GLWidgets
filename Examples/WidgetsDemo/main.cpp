@@ -68,6 +68,10 @@ constexpr const char* persianCatalog = R"({
     "Nothing typed yet.": "هنوز چیزی نوشته نشده.",
     "فارسی": "English",
     "Style": "سبک",
+    "Window": "پنجره",
+    "Panel": "پنل",
+    "Button": "دکمه",
+    "Field": "فیلد",
     "Colors": "رنگ‌ها",
     "Dark": "تیره",
     "Light": "روشن",
@@ -180,6 +184,25 @@ constexpr const char* persianCatalog = R"({
     "The system's dialogs": "پنجره‌های سیستم"
   }
 })";
+
+class PaletteSample final : public glw::Label {
+public:
+    PaletteSample(glw::LocalizedText title, glw::Color glw::Palette::*surface)
+        : Label(std::move(title)), surface_(surface) {
+        setPadding(glw::Insets::all(8));
+        setTextAlignment(glw::text::TextAlignment::Center);
+        setStretch(1);
+    }
+
+protected:
+    void paint(glw::PaintContext& context) override {
+        context.painter.fillRect({0, 0, size().width, size().height}, context.ui.theme.palette.*surface_);
+        Label::paint(context);
+    }
+
+private:
+    glw::Color glw::Palette::*surface_;
+};
 
 // A color's name, dragged ("demo/color"): onto a drop box, in this window or the other one.
 class Chip final : public glw::Widget {
@@ -693,6 +716,11 @@ struct Page {
                                                 app.setStyle(static_cast<glw::ThemeStyle>(i));
                                             }})
                                   .bind(styleBox)),
+                   ui::HStack({.spacing = 0},
+                              std::make_unique<PaletteSample>(tr("Window"), &glw::Palette::window),
+                              std::make_unique<PaletteSample>(tr("Panel"), &glw::Palette::layer),
+                              std::make_unique<PaletteSample>(tr("Button"), &glw::Palette::surface),
+                              std::make_unique<PaletteSample>(tr("Field"), &glw::Palette::base)),
                    ui::HStack({.spacing = 12}, card(1, tr("a share")), card(2, tr("two shares")), card(1, tr("a share"))).bind(cards),
                    ui::Label({.text = tr("Click a header to open or close it; + adds a variable."), .muted = true, .wrap = true}),
                    panels(),

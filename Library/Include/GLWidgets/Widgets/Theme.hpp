@@ -575,6 +575,12 @@ struct Theme {
     // sheens of light for glass to show (Glass).
     std::optional<paint::Backdrop> backdrop;
 
+    // Prepared by the theme factories. The color identifies the result when a caller edits palette.window directly.
+    struct WindowTone {
+        Color window;
+        bool dark = true;
+    } windowTone;
+
     // The styles of every widget made from `palette`, in `style`.
     GLW_EXPORT static Theme fromPalette(const Palette& palette, ThemeStyle style = ThemeStyle::Studio);
     // The style's own colors.
@@ -587,7 +593,7 @@ struct Theme {
     // mixes (what is on or off, the motions) is `to`'s.
     GLW_EXPORT static Theme blend(const Theme& from, const Theme& to, float t);
     // Whether its palette is the dark one's (a dark window).
-    bool isDark() const { return palette.window.r + palette.window.g + palette.window.b < 1.5f; }
+    GLW_EXPORT bool isDark() const;
 
 private:
     static void fluid(Theme& theme, bool dark);

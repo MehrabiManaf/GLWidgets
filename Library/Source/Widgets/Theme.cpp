@@ -5,6 +5,7 @@
 #include <GLWidgets/Widgets/Bevel.hpp>
 
 #include <algorithm>
+#include <initializer_list>
 #include <tuple>
 #include <utility>
 
@@ -14,6 +15,11 @@ namespace {
 
 constexpr Color hex(unsigned v, float alpha = 1) {
     return {((v >> 16) & 0xff) / 255.0f, ((v >> 8) & 0xff) / 255.0f, (v & 0xff) / 255.0f, alpha};
+}
+
+// The luminance at which black and white have equal contrast is sqrt(0.05 * 1.05) - 0.05.
+bool darkWindow(Color window) {
+    return relativeLuminance(window) < 0.1791288f;
 }
 
 } // namespace
@@ -281,7 +287,7 @@ Palette Palette::of(ColorScheme scheme, ThemeStyle style) {
     }
     if (style == ThemeStyle::Metal) {
         // metal: the controls further from what they are on (lighter in the dark, darker in the light), as Metal's own
-        const bool dark = p.window.r + p.window.g + p.window.b < 1.5f;
+        const bool dark = darkWindow(p.window);
         p.surface = dark ? lerp(p.surface, p.text, 0.10f) : lerp(p.surface, p.mutedText, 0.18f);
     }
     return p;
@@ -348,11 +354,22 @@ Theme Theme::of(ColorScheme scheme, ThemeStyle style) {
     return t;
 }
 
+bool Theme::isDark() const {
+    if (palette.window == windowTone.window)
+        return windowTone.dark;
+    // Also support directly constructed themes and callers replacing the public window color.
+    thread_local WindowTone last;
+    if (last.window != palette.window)
+        last = {palette.window, darkWindow(palette.window)};
+    return last.dark;
+}
+
 Theme Theme::fromPalette(const Palette& p, ThemeStyle style) {
     Theme t;
     t.style = style;
     t.palette = p;
-    const bool dark = p.window.r + p.window.g + p.window.b < 1.5f;
+    const bool dark = darkWindow(p.window);
+    t.windowTone = {p.window, dark};
     t.scheme = dark ? ColorScheme::Dark : ColorScheme::Light;
     const Color clear{0, 0, 0, 0};
     const Color white{1, 1, 1, 1};
@@ -573,6 +590,10 @@ Theme Theme::fromPalette(const Palette& p, ThemeStyle style) {
 // ---- between two themes ----
 
 Theme Theme::blend(const Theme& a, const Theme& b, float t) {
+    if (t <= 0)
+        return a;
+    if (t >= 1)
+        return b;
     const auto color = [t](Color x, Color y) { return lerp(x, y, t); };
     const auto number = [t](float x, float y) { return x + (y - x) * t; };
     // a pill's radius (as large as it gets) as round as the control is high: it rounds as it goes, not at once
@@ -588,53 +609,113 @@ Theme Theme::blend(const Theme& a, const Theme& b, float t) {
                      .highlight = color(x.highlight, y.highlight),
                      .shadow = color(x.shadow, y.shadow),
                      .relief = number(x.relief, y.relief),
-                     .roundness = number(x.roundness, y.roundness)};
+                     .roundness = number(x.roundness, y.roundness),
+                     .edge = number(x.edge, y.edge)};
     };
-    const Palette& p = a.palette;
-    const Palette& q = b.palette;
-    const Palette palette{
-        .window = color(p.window, q.window),
-        .layer = color(p.layer, q.layer),
-        .surface = color(p.surface, q.surface),
-        .base = color(p.base, q.base),
-        .titleBar = color(p.titleBar, q.titleBar),
-        .text = color(p.text, q.text),
-        .mutedText = color(p.mutedText, q.mutedText),
-        .disabledText = color(p.disabledText, q.disabledText),
-        .accent = color(p.accent, q.accent),
-        .onAccent = color(p.onAccent, q.onAccent),
-        .border = color(p.border, q.border),
-        .outline = color(p.outline, q.outline),
-        .hover = color(p.hover, q.hover),
-        .pressed = color(p.pressed, q.pressed),
-        .selection = color(p.selection, q.selection),
-        .closeHover = color(p.closeHover, q.closeHover),
+    Theme r = b;
+    const auto states = [&](const StateColor& x, const StateColor& y) {
+        const auto optional = [&](const std::optional<Color>& left, const std::optional<Color>& right) -> std::optional<Color> {
+            if (!left && !right)
+                return std::nullopt;
+            return color(left.value_or(x.normal), right.value_or(y.normal));
+        };
+        return StateColor{color(x.normal, y.normal), optional(x.hovered, y.hovered), optional(x.pressed, y.pressed),
+                          optional(x.focused, y.focused), optional(x.disabled, y.disabled)};
     };
-    Theme r = fromPalette(palette, b.style);
-    r.scheme = b.scheme;
-    // the code's colors (a scheme's own)
-    for (auto [out, x, y] : {std::tuple{&r.textEdit.keyword, a.textEdit.keyword, b.textEdit.keyword},
-                             std::tuple{&r.textEdit.type, a.textEdit.type, b.textEdit.type},
-                             std::tuple{&r.textEdit.string, a.textEdit.string, b.textEdit.string},
-                             std::tuple{&r.textEdit.number, a.textEdit.number, b.textEdit.number},
-                             std::tuple{&r.textEdit.comment, a.textEdit.comment, b.textEdit.comment},
-                             std::tuple{&r.textEdit.preprocessor, a.textEdit.preprocessor, b.textEdit.preprocessor},
-                             std::tuple{&r.textEdit.function, a.textEdit.function, b.textEdit.function}})
-        *out = color(x, y);
+    const auto fields = [&]<class Style, class Field>(Style Theme::*style, auto interpolate, std::initializer_list<Field Style::*> members) {
+        for (auto member : members)
+            (r.*style).*member = interpolate((a.*style).*member, (b.*style).*member);
+    };
+    fields(&Theme::palette, color, {&Palette::window, &Palette::layer, &Palette::surface, &Palette::base, &Palette::titleBar, &Palette::text,
+                                    &Palette::mutedText, &Palette::disabledText, &Palette::accent, &Palette::onAccent, &Palette::border,
+                                    &Palette::outline, &Palette::hover, &Palette::pressed, &Palette::selection, &Palette::closeHover});
+    fields(&Theme::button, color, {&ButtonStyle::focusRing, &ButtonStyle::ripple});
+    fields(&Theme::button, states, {&ButtonStyle::background, &ButtonStyle::border, &ButtonStyle::text});
+    fields(&Theme::button, bevel, {&ButtonStyle::bevel});
+    fields(&Theme::lineEdit, color, {&LineEditStyle::text, &LineEditStyle::placeholder, &LineEditStyle::selection, &LineEditStyle::caret,
+                                     &LineEditStyle::focusLine, &LineEditStyle::focusRing});
+    fields(&Theme::lineEdit, states, {&LineEditStyle::background, &LineEditStyle::border});
+    fields(&Theme::lineEdit, bevel, {&LineEditStyle::bevel, &LineEditStyle::stepperBevel});
+    fields(&Theme::checkBox, color, {&CheckBoxStyle::checkedBorder, &CheckBoxStyle::check, &CheckBoxStyle::focusRing});
+    fields(&Theme::checkBox, states, {&CheckBoxStyle::background, &CheckBoxStyle::border, &CheckBoxStyle::checkedBackground});
+    fields(&Theme::checkBox, bevel, {&CheckBoxStyle::bevel, &CheckBoxStyle::checkedBevel});
+    fields(&Theme::scrollBar, color, {&ScrollBarStyle::track});
+    fields(&Theme::scrollBar, states, {&ScrollBarStyle::thumb});
+    fields(&Theme::scrollBar, bevel, {&ScrollBarStyle::trackBevel, &ScrollBarStyle::thumbBevel});
+    fields(&Theme::itemView, color, {&ItemViewStyle::selected, &ItemViewStyle::indicator, &ItemViewStyle::focusRing, &ItemViewStyle::expander,
+                                     &ItemViewStyle::headerText, &ItemViewStyle::headerLine, &ItemViewStyle::gridLine, &ItemViewStyle::ripple,
+                                     &ItemViewStyle::headerBackground});
+    fields(&Theme::itemView, states, {&ItemViewStyle::row});
+    fields(&Theme::itemView, bevel, {&ItemViewStyle::headerBevel, &ItemViewStyle::rowBevel});
+    fields(&Theme::table, color, {&ItemViewStyle::selected, &ItemViewStyle::indicator, &ItemViewStyle::focusRing, &ItemViewStyle::expander,
+                                  &ItemViewStyle::headerText, &ItemViewStyle::headerLine, &ItemViewStyle::gridLine, &ItemViewStyle::ripple,
+                                  &ItemViewStyle::headerBackground});
+    fields(&Theme::table, states, {&ItemViewStyle::row});
+    fields(&Theme::table, bevel, {&ItemViewStyle::headerBevel, &ItemViewStyle::rowBevel});
+    fields(&Theme::splitter, color, {&SplitterStyle::handle, &SplitterStyle::active});
+    fields(&Theme::splitter, bevel, {&SplitterStyle::groove});
+    fields(&Theme::dock, color, {&DockStyle::background, &DockStyle::border, &DockStyle::separator, &DockStyle::selectedTab,
+                                 &DockStyle::selectedTabBorder, &DockStyle::selectedTabHighlight, &DockStyle::activeLine, &DockStyle::text,
+                                 &DockStyle::mutedText, &DockStyle::dropZone});
+    fields(&Theme::dock, states, {&DockStyle::tab});
+    fields(&Theme::dock, bevel, {&DockStyle::tabBevel, &DockStyle::islandBevel});
+    fields(&Theme::majorTab, color, {&MajorTabStyle::active, &MajorTabStyle::text, &MajorTabStyle::mutedText, &MajorTabStyle::insertion,
+                                     &MajorTabStyle::raised});
+    fields(&Theme::majorTab, states, {&MajorTabStyle::background});
+    fields(&Theme::majorTab, bevel, {&MajorTabStyle::bevel});
+    fields(&Theme::card, color, {&CardStyle::background, &CardStyle::border});
+    fields(&Theme::card, bevel, {&CardStyle::bevel});
+    fields(&Theme::canvas, color, {&CanvasStyle::background, &CanvasStyle::grid, &CanvasStyle::majorGrid});
+    fields(&Theme::chart, color, {&ChartStyle::background, &ChartStyle::plot, &ChartStyle::grid, &ChartStyle::axis, &ChartStyle::text,
+                                  &ChartStyle::title, &ChartStyle::crosshair, &ChartStyle::selection, &ChartStyle::rise, &ChartStyle::fall});
+    fields(&Theme::chart, bevel, {&ChartStyle::barBevel});
+    fields(&Theme::node, color, {&NodeStyle::body, &NodeStyle::border, &NodeStyle::shadow, &NodeStyle::selection});
+    fields(&Theme::node, bevel, {&NodeStyle::bevel, &NodeStyle::bodyBevel});
+    fields(&Theme::menu, color, {&MenuStyle::background, &MenuStyle::border, &MenuStyle::highlight, &MenuStyle::highlightText,
+                                 &MenuStyle::text, &MenuStyle::shortcut, &MenuStyle::disabledText, &MenuStyle::mark, &MenuStyle::separator});
+    fields(&Theme::menu, bevel, {&MenuStyle::bevel, &MenuStyle::highlightBevel});
+    fields(&Theme::collapsiblePanel, color, {&CollapsiblePanelStyle::content, &CollapsiblePanelStyle::border,
+                                             &CollapsiblePanelStyle::separator, &CollapsiblePanelStyle::shadow, &CollapsiblePanelStyle::title,
+                                             &CollapsiblePanelStyle::arrow});
+    fields(&Theme::collapsiblePanel, states, {&CollapsiblePanelStyle::header});
+    fields(&Theme::collapsiblePanel, bevel, {&CollapsiblePanelStyle::bevel});
+    fields(&Theme::menuBar, color, {&MenuBarStyle::background, &MenuBarStyle::text});
+    fields(&Theme::menuBar, states, {&MenuBarStyle::title});
+    fields(&Theme::toolBar, color, {&ToolBarStyle::background, &ToolBarStyle::separator, &ToolBarStyle::checked, &ToolBarStyle::outline,
+                                    &ToolBarStyle::icon, &ToolBarStyle::disabledIcon, &ToolBarStyle::ripple});
+    fields(&Theme::toolBar, states, {&ToolBarStyle::button});
+    fields(&Theme::toolBar, bevel, {&ToolBarStyle::bevel});
+    fields(&Theme::statusBar, bevel, {&StatusBarStyle::bevel});
+    fields(&Theme::textEdit, color, {&TextEditStyle::background, &TextEditStyle::text, &TextEditStyle::gutter, &TextEditStyle::lineNumber,
+                                     &TextEditStyle::currentLineNumber, &TextEditStyle::currentLine, &TextEditStyle::selection,
+                                     &TextEditStyle::caret, &TextEditStyle::keyword, &TextEditStyle::type, &TextEditStyle::string,
+                                     &TextEditStyle::number, &TextEditStyle::comment, &TextEditStyle::preprocessor, &TextEditStyle::function,
+                                     &TextEditStyle::muted, &TextEditStyle::success, &TextEditStyle::warning, &TextEditStyle::error});
+    fields(&Theme::toolTip, color, {&ToolTipStyle::background, &ToolTipStyle::border, &ToolTipStyle::text});
+    fields(&Theme::toolTip, bevel, {&ToolTipStyle::bevel});
+    fields(&Theme::dialog, color, {&DialogStyle::background, &DialogStyle::border, &DialogStyle::scrim});
+    fields(&Theme::dialog, bevel, {&DialogStyle::bevel});
+    fields(&Theme::titleBar, color, {&TitleBarStyle::background, &TitleBarStyle::title});
+    fields(&Theme::windowButton, color, {&WindowButtonStyle::glyph});
+    fields(&Theme::windowButton, states, {&WindowButtonStyle::background, &WindowButtonStyle::closeBackground});
+    fields(&Theme::frame, color, {&WindowFrameStyle::background});
+    r.windowTone = {r.palette.window, t < 0.5f ? a.isDark() : b.isDark()};
+    if (r.backdrop) {
+        r.backdrop->base = color(a.backdrop ? a.backdrop->base : a.frame.background, b.backdrop->base);
+        if (a.backdrop) {
+            const float delta = std::remainder(b.backdrop->hue - a.backdrop->hue, 1.0f);
+            r.backdrop->hue = std::fmod(a.backdrop->hue + t * delta + 1.0f, 1.0f);
+            r.backdrop->vivid = number(a.backdrop->vivid, b.backdrop->vivid);
+            r.backdrop->tile = number(a.backdrop->tile, b.backdrop->tile);
+        }
+    }
     // the shapes
     r.cornerRadius = radius(a.cornerRadius, b.cornerRadius);
     r.button.cornerRadius = radius(a.button.cornerRadius, b.button.cornerRadius);
     r.button.padding = insets(a.button.padding, b.button.padding);
-    r.button.bevel = bevel(a.button.bevel, b.button.bevel);
-    r.button.focusRing = color(a.button.focusRing, b.button.focusRing);
     r.lineEdit.cornerRadius = radius(a.lineEdit.cornerRadius, b.lineEdit.cornerRadius);
     r.lineEdit.padding = insets(a.lineEdit.padding, b.lineEdit.padding);
-    r.lineEdit.bevel = bevel(a.lineEdit.bevel, b.lineEdit.bevel);
-    r.lineEdit.focusRing = color(a.lineEdit.focusRing, b.lineEdit.focusRing);
     r.checkBox.cornerRadius = radius(a.checkBox.cornerRadius, b.checkBox.cornerRadius);
-    r.checkBox.bevel = bevel(a.checkBox.bevel, b.checkBox.bevel);
-    r.checkBox.checkedBevel = bevel(a.checkBox.checkedBevel, b.checkBox.checkedBevel);
-    r.checkBox.focusRing = color(a.checkBox.focusRing, b.checkBox.focusRing);
     r.scrollBar.cornerRadius = radius(a.scrollBar.cornerRadius, b.scrollBar.cornerRadius);
     for (auto [out, x, y] : {std::tuple{&r.itemView, &a.itemView, &b.itemView}, std::tuple{&r.table, &a.table, &b.table}}) {
         out->cornerRadius = radius(x->cornerRadius, y->cornerRadius);
@@ -648,39 +729,16 @@ Theme Theme::blend(const Theme& a, const Theme& b, float t) {
     r.menuBar.cornerRadius = radius(a.menuBar.cornerRadius, b.menuBar.cornerRadius);
     r.toolBar.cornerRadius = radius(a.toolBar.cornerRadius, b.toolBar.cornerRadius);
     r.toolBar.buttonSize = number(a.toolBar.buttonSize, b.toolBar.buttonSize);
-    r.toolBar.bevel = bevel(a.toolBar.bevel, b.toolBar.bevel);
     auto& panel = r.collapsiblePanel;
     const auto& from = a.collapsiblePanel;
     const auto& to = b.collapsiblePanel;
     panel.cornerRadius = radius(from.cornerRadius, to.cornerRadius);
     panel.headerHeight = number(from.headerHeight, to.headerHeight);
-    panel.bevel = bevel(from.bevel, to.bevel);
-    panel.content = color(from.content, to.content);
-    panel.border = color(from.border, to.border);
-    panel.separator = color(from.separator, to.separator);
-    panel.shadow = color(from.shadow, to.shadow);
-    r.dock.selectedTabHighlight = color(a.dock.selectedTabHighlight, b.dock.selectedTabHighlight);
     r.node.cornerRadius = radius(a.node.cornerRadius, b.node.cornerRadius);
     for (std::size_t i = 0; i < r.chart.series.size(); ++i)
         r.chart.series[i] = color(a.chart.series[i], b.chart.series[i]);
-    r.chart.rise = color(a.chart.rise, b.chart.rise);
-    r.chart.fall = color(a.chart.fall, b.chart.fall);
     r.chart.barRadius = radius(a.chart.barRadius, b.chart.barRadius);
-    r.chart.barBevel = bevel(a.chart.barBevel, b.chart.barBevel);
-    r.dock.tabBevel = bevel(a.dock.tabBevel, b.dock.tabBevel);
-    r.dock.islandBevel = bevel(a.dock.islandBevel, b.dock.islandBevel);
-    r.card.bevel = bevel(a.card.bevel, b.card.bevel);
     r.dock.tabRadius = radius(a.dock.tabRadius, b.dock.tabRadius);
-    r.majorTab.bevel = bevel(a.majorTab.bevel, b.majorTab.bevel);
-    r.node.bevel = bevel(a.node.bevel, b.node.bevel);
-    r.node.bodyBevel = bevel(a.node.bodyBevel, b.node.bodyBevel);
-    for (ItemViewStyle* view : {&r.itemView, &r.table}) {
-        const ItemViewStyle& x = view == &r.itemView ? a.itemView : a.table;
-        const ItemViewStyle& y = view == &r.itemView ? b.itemView : b.table;
-        view->headerBackground = color(x.headerBackground, y.headerBackground);
-        view->headerBevel = bevel(x.headerBevel, y.headerBevel);
-        view->rowBevel = bevel(x.rowBevel, y.rowBevel);
-    }
     const paint::Lighting& la = a.lighting;
     const paint::Lighting& lb = b.lighting;
     r.lighting = {number(la.x, lb.x), number(la.y, lb.y), number(la.z, lb.z), number(la.ambient, lb.ambient),

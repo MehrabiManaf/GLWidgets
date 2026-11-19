@@ -11,7 +11,9 @@
 #include <GLWidgets/Widgets/ListView.hpp>
 #include <GLWidgets/Widgets/UiRoot.hpp>
 
+#include <algorithm>
 #include <chrono>
+#include <cmath>
 #include <memory>
 
 using namespace glw;
@@ -203,6 +205,48 @@ TEST(tabsLookAsTheStylesControls) {
     CHECK(plain.dock.tabRadius == 0 && plain.dock.selectedTab == plain.dock.background);
     // Plastic, Metal and Fluid: stacks and cards raised, slabs, the tab shown a folder's tab of its stack
     CHECK(plastic.dock.islandBevel.relief > 0 && metal.card.bevel.relief > 0 && fluid.card.bevel.relief > 0 && studio.dock.islandBevel.relief == 0);
+}
+
+TEST(builtInPalettesKeepTextReadable) {
+    const auto contrast = [](Color foreground, Color background) {
+        const float a = relativeLuminance(foreground), b = relativeLuminance(background);
+        return (std::max(a, b) + 0.05f) / (std::min(a, b) + 0.05f);
+    };
+    for (ThemeStyle style : {ThemeStyle::Studio, ThemeStyle::Fluid, ThemeStyle::Plain, ThemeStyle::Plastic,
+                             ThemeStyle::Metal, ThemeStyle::Solid, ThemeStyle::Glass}) {
+        for (ColorScheme scheme : {ColorScheme::Dark, ColorScheme::Light, ColorScheme::Dusk, ColorScheme::Sand, ColorScheme::Turquoise}) {
+            const Palette palette = Theme::of(scheme, style).palette;
+            for (Color background : {palette.layer, palette.base}) {
+                CHECK(contrast(palette.text, background) >= 4.5f);
+                CHECK(contrast(palette.mutedText, background) >= 4.5f);
+            }
+            CHECK(contrast(palette.onAccent, palette.accent) >= 4.5f);
+        }
+    }
+}
+
+TEST(customWindowColorsUseLinearLight) {
+    CHECK(std::abs(relativeLuminance({0.5f, 0.5f, 0.5f, 1}) - 0.214041f) < 0.00001f);
+    Palette palette = Palette::dark();
+    palette.window = {0, 1, 0, 1};
+    Theme theme = Theme::fromPalette(palette);
+    CHECK(!theme.isDark() && theme.scheme == ColorScheme::Light);
+    theme.palette.window = {0, 0, 1, 1};
+    CHECK(theme.isDark());
+}
+
+TEST(themeFadesUsePreparedWidgetColors) {
+    Theme from = Theme::dark(), to = Theme::light();
+    from.button.background = {.normal = {1, 0, 0, 1}};
+    to.button.background = {.normal = {0, 1, 0, 1}, .hovered = Color{0, 0, 1, 1}};
+    from.frame.background = {0.4f, 0.3f, 0.2f, 1};
+    const Theme half = Theme::blend(from, to, 0.5f);
+    CHECK(half.button.background.normal == mix(from.button.background.normal, to.button.background.normal, 0.5f));
+    CHECK(half.button.background.hovered == mix(from.button.background.normal, *to.button.background.hovered, 0.5f));
+    CHECK(!half.button.background.disabled);
+    CHECK(half.frame.background == mix(from.frame.background, to.frame.background, 0.5f));
+    CHECK(!Theme::blend(from, to, 0).button.background.hovered);
+    CHECK(Theme::blend(from, to, 1).button.background.hovered == to.button.background.hovered);
 }
 
 TEST(colorSchemesGiveEveryStyleTheirColors) {
