@@ -733,8 +733,8 @@ void CandleChart::paint(PaintContext& context) {
     paintAnnotations(context, prices, annotationX, annotationY, false);
     // coming in (Chart::beginEntrance): its candles one after another from the oldest, each with its volume, out of the
     // bottom; the one under the mouse lifted
-    if (!shown_.empty())
-        beginEntrance();
+    if (!shown_.empty() && beginEntrance())
+        candleOrder_ = solidPieces() || context.ui.theme.motion.varied ? randomWay(4) : 0;
     const bool coming = entering();
     const Shown* lifted = nullptr;
     if (mouse_ && !dragging_ && plot.contains(*mouse_)) {
@@ -746,12 +746,6 @@ void CandleChart::paint(PaintContext& context) {
     const auto keyOf = [](const Shown& c) { return std::to_string(c.index); };
     liftPiece(lifted ? std::optional(keyOf(*lifted)) : std::nullopt);
     const bool lifts = lifting();
-    if (coming && !ordered_) {
-        ordered_ = true;
-        candleOrder_ = context.ui.theme.motion.varied ? randomWay(4) : 0;
-    } else if (!coming) {
-        ordered_ = false;
-    }
     const auto orderOf = [&](const Shown& c) {
         const auto f = static_cast<float>(std::clamp((c.index - xv.low) / xv.span(), 0.0, 1.0));
         switch (candleOrder_) {

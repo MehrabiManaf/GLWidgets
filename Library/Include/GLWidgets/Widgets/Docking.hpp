@@ -98,6 +98,7 @@ struct DockPanel {
 class GLW_EXPORT DockTabs : public Widget {
 public:
     DockTabs();
+    std::optional<Arrival> tabArrival(std::size_t index) const;
 
     std::size_t count() const { return entries_.size(); }
     const std::string& panelId(std::size_t index) const { return entries_[index].id; }
@@ -152,7 +153,11 @@ private:
     // (DockStyle::landing; none when it is zero). Floated into a window of its own: it rises into it from behind
     // (DockStyle::rising).
     // `from`: where it was (its root's dips), to come from there.
-    void land(std::optional<Rect> from, bool wholeStack);
+    struct PreviousLayout {
+        ArrivalBounds controls;
+        std::optional<Rect> tab;
+    };
+    void land(std::optional<Rect> from, bool wholeStack, PreviousLayout previous);
     void rise();
     std::optional<Arrival> arrivalFor(const Widget& target) const;
     void arrive(const Widget& target, std::chrono::milliseconds duration, bool fromBehind, std::optional<Rect> from = std::nullopt);
@@ -186,7 +191,12 @@ private:
     Animation barShown_{[this] { barStepped(); }};      // how much of the bar shows, from 0 to 1
     bool cornerHovered_ = false;
     Animation cornerGrown_{[this] { invalidatePaint(); }};      // the tongue under the mouse: from 0 to 1
-    Animation landing_{[this] { invalidatePaint(); }};          // panels docked from a floating window: 0 to 1
+    ArrivalBounds controlBounds_;
+    Animation landing_{[this] {
+        if (landing_.value() >= 1)
+            controlBounds_.clear();
+        invalidatePaint();
+    }};
     const Widget* arrivalTarget_ = nullptr;
     bool fromBehind_ = false;
     std::optional<Rect> from_;
@@ -409,6 +419,7 @@ private:
     // the mouse is out of the bar.
     bool reorderTo(Point point);
     // Where `widget` is on the screen (none without a host or a window); a rect of the screen in `widget`'s root's dips.
+    DockTabs::PreviousLayout previousLayout(const DockTabs& stack, std::size_t index) const;
     std::optional<Rect> screenRect(const Widget& widget) const;
     std::optional<Rect> inRoot(const Widget& widget, std::optional<Rect> screen) const;
 };

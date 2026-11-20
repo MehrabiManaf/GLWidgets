@@ -346,27 +346,33 @@ void Chart::playEntrance() {
     invalidatePaint();
 }
 
-void Chart::beginEntrance() {
+void Chart::playEntrance(Duration duration) {
+    playEntrance();
+    beginEntrance(duration);
+}
+
+bool Chart::beginEntrance(std::optional<Duration> synchronizedDuration) {
     if (entered_)
-        return;
+        return false;
     entered_ = true;
     const bool replay = replayRequested_;
     replayRequested_ = false;
     const Duration normal = transition();
     if (normal <= Duration::zero())
-        return;
+        return false;
     const UiContext* ui = context();
     const std::chrono::milliseconds own = style().entrance;
     const bool solid = solidPieces();
     entranceWay_ = solid ? 7 : 0;
     if (replay && (solid || (ui && ui->theme.motion.varied)))
-        entranceWay_ = randomWay(solid ? 9 : 3);
+        entranceWay_ = randomWay(solid ? 11 : 3);
     Duration duration = own.count() > 0 ? Duration(own) : std::min(normal * 2, Duration(std::chrono::milliseconds(450)));
     if (replay)
         duration = std::max(duration, normal * 4);
     entrance_.set(0);
-    entrance_.animateTo(scheduler(), 1, duration, Easing::Linear);
+    entrance_.animateTo(scheduler(), 1, synchronizedDuration.value_or(duration), Easing::Linear);
     entering_ = entrance_.running();
+    return entering_;
 }
 
 float Chart::entranceProgress() const {
@@ -416,6 +422,30 @@ void Chart::placeArriving(paint::Painter& p, const paint::Painter::Mark& mark, f
     };
     if (solidPieces()) {
         switch (entranceWay_) {
+        case 9: {
+            // Slanting rain: descend along a diagonal, then rebound slightly on contact.
+            constexpr float contact = 0.78f;
+            const float fall = std::min(u / contact, 1.0f);
+            const float height = 1 - fall * fall;
+            const float after = std::max(0.0f, (u - contact) / (1 - contact));
+            const float bounce = 4 * after * (1 - after);
+            const float drop = std::min(60.0f, middle.y * 0.45f);
+            lifted = {.lift = 24 * height + 3 * bounce,
+                      .turn = paint::Quaternion::axisAngle({0, 0, 1}, start * 0.18f * height),
+                      .shift = {start * drop * 0.35f * height, -drop * height - 3 * bounce},
+                      .alpha = smooth(u / 0.18f)};
+            break;
+        }
+        case 10: {
+            // A falling leaf: drift across the landing point and roll gently back to level.
+            const float remaining = 1 - smooth(u);
+            const float sway = std::sin(2 * pi * u) * remaining;
+            lifted = {.lift = 30 * remaining,
+                      .turn = paint::Quaternion::axisAngle({0, 1, 0}, 0.55f * sway) * paint::towardLight(0.24f * remaining),
+                      .shift = {start * std::min(26.0f, middle.x * 0.2f) * sway, -std::min(46.0f, middle.y * 0.4f) * remaining},
+                      .alpha = smooth(u / 0.2f)};
+            break;
+        }
         case 8:
             p.bankIn(mark, u, p.transform().map(rect), way);
             return;

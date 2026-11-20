@@ -242,7 +242,8 @@ private:
         Widget* widget = nullptr;
         paint::Transform transform;         // its parent's, on the target
     };
-    static void paintTree(Widget& widget, PaintContext& context, const Rect& visible, std::vector<Later>* later = nullptr);
+    static void paintTree(Widget& widget, PaintContext& context, const Rect& visible, std::vector<Later>* later = nullptr,
+                          const Arrival* controls = nullptr, Rect panel = {});
     static Widget* hit(Widget& widget, Point point);     // `point` in the widget's parent's coordinates
 
     const UiContext& context_;

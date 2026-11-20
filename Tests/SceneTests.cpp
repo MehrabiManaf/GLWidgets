@@ -274,6 +274,41 @@ TEST(aRootPaintsWhatIsArrivingFallingInAndItsThemesBricks) {
     CHECK(list.sceneVertices.empty() && !list.vertices.empty() && (list.vertices.back().color >> 24) == 0);
 }
 
+TEST(dockControlsStartAtTheirOwnPreviousBoundsAndFloatAsSeparatePieces) {
+    tests::FakeHost host;
+    UiContext context = tests::testContext();
+    context.theme = Theme::dark(ThemeStyle::Solid);
+    UiRoot root(context, &host);
+    auto made = std::make_unique<Arriving>();
+    auto& panel = *made;
+    Widget& first = panel.add(std::make_unique<Arriving>());
+    Widget& second = panel.add(std::make_unique<Arriving>());
+    root.setContent(std::move(made));
+    root.setSize({400, 300});
+    root.layout();
+    DrawList list;
+    const auto draw = [&] { root.paint(list); };
+    draw();
+    CHECK(list.sceneVertices.size() == 12);
+    const float finalX = list.sceneVertices[4].center[0];
+    ArrivalBounds origins{{&first, {50, 10, 400, 300}}, {&second, {120, 40, 400, 300}}};
+    panel.at = Arrival{.from = Rect{0, 0, 400, 300}, .landing = LandingMotion::Rain, .controls = &origins};
+    draw();
+    CHECK(near(list.sceneVertices[4].center[0], finalX + 50));
+    CHECK(near(list.sceneVertices[8].center[0], finalX + 120));
+    panel.at->progress = 1;
+    draw();
+    CHECK(near(list.sceneVertices[4].center[0], finalX) && near(list.sceneVertices[8].center[0], finalX));
+    panel.at->fromBehind = true;
+    panel.at->progress = 0.4f;
+    panel.at->rising = RisingMotion::Fan;
+    draw();
+    const float fanDepth = list.sceneVertices[4].center[2];
+    panel.at->rising = RisingMotion::LiftWave;
+    draw();
+    CHECK(!near(list.sceneVertices[4].center[2], fanDepth));
+}
+
 TEST(whatRisesInComesFromBehindAndShowsItsTextAsItComes) {
     const auto risen = [](float t) {
         DrawList list;
@@ -365,13 +400,13 @@ TEST(whatFallsInFromSomewhereStartsWhereItWasShowing) {
     // camera, where they were there (the area as small as fits in it, in its middle: here as large); at the end where
     // they are
     const Rect area{100, 100, 200, 100}, from{400, 300, 400, 100};
-    const auto landed = [&](float t) {
+    const auto landed = [&](float t, Painter::FallPath path = Painter::FallPath::Cascade) {
         DrawList list;
         Painter p(list, {0, 0, 1000, 800}, 1);
         const Painter::Mark mark = p.mark();
         p.drawBrick({.center = {200, 150, -5}, .halfSize = {40, 15, 5}, .shadow = 0});
         p.fillRect({190, 145, 20, 10}, {1, 1, 1, 1});
-        p.fallIn(mark, t, area, from);
+        p.arriveFrom(mark, t, area, from, path);
         return std::pair{std::move(list), p.camera()};
     };
     const auto [start, camera] = landed(0);
@@ -388,6 +423,16 @@ TEST(whatFallsInFromSomewhereStartsWhereItWasShowing) {
     const Point corner = end.vertices[0].position;
     CHECK(near(start.vertices[0].position.x, 600 + (corner.x - 200), 0.5f) && near(start.vertices[0].position.y, 350 + (corner.y - 150), 0.5f));
     CHECK(near(end.sceneVertices[0].center[0], 200) && near(end.sceneVertices[0].center[2], -5));
+    for (const auto path : {Painter::FallPath::Rain, Painter::FallPath::FallingLeaves}) {
+        const auto first = landed(0, path).first;
+        const auto middle = landed(0.55f, path).first;
+        const auto last = landed(1, path).first;
+        CHECK(near(first.sceneVertices[0].center[0], 600) && near(first.sceneVertices[0].center[1], 350));
+        CHECK(near(first.vertices[0].position.x, 600 + corner.x - 200));
+        CHECK(middle.sceneVertices[0].center[0] > 200 && middle.sceneVertices[0].center[0] < 600);
+        CHECK(middle.sceneVertices[0].center[2] > first.sceneVertices[0].center[2]);
+        CHECK(near(last.sceneVertices[0].center[0], 200) && last.vertices[0].position == corner);
+    }
 }
 
 TEST(aTabJoinedOntoItsStackIsOnePieceOfGlassWithIt) {

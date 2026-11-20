@@ -300,16 +300,16 @@ Painter::Mark Painter::mark() {
 
 void Painter::fallIn(const Mark& mark, float t, const Rect& area, std::optional<Rect> from) {
     if (from && !from->empty() && !area.empty())
-        arriveFrom(mark, t, area, *from);
+        arriveFrom(mark, t, area, *from, FallPath::Cascade);
     else
         arrive(mark, t, area, false);
 }
 
-void Painter::arriveFrom(const Mark& mark, float t, const Rect& area, const Rect& from) {
+void Painter::arriveFrom(const Mark& mark, float t, const Rect& area, const Rect& from, FallPath path) {
     t = std::clamp(t, 0.0f, 1.0f);
-    if (t >= 1)
+    if (t >= 1 || area.empty() || from.empty())
         return;
-    // where a point of the area was: the area stretched onto `from`
+    // Map the final layout back into its previous bounds.
     // where a point of the area was: the area made as small as fits in `from` (the same both ways: nothing stretched, text
     // as it is, smaller), in its middle
     const float fit = std::min(from.width / area.width, from.height / area.height);
@@ -328,11 +328,12 @@ void Painter::arriveFrom(const Mark& mark, float t, const Rect& area, const Rect
     // after another down the area; each from where it was, a little nearer the camera, along an arc (up a little, then
     // down), quick at first and slowing, a slight tilt of its own that sways once and settles; landed, a small bounce and
     // a pop of its size.
-    const float lifted = eye.z * 0.08f;             // where it starts (nearer the camera)
+    const float lifted = path == FallPath::Cascade ? eye.z * 0.08f : 0;             // where it starts (nearer the camera)
     const float hop = eye.z * 0.035f;               // the arc's height over that
     const float bounce = std::min(5.0f, eye.z * 0.006f);
     constexpr float span = 0.6f, landed = 0.8f;     // of t a piece takes; of that, when it lands (then the bounce)
     struct Motion {
+        Point drift{};
         float e = 1;            // of the way from where it was (its place and size), eased
         float z = 0;            // over where it is
         float sway = 0;         // its tilt along its way, radians
@@ -347,6 +348,26 @@ void Painter::arriveFrom(const Mark& mark, float t, const Rect& area, const Rect
         const float u = std::clamp((t - delay) / span, 0.0f, 1.0f);
         const float s = std::min(1.0f, u / landed);
         Motion m;
+        if (path != FallPath::Cascade) {
+            const float travel = path == FallPath::Rain ? s : u;
+            m.e = travel * travel * (3 - 2 * travel);
+            const float arc = 4 * m.e * (1 - m.e);
+            const float strength = stage == 0 ? 0.2f : 1.0f;
+            const float height = std::min(52.0f, area.height * 0.16f) * strength;
+            const float side = fromMiddle.x <= areaMiddle.x ? -1.0f : 1.0f;
+            if (path == FallPath::Rain) {
+                const float rebound = std::max(0.0f, (u - landed) / (1 - landed));
+                m.drift = {side * height * 0.35f * arc, -height * arc - 12 * rebound * (1 - rebound) * strength};
+                m.sway = 0.16f * arc * strength;
+            } else {
+                const float sway = std::sin(2 * pi * u) * arc;
+                m.drift = {side * height * 0.65f * sway, -height * 0.65f * arc};
+                m.sway = 0.42f * sway * strength;
+            }
+            m.z = 18 * arc * strength;
+            m.glint = 0.18f * arc * strength;
+            return m;
+        }
         m.e = 1 - (1 - s) * (1 - s) * (1 - s);
         const float small = 1 - large;
         m.z = lifted * (1 - m.e) + hop * std::sin(pi * s) * small;
@@ -367,7 +388,7 @@ void Painter::arriveFrom(const Mark& mark, float t, const Rect& area, const Rect
     for (std::size_t i = mark.vertices; i < list_.vertices.size(); ++i) {
         Vertex& v = list_.vertices[i];
         const Motion m = motion(pieces.stageOf(v.position.y), v.position.y, 0);
-        const Point at = along(under(was(v.position), lifted), v.position, m.e);
+        const Point at = along(under(was(v.position), lifted), v.position, m.e) + m.drift;
         v.position = project({at.x, at.y, m.z});
         if (v.kind == static_cast<float>(VertexKind::Box) && v.blur > 0.5f)
             scaleAlpha(v.color, std::clamp((m.e - 0.9f) / 0.1f, 0.0f, 1.0f));
@@ -381,7 +402,7 @@ void Painter::arriveFrom(const Mark& mark, float t, const Rect& area, const Rect
         const Point start = was(c);
         if (four[0].material[2] > 1.5f) {
             // a shadow: under its brick on the way, darker as it comes down
-            const Point at = along(start, c, m.e);
+            const Point at = along(start, c, m.e) + m.drift;
             for (int k = 0; k < 4; ++k) {
                 four[k].center[0] += at.x - c.x;
                 four[k].center[1] += at.y - c.y;
@@ -390,7 +411,7 @@ void Painter::arriveFrom(const Mark& mark, float t, const Rect& area, const Rect
             }
             continue;
         }
-        const Point at = along(under(start, lifted), c, m.e);       // (its top face, as its 2D, where it was)
+        const Point at = along(under(start, lifted), c, m.e) + m.drift;       // (its top face, as its 2D, where it was)
         // as large as it was showing there (the area stretched onto `from`; nearer the camera, it shows larger), growing to
         // its own size as it comes, a pop of it as it lands
         const float nearer = (eye.z - lifted) / eye.z;

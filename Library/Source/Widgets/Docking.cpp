@@ -5,6 +5,7 @@
 #include "Widgets/Json.hpp"
 #include "Widgets/TabPaint.hpp"
 
+#include <GLWidgets/Charts/Chart.hpp>
 #include <GLWidgets/Core/Assert.hpp>
 #include <GLWidgets/Paint/Painter.hpp>
 #include <GLWidgets/Widgets/Bevel.hpp>
@@ -68,6 +69,8 @@ public:
         label_ = &add(std::make_unique<Label>(Label::Props{.text = title, .elide = true}));
         label_->setAlignment(Alignment::Start, Alignment::Center);
     }
+
+    std::optional<Arrival> arrival() const override { return owner_.tabArrival(index_); }
 
     // The panel it is the tab of: what the row knows it by when the tabs are made again.
     const std::string& panelId() const { return owner_.panelId(index_); }
@@ -790,12 +793,36 @@ void DockTabs::setActive(std::size_t index) {
     }
 }
 
-void DockTabs::land(std::optional<Rect> from, bool wholeStack) {
-    if (const UiContext* ui = context())
-        arrive(wholeStack ? *this : *entries_[active_].content, ui->theme.dock.landing, false, from);
+void DockTabs::land(std::optional<Rect> from, bool wholeStack, PreviousLayout previous) {
+    controlBounds_ = std::move(previous.controls);
+    if (previous.tab && active_ < bar_->children().size())
+        controlBounds_[bar_->children()[active_].get()] = *previous.tab;
+    if (!controlBounds_.empty() && root() && context()->docking) {
+        const Point origin = context()->docking->toScreen(*root(), {});
+        for (auto& item : controlBounds_) {
+            item.second.x -= origin.x;
+            item.second.y -= origin.y;
+        }
+    }
+    if (const UiContext* ui = context()) {
+        Widget& content = *entries_[active_].content;
+        const auto duration = ui->theme.dock.landing;
+        arrive(wholeStack ? *this : content, duration, false, from);
+        if (!landing_.running() || !content.visibleInTree())
+            return;
+        const auto replayCharts = [&](auto& visit, Widget& widget) -> void {
+            if (auto* chart = dynamic_cast<Chart*>(&widget))
+                chart->playEntrance(duration);
+            for (const auto& child : widget.children())
+                if (child->visible())
+                    visit(visit, *child);
+        };
+        replayCharts(replayCharts, content);
+    }
 }
 
 void DockTabs::rise() {
+    controlBounds_.clear();
     if (const UiContext* ui = context())
         arrive(*this, ui->theme.dock.rising, true);
 }
@@ -812,10 +839,11 @@ void DockTabs::arrive(const Widget& target, std::chrono::milliseconds duration, 
     risingMotion_ = RisingMotion::FromBehind;
     if (ui->theme.dock.variedArrivals) {
         if (fromBehind) {
-            constexpr RisingMotion motions[]{RisingMotion::FromBehind, RisingMotion::Pop, RisingMotion::Turn, RisingMotion::Bank};
-            risingMotion_ = motions[randomWay(4)];
+            constexpr RisingMotion motions[]{RisingMotion::FromBehind, RisingMotion::Pop, RisingMotion::Turn, RisingMotion::Bank,
+                                            RisingMotion::Fan, RisingMotion::LiftWave};
+            risingMotion_ = motions[randomWay(static_cast<int>(std::size(motions)))];
         } else {
-            landingMotion_ = static_cast<LandingMotion>(randomWay(5));
+            landingMotion_ = static_cast<LandingMotion>(randomWay(from && !from->empty() ? 7 : 5));
         }
     }
     landing_.set(0);
@@ -830,10 +858,27 @@ std::optional<Arrival> DockTabs::childArrival(const Widget& child) const {
     return arrivalFor(child);
 }
 
+std::optional<Arrival> DockTabs::tabArrival(std::size_t index) const {
+    if (index != active_ || index >= entries_.size() || index >= bar_->children().size())
+        return std::nullopt;
+    auto motion = arrivalFor(*entries_[index].content);
+    if (!motion || !motion->controls)
+        return std::nullopt;
+    const auto tab = controlBounds_.find(bar_->children()[index].get());
+    if (tab == controlBounds_.end())
+        return std::nullopt;
+    motion->from = tab->second;
+    return motion;
+}
+
 std::optional<Arrival> DockTabs::arrivalFor(const Widget& target) const {
     if (arrivalTarget_ != &target || landing_.value() >= 1)
         return std::nullopt;
-    return Arrival{landing_.value(), fromBehind_, from_, landingMotion_, risingMotion_};
+    Arrival motion{landing_.value(), fromBehind_, from_, landingMotion_, risingMotion_};
+    if (context() && context()->theme.dock.variedArrivals &&
+        (!fromBehind_ || risingMotion_ == RisingMotion::Fan || risingMotion_ == RisingMotion::LiftWave))
+        motion.controls = &controlBounds_;
+    return motion;
 }
 
 void DockTabs::rebuildTools() {
@@ -1386,11 +1431,14 @@ void DockArea::toggleFloating(std::string_view id) {
             DockArea* to = homeFor();
             if (!to || !to->root())
                 return;
-            const std::optional<Rect> was = screenRect(*tabs);
+            const auto was = screenRect(*tabs);
+            auto previous = previousLayout(*tabs, *tabs->indexOf(id));
+            const auto contentWas = screenRect(*tabs->panelContent(*tabs->indexOf(id)));
             DockPanel panel = tabs->take(*tabs->indexOf(id));
             prune(*tabs);
             DockTabs& landed = to->placeBack(std::move(panel));
-            landed.land(inRoot(landed, was), landed.count() == 1);
+            const bool whole = landed.count() == 1;
+            landed.land(inRoot(landed, whole ? was : contentWas), whole, std::move(previous));
             from->closeIfEmpty();
             h->raiseWindow(*to->root());
             return;
@@ -1411,6 +1459,8 @@ void DockArea::move(const std::vector<std::string>& ids, const std::string& show
     DockTabs* source = tabsOf(shown);
     const bool docking = source && (source != &target || (side != DockSide::Center && source->count() > ids.size()));
     const auto was = docking ? screenRect(*source) : std::nullopt;
+    auto previous = docking ? previousLayout(*source, *source->indexOf(shown)) : DockTabs::PreviousLayout{};
+    const auto contentWas = docking ? screenRect(*source->panelContent(*source->indexOf(shown))) : std::nullopt;
     move(ids.front(), target, side, true, share);
     for (std::size_t i = 1; i < ids.size(); ++i) {
         if (DockTabs* into = tabsOf(ids.front()))
@@ -1418,8 +1468,10 @@ void DockArea::move(const std::vector<std::string>& ids, const std::string& show
     }
     if (DockTabs* stack = tabsOf(shown)) {
         stack->setActive(*stack->indexOf(shown));
-        if (docking)
-            stack->land(inRoot(*stack, was), stack->count() == ids.size());
+        if (docking) {
+            const bool whole = stack->count() == ids.size();
+            stack->land(inRoot(*stack, whole ? was : contentWas), whole, std::move(previous));
+        }
     }
 }
 
@@ -1527,6 +1579,30 @@ bool DockArea::reorderTo(Point point) {
     }
     source.moveTab(*from, std::min(to, source.count() - 1));
     return true;
+}
+
+DockTabs::PreviousLayout DockArea::previousLayout(const DockTabs& stack, std::size_t index) const {
+    DockTabs::PreviousLayout layout;
+    const auto* ui = stack.context();
+    if (!ui || !ui->theme.dock.variedArrivals || ui->theme.dock.landing.count() <= 0 ||
+        !ui->scheduler || !ui->scheduler->animationsEnabled() || !group_->host || !stack.root())
+        return layout;
+    const Point origin = group_->host->toScreen(*stack.root(), {});
+    const auto remember = [&](auto& self, const Widget& widget) -> void {
+        if (!widget.visible())
+            return;
+        const Size size = widget.size();
+        Rect bounds = widget.transformToRoot().map(Rect{0, 0, size.width, size.height});
+        bounds.x += origin.x;
+        bounds.y += origin.y;
+        layout.controls.emplace(&widget, bounds);
+        for (const auto& child : widget.children())
+            self(self, *child);
+    };
+    remember(remember, *stack.panelContent(index));
+    if (index < stack.bar_->children().size())
+        layout.tab = screenRect(*stack.bar_->children()[index]);
+    return layout;
 }
 
 std::optional<Rect> DockArea::screenRect(const Widget& widget) const {

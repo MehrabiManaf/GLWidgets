@@ -109,6 +109,8 @@ public:
 
     // Its pieces (bars, tiles, slices) coming in again, as when it first showed them.
     void playEntrance();
+    // Start immediately and finish with the transition carrying this chart.
+    void playEntrance(Duration duration);
 
 protected:
     Chart();
@@ -243,10 +245,9 @@ protected:
     // ---- its pieces coming in ----
     // Called by paint when data is ready. Automatic entry runs once; an explicit replay can use a
     // longer, varied motion. Hiding or moving the chart ends an entrance already in progress.
-    void beginEntrance();
+    bool beginEntrance(std::optional<Duration> synchronizedDuration = {}); // true on the first frame of each entrance
     bool entering() const { return entering_; }
-    // How far all of it has come (0 to 1; 1 when it is not coming in), and which of the ways it comes this time (0 to 7;
-    // in its plane, 0 to 2).
+    // How far all of it has come (0 to 1; 1 when it is not coming in), and which motion was picked for this entrance.
     float entranceProgress() const;
     int entranceWay() const { return entranceWay_; }
     // How far a piece whose turn is at `order` (0 the first, 1 the last) has come, from 0 to 1 (1 when none comes).

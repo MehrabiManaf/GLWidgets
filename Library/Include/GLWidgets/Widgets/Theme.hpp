@@ -51,7 +51,7 @@ struct StateColor {
 };
 
 // The looks a theme is made in, each in the dark and in the light (Theme::dark, Theme::light; Application::setStyle):
-//   Studio  (the default) as a tool's (Qt's Fusion, made finer): square, controls raised and lit from above, fields sunk; quick motions.
+//   Studio  as a tool's (Qt's Fusion, made finer): square, controls raised and lit from above, fields sunk; quick motions.
 //   Fluid   modern: Plastic's reliefs lit softly, rounder (pills, round panels, rows and slices); more motion and longer:
 //           a press ripples out of where it was, the selection slides from row to row, popups come in from further.
 //   Plain   simple: square and flat, no shadows, no glows, and nothing animated (every motion at once).
@@ -60,7 +60,7 @@ struct StateColor {
 //           Glossy: sharp white highlights where they turn toward the light.
 //   Metal   ... of metal: its highlights of its own color, its surfaces brushed; gunmetal in the dark, aluminum in the
 //           light.
-//   Solid   Plastic in three dimensions: its raised controls solids (Theme::reliefBricks), their tops where Plastic's
+//   Solid   (the default) Plastic in three dimensions: its raised controls solids (Theme::reliefBricks), their tops where Plastic's
 //           are, their sides showing as a camera above the window sees them; panels docked from a floating window fall
 //           into their places (DockStyle::landing), and floated, rise into their window from behind it.
 //   Glass   Plastic of glass: its controls, and the slabs they stand on, reliefs of glass, what is under them showing
@@ -74,6 +74,7 @@ enum class ThemeStyle : std::uint8_t {
     Solid,
     Glass,
 };
+inline constexpr ThemeStyle defaultThemeStyle = ThemeStyle::Solid;
 
 // The colors a theme is made in, in any of the looks (Theme::of; Application::setColorScheme):
 //   Dark     the style's own dark colors: grays with a little blue in them, an amber accent.
@@ -118,11 +119,11 @@ struct Palette {
     Color selection;        // behind selected text
     Color closeHover;       // the close button of a window, under the mouse
 
-    GLW_EXPORT static Palette dark(ThemeStyle style = ThemeStyle::Studio);
-    GLW_EXPORT static Palette light(ThemeStyle style = ThemeStyle::Studio);
+    GLW_EXPORT static Palette dark(ThemeStyle style = defaultThemeStyle);
+    GLW_EXPORT static Palette light(ThemeStyle style = defaultThemeStyle);
     // A scheme's, in a style: Dark's and Light's the style's own (dark, light); the others the same in every style, but
     // Metal's controls a little lighter (or darker), as metal stands out of what it is on.
-    GLW_EXPORT static Palette of(ColorScheme scheme, ThemeStyle style = ThemeStyle::Studio);
+    GLW_EXPORT static Palette of(ColorScheme scheme, ThemeStyle style = defaultThemeStyle);
 };
 
 // How a control stands out of what it is on, lit from above. Raised (a button): its background lighter at its top, a light
@@ -537,7 +538,7 @@ struct WindowFrameStyle {
 };
 
 struct Theme {
-    ThemeStyle style = ThemeStyle::Studio;
+    ThemeStyle style = defaultThemeStyle;
     ColorScheme scheme = ColorScheme::Dark;     // what its palette is (one made otherwise: Dark or Light, as dark as it is)
     Palette palette;
     float fontSize = 13;
@@ -586,12 +587,12 @@ struct Theme {
     } windowTone;
 
     // The styles of every widget made from `palette`, in `style`.
-    GLW_EXPORT static Theme fromPalette(const Palette& palette, ThemeStyle style = ThemeStyle::Studio);
+    GLW_EXPORT static Theme fromPalette(const Palette& palette, ThemeStyle style = defaultThemeStyle);
     // The style's own colors.
-    static Theme dark(ThemeStyle style = ThemeStyle::Studio) { return fromPalette(Palette::dark(style), style); }
-    static Theme light(ThemeStyle style = ThemeStyle::Studio) { return fromPalette(Palette::light(style), style); }
+    static Theme dark(ThemeStyle style = defaultThemeStyle) { return fromPalette(Palette::dark(style), style); }
+    static Theme light(ThemeStyle style = defaultThemeStyle) { return fromPalette(Palette::light(style), style); }
     // A scheme's, in a style: its palette's, its code in its own colors.
-    GLW_EXPORT static Theme of(ColorScheme scheme, ThemeStyle style = ThemeStyle::Studio);
+    GLW_EXPORT static Theme of(ColorScheme scheme, ThemeStyle style = defaultThemeStyle);
     // Between two themes, `t` of the way from `from` to `to` (an application changing theme, or style, eased): the
     // palettes' colors mixed, and the shapes (corners rounding, controls growing lower, bevels fading); what neither
     // mixes (what is on or off, the motions) is `to`'s.

@@ -840,7 +840,7 @@ struct Page {
 int main(int argc, char** argv) {
     int frames = -1;
     std::string language = "en";
-    std::optional<glw::ThemeStyle> style;       // none: the default (Studio)
+    std::optional<glw::ThemeStyle> style;       // none: the default (Solid)
     std::optional<glw::ColorScheme> colors;     // none: the default (Dark)
     for (int i = 1; i < argc; ++i) {
         const std::string_view arg(argv[i]);

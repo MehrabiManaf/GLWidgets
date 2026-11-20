@@ -139,8 +139,8 @@ TEST(aStyleChangedEasesItsShapes) {
     CHECK(fluid.frame.popupRadius > 0 && studio.frame.popupRadius == 0);
 }
 
-TEST(studioIsTheDefault) {
-    CHECK(Theme::dark().style == ThemeStyle::Studio && Theme::light().style == ThemeStyle::Studio && Theme{}.style == ThemeStyle::Studio);
+TEST(solidIsTheDefault) {
+    CHECK(Theme::dark().style == ThemeStyle::Solid && Theme::light().style == ThemeStyle::Solid && Theme{}.style == ThemeStyle::Solid);
     // Fluid: its splitters seen; its buttons and its panels' headers reliefs, lit softer than Plastic's
     const Theme fluid = Theme::dark(ThemeStyle::Fluid), plastic = Theme::dark(ThemeStyle::Plastic);
     CHECK(fluid.splitter.handle.a > 0 && fluid.button.bevel.relief > 0 && fluid.collapsiblePanel.bevel.relief > 0);
@@ -151,11 +151,11 @@ TEST(plasticAndMetalDrawTheirControlsAsLitReliefs) {
     const Theme plastic = Theme::dark(ThemeStyle::Plastic);
     // raised buttons, sunk fields, a light from the upper left
     CHECK(plastic.button.bevel.relief > 0 && plastic.lineEdit.bevel.relief > 0 && plastic.collapsiblePanel.bevel.relief > 0);
-    CHECK(plastic.lighting.x < 0 && plastic.lighting.y < 0 && plastic.lighting.z > 0 && Theme::dark().button.bevel.relief == 0);
+    CHECK(plastic.lighting.x < 0 && plastic.lighting.y < 0 && plastic.lighting.z > 0 && Theme::dark(ThemeStyle::Studio).button.bevel.relief == 0);
     // low reliefs; item views' headers and highlights raised too (not in the other styles)
     CHECK(plastic.button.bevel.relief < 2 && plastic.button.bevel.roundness < 3);
     CHECK(plastic.table.headerBackground.a > 0 && plastic.table.headerBevel.relief > 0 && plastic.itemView.rowBevel.relief > 0);
-    CHECK(Theme::dark().itemView.rowBevel.relief == 0);
+    CHECK(Theme::dark(ThemeStyle::Studio).itemView.rowBevel.relief == 0);
     // a raised control, a sunk one: reliefs (the vertices of a lit kind), up and down
     paint::DrawList list;
     {
@@ -172,7 +172,7 @@ TEST(plasticAndMetalDrawTheirControlsAsLitReliefs) {
     }
     CHECK(up == 4 && down == 4);
     // eased to it: its relief and its light between
-    const Theme half = Theme::blend(Theme::dark(), plastic, 0.5f);
+    const Theme half = Theme::blend(Theme::dark(ThemeStyle::Studio), plastic, 0.5f);
     CHECK(half.button.bevel.relief == plastic.button.bevel.relief / 2 && half.lighting.specular > 0);
     // plastic: a white, tight highlight; metal: its highlight of its color, broad, its surfaces brushed, its own grays
     const Theme metal = Theme::dark(ThemeStyle::Metal);

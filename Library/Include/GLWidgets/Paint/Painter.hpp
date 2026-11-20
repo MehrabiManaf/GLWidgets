@@ -143,6 +143,8 @@ public:
     // fits in `from`, in its middle), a little nearer the camera, and moves down to its place with a slight tilt, the 2D
     // with it (its shadows coming as it lands), its slab first, then its tab, then the rest a row after another.
     void fallIn(const Mark& mark, float t, const Rect& area, std::optional<Rect> from = std::nullopt);
+    enum class FallPath { Cascade, Rain, FallingLeaves };
+    void arriveFrom(const Mark& mark, float t, const Rect& area, const Rect& from, FallPath path);
     // ... rising from far behind the target instead (small, toward the camera's middle), nearer and nearer, slowing as it
     // comes, one after another from the middle of `area` out; the 2D of each place showing as what is under it comes.
     void riseIn(const Mark& mark, float t, const Rect& area);
@@ -167,6 +169,11 @@ public:
     // What was drawn since `mark` moved in three dimensions about `pivot` (dips of the target, on the target's plane): its
     // 2D seen where it goes (its vertices projected), its bricks lifted and turned with it; shadows where they are.
     void place(const Mark& mark, Point pivot, const Lifted& lifted);
+    // Move a complete widget and its clips together.
+    void placeClipped(const Mark& mark, Point pivot, const Lifted& lifted) {
+        placeClips(mark, pivot, lifted);
+        place(mark, pivot, lifted);
+    }
     // The camera bricks are seen from: by default above the middle of the target, as far above it as 1.6 times its longer
     // side (at least 1000 dips).
     void setCamera(Camera camera) { camera_ = camera; }
@@ -200,7 +207,6 @@ private:
     void unclip(const Mark& mark);
     // ... cut where its clips went, moved as place moves it (what was cut where it is, cut as it moves).
     void placeClips(const Mark& mark, Point pivot, const Lifted& lifted);
-    void arriveFrom(const Mark& mark, float t, const Rect& area, const Rect& from);
     // A brick's (a decal's) four scene vertices placed again around where it shows.
     void placeQuad(SceneVertex* four) const;
     // The scene vertex of `brick` through the current transform, of `kind` (its eye and pixels per dip set; no position).

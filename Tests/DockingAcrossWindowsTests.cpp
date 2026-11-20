@@ -1206,7 +1206,7 @@ TEST(somethingIsDraggedFromOneWindowToAnother) {
     CHECK((t.source->finished == std::vector<DropAction>{DropAction::Copy}));
 }
 
-TEST(aChartStaysReadableWhenShownAgainAndWhenItsPanelFloatsOrDocks) {
+TEST(aChartReplaysItsEntranceOnlyWhenItsPanelLands) {
     struct TestGauge : Gauge {
         using Chart::entranceProgress;
     };
@@ -1217,6 +1217,8 @@ TEST(aChartStaysReadableWhenShownAgainAndWhenItsPanelFloatsOrDocks) {
     auto content = std::make_unique<Widget>();
     Widget& container = *content;
     auto& gauge = container.add(std::make_unique<TestGauge>());
+    auto& hidden = container.add(std::make_unique<TestGauge>());
+    hidden.setVisible(false);
     t.area->addPanel({"meter", LocalizedText("Meter"), std::move(content)}, t.graph);
     paint::DrawList list;
     const auto checkReady = [&] {
@@ -1236,6 +1238,12 @@ TEST(aChartStaysReadableWhenShownAgainAndWhenItsPanelFloatsOrDocks) {
     checkReady();
     t.area->tabsOf("meter")->area()->toggleFloating("meter");
     CHECK(gauge.root() == t.window->root.get());
+    gauge.root()->paint(list);
+    CHECK(gauge.entranceProgress() == 0 && hidden.entranceProgress() == 1);
+    const auto half = screen.context.theme.dock.landing / 2;
+    tests::advance(half);
+    CHECK(std::abs(gauge.entranceProgress() - 0.5f) < 0.01f);
+    tests::advance(screen.context.theme.dock.landing - half);
     checkReady();
     tests::testScheduler().setAnimationsEnabled(false);
 }
@@ -1339,9 +1347,10 @@ TEST(aFloatingWindowLetGoOnAGuideLandsFromWhereItWas) {
     screen.moveTo(floating, {title.x + 10, title.y});
     const Point graphMiddle = t.graph->mapToRoot(t.graph->guide(DockSide::Center).center()) + t.window->position;
     screen.moveTo(floating, graphMiddle);
-    // where its stack is on the screen as it is let go
-    const Point corner = stack.mapToRoot({}) + floating.position;
-    const Rect was{corner.x, corner.y, stack.size().width, stack.size().height};
+    // Only the panel content joins the existing stack.
+    const Widget& previousContent = *stack.panelContent(stack.active());
+    const Point corner = previousContent.mapToRoot({}) + floating.position;
+    const Rect was{corner.x, corner.y, previousContent.size().width, previousContent.size().height};
     screen.release(floating, graphMiddle);
     screen.closeWindows();
     screen.layout();

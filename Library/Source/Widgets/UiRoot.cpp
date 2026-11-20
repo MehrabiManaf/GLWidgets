@@ -11,6 +11,7 @@
 #include <GLWidgets/Widgets/Layout.hpp>
 
 #include <algorithm>
+#include <cmath>
 #include <utility>
 #include <variant>
 
@@ -282,6 +283,81 @@ void UiRoot::setContentArrival(std::optional<Arrival> arrival) {
 
 namespace {
 
+// Each control has one clock and one pivot for its face, text and decorations.
+void placeControl(paint::Painter& painter, const paint::Painter::Mark& mark, const Widget& widget, const Arrival& motion, Rect box, Rect panel) {
+    if (box.empty() || panel.empty())
+        return;
+    const Point center = box.center();
+    const float column = std::clamp((center.x - panel.x) / panel.width, 0.0f, 1.0f);
+    const float row = std::clamp((center.y - panel.y) / panel.height, 0.0f, 1.0f);
+    const float order = box == panel ? 0.0f : 0.72f * row + 0.28f * column;
+    const float t = std::clamp((motion.progress - 0.24f * order) / 0.76f, 0.0f, 1.0f);
+    if (t >= 1)
+        return;
+    const float e = t * t * (3 - 2 * t);
+    const float left = 1 - e;
+    const float arc = 4 * e * left;
+    constexpr float pi = 3.14159265f;
+    const float side = 2 * column - 1;
+    paint::Lifted pose;
+    if (motion.fromBehind) {
+        // Open like a fan from the bottom centre, or surface in a wave from the lower edge.
+        pose.alpha = std::min(1.0f, t * 6);
+        if (motion.rising == RisingMotion::Fan) {
+            pose.shift = {(panel.center().x - center.x) * 0.45f * left, 24 * left};
+            pose.turn = paint::Quaternion::axisAngle({0, 0, 1}, -0.24f * side * left);
+            pose.scale = 1 - 0.15f * left;
+            pose.lift = -28 * left;
+        } else {
+            pose.shift = {0, 32 * left - 5 * arc};
+            pose.turn = paint::Quaternion::axisAngle({1, 0, 0}, 0.50f * left);
+            pose.lift = -45 * left + 14 * arc;
+        }
+    } else {
+        Rect source = box;
+        const auto found = motion.controls->find(&widget);
+        if (found != motion.controls->end() && !found->second.empty()) {
+            source = found->second;
+        } else if (motion.from && !motion.from->empty()) {
+            const float fit = std::min(motion.from->width / panel.width, motion.from->height / panel.height);
+            const Point delta = motion.from->center() + (center - panel.center()) * fit;
+            source = {delta.x - box.width * fit / 2, delta.y - box.height * fit / 2, box.width * fit, box.height * fit};
+        }
+        pose.shift = (source.center() - center) * left;
+        pose.scale = 1 + (std::min(source.width / box.width, source.height / box.height) - 1) * left;
+        switch (motion.landing) {
+        case LandingMotion::Rain: {
+            const float rebound = std::max(0.0f, (t - 0.80f) / 0.20f);
+            pose.shift = pose.shift + Point{-14 * arc, -34 * arc - 3 * std::sin(pi * rebound)};
+            pose.turn = paint::Quaternion::axisAngle({0, 0, 1}, 0.12f * arc);
+            break;
+        }
+        case LandingMotion::FallingLeaves: {
+            const float sway = std::sin(2 * pi * t) * arc;
+            pose.shift = pose.shift + Point{20 * sway, -26 * arc};
+            pose.turn = paint::Quaternion::axisAngle({0, 1, 0}, 0.48f * sway);
+            break;
+        }
+        case LandingMotion::Swing:
+            pose.turn = paint::Quaternion::axisAngle({1, 0, 0}, 0.65f * arc);
+            break;
+        case LandingMotion::Bank:
+            pose.turn = paint::Quaternion::axisAngle({0, 1, 0}, 0.42f * arc);
+            break;
+        case LandingMotion::Gather:
+            pose.shift = pose.shift + Point{24 * side * arc, -12 * arc};
+            break;
+        case LandingMotion::Cascade:
+            pose.shift.y -= 24 * arc;
+            break;
+        case LandingMotion::Glide:
+            break;
+        }
+        pose.lift = 16 * arc;
+    }
+    painter.placeClipped(mark, center, pose);
+}
+
 // What was drawn since `mark` arriving as `arrival` says, in `area` (the target's dips).
 void paintArriving(paint::Painter& painter, const paint::Painter::Mark& mark, const Arrival& arrival, const Rect& area) {
     if ((arrival.fromBehind && arrival.rising == RisingMotion::Bank) || (!arrival.fromBehind && arrival.landing == LandingMotion::Bank)) {
@@ -300,6 +376,9 @@ void paintArriving(paint::Painter& painter, const paint::Painter::Mark& mark, co
             painter.unfoldIn(mark, arrival.progress, area, arrival.hinge);
         else
             painter.riseIn(mark, arrival.progress, area);
+    } else if (arrival.from && (arrival.landing == LandingMotion::Rain || arrival.landing == LandingMotion::FallingLeaves)) {
+        using Path = paint::Painter::FallPath;
+        painter.arriveFrom(mark, arrival.progress, area, *arrival.from, arrival.landing == LandingMotion::Rain ? Path::Rain : Path::FallingLeaves);
     } else if (arrival.landing == LandingMotion::Glide) {
         painter.glideIn(mark, arrival.progress, area, arrival.from.value_or(area));
     } else if (arrival.from && arrival.landing == LandingMotion::Swing) {
@@ -360,7 +439,7 @@ void UiRoot::setOverlay(std::optional<Color> color) {
     invalidatePaint();
 }
 
-void UiRoot::paintTree(Widget& widget, PaintContext& context, const Rect& visible, std::vector<Later>* later) {
+void UiRoot::paintTree(Widget& widget, PaintContext& context, const Rect& visible, std::vector<Later>* later, const Arrival* controls, Rect panel) {
     // what paints a little out of its bounds (a focus ring, a shadow) is painted while that may show
     constexpr float overhang = 24;
     if (!widget.visible_ || !widget.bounds_.inflated(overhang).intersects(visible))
@@ -375,10 +454,21 @@ void UiRoot::paintTree(Widget& widget, PaintContext& context, const Rect& visibl
     }
     // arriving: all of what it paints falls in (Painter::fallIn), its bricks tested by depth as they pass one another; or
     // rises from behind (Painter::riseIn), drawn over what is already there as they come (not hidden behind it)
-    const paint::Painter::Mark mark = arrival ? painter.mark() : paint::Painter::Mark{};
-    const Point corner = painter.transform().map(Point{widget.bounds_.x, widget.bounds_.y});
+    const Rect box = painter.transform().map(widget.bounds_);
+    if (arrival && arrival->controls) {
+        controls = &*arrival;
+        panel = box;
+    }
+    // A label belongs to the face that paints it (button, tab, checkbox). Containers
+    // paint their own background and overlay separately so their controls can travel independently.
+    const bool onePiece = controls && std::all_of(widget.children_.begin(), widget.children_.end(), [](const auto& child) {
+        return dynamic_cast<const Label*>(child.get()) != nullptr;
+    });
+    const paint::Painter::Mark mark = arrival || controls ? painter.mark() : paint::Painter::Mark{};
     painter.pushTransform({1, {widget.bounds_.x, widget.bounds_.y}});
     widget.paint(context);
+    if (controls && !onePiece)
+        placeControl(painter, mark, widget, *controls, box, panel);
     // what shows of it, in its coordinates: for its children
     Rect inside{visible.x - widget.bounds_.x, visible.y - widget.bounds_.y, visible.width, visible.height};
     if (widget.clipsChildren_) {
@@ -398,10 +488,10 @@ void UiRoot::paintTree(Widget& widget, PaintContext& context, const Rect& visibl
         const paint::Painter::Mark childMark = lifted ? painter.mark() : paint::Painter::Mark{};
         if (const std::optional<Rect> cut = widget.childClip(*child)) {
             painter.pushClip(*cut);
-            paintTree(*child, context, inside.intersected(*cut), later);
+            paintTree(*child, context, inside.intersected(*cut), later, onePiece ? nullptr : controls, panel);
             painter.popClip();
         } else {
-            paintTree(*child, context, inside, later);
+            paintTree(*child, context, inside, later, onePiece ? nullptr : controls, panel);
         }
         if (lifted)
             painter.place(childMark, painter.transform().map(child->bounds_.center()), *lifted);
@@ -410,11 +500,13 @@ void UiRoot::paintTree(Widget& widget, PaintContext& context, const Rect& visibl
         painter.popTransform();
     if (widget.clipsChildren_)
         painter.popClip();
+    const auto overlay = controls && !onePiece ? painter.mark() : mark;
     widget.paintOver(context);
     painter.popTransform();
-    if (arrival) {
-        paintArriving(painter, mark, *arrival, {corner.x, corner.y, widget.bounds_.width, widget.bounds_.height});
-    }
+    if (controls)
+        placeControl(painter, overlay, widget, *controls, box, panel);
+    else if (arrival)
+        paintArriving(painter, mark, *arrival, box);
 }
 
 // ---- finding widgets ----

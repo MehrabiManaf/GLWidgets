@@ -39,6 +39,7 @@
 #include <optional>
 #include <span>
 #include <string>
+#include <unordered_map>
 #include <utility>
 #include <vector>
 
@@ -126,8 +127,11 @@ struct TextEvent {
 // floating window, where it was in that window), moving from there to its place.
 // How what lands from somewhere comes (Painter::fallIn from it, swingIn, gatherIn); how what rises comes (Painter::riseIn,
 // popIn, turnIn, unfoldIn on its `hinge` edge).
-enum class LandingMotion : std::uint8_t { Cascade, Swing, Gather, Glide, Bank };
-enum class RisingMotion : std::uint8_t { FromBehind, Pop, Turn, Unfold, Bank };
+enum class LandingMotion : std::uint8_t { Cascade, Swing, Gather, Glide, Bank, Rain, FallingLeaves };
+enum class RisingMotion : std::uint8_t { FromBehind, Pop, Turn, Unfold, Bank, Fan, LiftWave };
+
+class Widget;
+using ArrivalBounds = std::unordered_map<const Widget*, Rect>;
 
 struct Arrival {
     float progress = 0;
@@ -136,6 +140,8 @@ struct Arrival {
     LandingMotion landing = LandingMotion::Cascade;
     RisingMotion rising = RisingMotion::FromBehind;
     paint::Edge hinge = paint::Edge::Top;
+    // Present for a dock transition painted one control at a time. Owned by the moving stack.
+    const ArrivalBounds* controls = nullptr;
 };
 
 struct GLW_EXPORT PaintContext {

@@ -381,7 +381,9 @@ and a scheme have names (`themeStyleNamed`, `colorSchemeNamed`: what the demos' 
 the new one, the palettes' colors mixed and the shapes too (`Theme::blend`: corners rounding, controls growing lower,
 bevels fading; a pill's radius as round as a control is high, so that it rounds as it goes):
 
-- **Studio** (the default), described below: square, controls raised and lit from above, fields sunk, quick motions (what the tests and
+The default style is **Solid**.
+
+- **Studio**, described below: square, controls raised and lit from above, fields sunk, quick motions (what the tests and
   the benchmarks measure).
 - **Fluid**, modern: Plastic's and Metal's reliefs (below), lit softly (a broad, gentle white highlight), and rounder:
   buttons, fields, combo boxes and tool buttons pills (a half circle at each end: the painter takes a radius past half a
