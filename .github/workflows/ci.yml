@@ -20,7 +20,7 @@ jobs:
       - uses: actions/checkout@v7
       - uses: ./.github/actions/msvc-env
       - name: Configure
-        run: cmake --preset windows-release
+        run: cmake --preset windows-release -DGLW_WARNINGS_AS_ERRORS=ON
       - name: Build
         run: cmake --build --preset windows-release
       - name: Test
@@ -39,7 +39,7 @@ jobs:
             libwayland-dev wayland-protocols libdecor-0-dev libegl1-mesa-dev libdrm-dev libgbm-dev \
             libdbus-1-dev libibus-1.0-dev libudev-dev libfontconfig-dev
       - name: Configure
-        run: cmake --preset unix-release
+        run: cmake --preset unix-release -DGLW_WARNINGS_AS_ERRORS=ON
       - name: Build
         run: cmake --build --preset unix-release
       - name: Test
@@ -59,7 +59,7 @@ jobs:
             libwayland-dev wayland-protocols libdecor-0-dev libegl1-mesa-dev libdrm-dev libgbm-dev \
             libdbus-1-dev libibus-1.0-dev libudev-dev libfontconfig-dev
       - name: Configure
-        run: cmake --preset unix-debug
+        run: cmake --preset unix-debug -DGLW_WARNINGS_AS_ERRORS=ON
       - name: Build
         run: cmake --build --preset unix-debug --target glw_tests
       - name: Test
@@ -73,7 +73,7 @@ jobs:
       - name: Install build tools
         run: brew install ninja
       - name: Configure
-        run: cmake --preset unix-release
+        run: cmake --preset unix-release -DGLW_WARNINGS_AS_ERRORS=ON
       - name: Build
         run: cmake --build --preset unix-release
       - name: Test

@@ -12,6 +12,10 @@ set(SPIRV_CROSS_SKIP_INSTALL ON)
 FetchContent_Declare(glw_spirv_cross
     GIT_REPOSITORY https://github.com/KhronosGroup/SPIRV-Cross.git
     GIT_TAG 7affe74d77f93a622bb5002789d5332d32e512ee)
+# Only SPIRV-Cross targets are created in this directory. OpenGL.cpp belongs to GLWidgets.
+if(GLW_WARNINGS_AS_ERRORS)
+    set(CMAKE_COMPILE_WARNING_AS_ERROR OFF)
+endif()
 FetchContent_MakeAvailable(glw_spirv_cross)
 target_link_libraries(GLWidgets PRIVATE spirv-cross-glsl)
 target_compile_definitions(GLWidgets PRIVATE GLW_OPENGL_FALLBACK=1)

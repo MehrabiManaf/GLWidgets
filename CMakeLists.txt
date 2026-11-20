@@ -30,6 +30,11 @@ include(GenerateExportHeader)
 # ---- third party: before the warning options below, which are for our code only ----
 include(cmake/Dependencies.cmake)
 
+option(GLW_WARNINGS_AS_ERRORS "Treat compiler warnings in GLWidgets targets as errors" OFF)
+if(GLW_WARNINGS_AS_ERRORS)
+    set(CMAKE_COMPILE_WARNING_AS_ERROR ON)
+endif()
+
 if(MSVC)
     add_compile_options(/W4 /permissive- /Zc:__cplusplus /utf-8 /wd4100 /wd4127 /wd4251 /wd4275)
 else()

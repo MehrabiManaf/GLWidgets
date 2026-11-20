@@ -111,7 +111,7 @@ void Button::paint(PaintContext& context) {
     border_.to(scheduler(), s.borderWidth > 0 ? s.border.resolve(v) : Color{0, 0, 0, 0}, fast);
     glow_.to(scheduler(), v.focused ? s.focusRing : withAlpha(s.focusRing, 0), context.ui.theme.motion.normal);
     if (s.hoverLift > 0) {
-        hoverLift_.animateTo(scheduler(), liftOnHover_ && v.hovered && !v.disabled && !v.pressed ? 1 : 0, fast);
+        hoverLift_.animateTo(scheduler(), liftOnHover_ && v.hovered && !v.disabled && !v.pressed ? 1.0f : 0.0f, fast);
         if (hoverLift_.value() > 0)
             faceMark_ = context.painter.mark();
     }
