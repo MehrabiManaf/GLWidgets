@@ -7,7 +7,7 @@
 // it is written, in lines that stay left to right.
 //
 //   code_editor [FILE] [--lines N] [--menu-below] [--frames N] [--style studio|fluid|plain|plastic|metal|solid|glass]
-//               [--colors dark|light|dusk|sand|turquoise]
+//               [--colors dark|light|dusk|sand|turquoise|celadon|midnight]
 //
 // FILE: what to edit (a sample otherwise); --lines N: N more lines, to see that a long text costs what shows.
 #include <GLWidgets/Text/Font.hpp>

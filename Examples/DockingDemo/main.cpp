@@ -15,7 +15,7 @@
 // which clears its field. Tabs that do not fit scroll: by the wheel, or by the thin bar along their bottom.
 //
 //   docking_demo [--frames N] [--language fa] [--workspace FILE] [--style studio|fluid|plain|plastic|metal|solid|glass]
-//                [--colors dark|light|dusk|sand|turquoise] [--light]
+//                [--colors dark|light|dusk|sand|turquoise|celadon|midnight] [--light]
 //
 // --frames N draws N frames and exits: a smoke test. --workspace FILE starts with the windows FILE has (if it is there),
 // and saves them there when the demo ends: the windows, the scripts in each, where every panel is.

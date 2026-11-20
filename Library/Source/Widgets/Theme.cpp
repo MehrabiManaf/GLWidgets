@@ -205,7 +205,8 @@ std::optional<ThemeStyle> themeStyleNamed(std::string_view name) {
 std::optional<ColorScheme> colorSchemeNamed(std::string_view name) {
     constexpr std::pair<std::string_view, ColorScheme> names[] = {{"dark", ColorScheme::Dark}, {"light", ColorScheme::Light},
                                                                   {"dusk", ColorScheme::Dusk}, {"sand", ColorScheme::Sand},
-                                                                  {"turquoise", ColorScheme::Turquoise}};
+                                                                  {"turquoise", ColorScheme::Turquoise}, {"celadon", ColorScheme::Celadon},
+                                                                  {"midnight", ColorScheme::Midnight}};
     for (const auto& [n, scheme] : names)
         if (n == name)
             return scheme;
@@ -284,6 +285,46 @@ Palette Palette::of(ColorScheme scheme, ThemeStyle style) {
             .closeHover = hex(0xC42B1C),
         };
         break;
+    case ColorScheme::Celadon:
+        p = {
+            .window = hex(0xD8E1D9),
+            .layer = hex(0xE5ECE5),
+            .surface = hex(0xF0F3ED),
+            .base = hex(0xF6F8F2),
+            .titleBar = hex(0xCBD6CD),
+            .text = hex(0x20352E),
+            .mutedText = hex(0x506458),
+            .disabledText = hex(0x88988C),
+            .accent = hex(0x28664F),
+            .onAccent = hex(0xF8FBF5),
+            .border = hex(0x193C2A, 0.12f),
+            .outline = hex(0x193C2A, 0.28f),
+            .hover = hex(0x35664D, 0.06f),
+            .pressed = hex(0x264C39, 0.12f),
+            .selection = hex(0x28664F, 0.22f),
+            .closeHover = hex(0xB64647),
+        };
+        break;
+    case ColorScheme::Midnight:
+        p = {
+            .window = hex(0x171E2B),
+            .layer = hex(0x202A39),
+            .surface = hex(0x303D50),
+            .base = hex(0x121925),
+            .titleBar = hex(0x101621),
+            .text = hex(0xDFE7F2),
+            .mutedText = hex(0xA2B2C7),
+            .disabledText = hex(0x65748B),
+            .accent = hex(0xF2AF82),
+            .onAccent = hex(0x302013),
+            .border = hex(0xC1D5EC, 0.12f),
+            .outline = hex(0x070E1B, 0.60f),
+            .hover = hex(0xBDD8F4, 0.08f),
+            .pressed = hex(0x070D17, 0.24f),
+            .selection = hex(0xF2AF82, 0.30f),
+            .closeHover = hex(0xAD4754),
+        };
+        break;
     }
     if (style == ThemeStyle::Metal) {
         // metal: the controls further from what they are on (lighter in the dark, darker in the light), as Metal's own
@@ -349,6 +390,38 @@ Theme Theme::of(ColorScheme scheme, ThemeStyle style) {
         e.success = hex(0x7FE6B0);
         e.warning = hex(0xE9C27A);
         e.error = hex(0xE86A7A);
+        break;
+    case ColorScheme::Celadon:
+        t.chart.series = {hex(0x28664F), hex(0x416BB0), hex(0xA15B32), hex(0x8060A3), hex(0x397B84),
+                          hex(0x997422), hex(0x99536F), hex(0x627941), hex(0x546B89), hex(0x8A655F)};
+        t.chart.rise = hex(0x315E36);
+        t.chart.fall = hex(0xA03E4D);
+        e.keyword = hex(0x6C4987);
+        e.type = hex(0x226759);
+        e.string = hex(0x526622);
+        e.number = hex(0x91552C);
+        e.comment = hex(0x5E7164);
+        e.preprocessor = hex(0x8B455E);
+        e.function = hex(0x395E89);
+        e.success = t.chart.rise;
+        e.error = t.chart.fall;
+        e.warning = hex(0x815A13);
+        break;
+    case ColorScheme::Midnight:
+        t.chart.series = {hex(0xF2AF82), hex(0x83ACEE), hex(0x78C3AC), hex(0xC3A1DE), hex(0xDCC57C),
+                          hex(0x77C2D1), hex(0xDF96A9), hex(0xA6C183), hex(0x9CA8DB), hex(0xC1A693)};
+        t.chart.rise = hex(0x91CAA2);
+        t.chart.fall = hex(0xF09EAA);
+        e.keyword = hex(0xC3A1DE);
+        e.type = hex(0x78C3AC);
+        e.string = hex(0xDCC57C);
+        e.number = hex(0xF2AF82);
+        e.comment = hex(0x8E9EB5);
+        e.preprocessor = hex(0xDF96A9);
+        e.function = hex(0x9DBCF1);
+        e.success = t.chart.rise;
+        e.error = t.chart.fall;
+        e.warning = hex(0xE0BE78);
         break;
     }
     return t;

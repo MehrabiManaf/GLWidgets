@@ -20,7 +20,7 @@
 // only their top ones (the rest as one of others). Each chart is a docked panel: moved, split, floated, closed by its
 // tab; the View menu hides and shows each (one closed by its tab too), back beside a neighbour of where it was.
 //
-//   chart_demo [--rate N] [--race N] [--style studio|fluid|plain|plastic|metal|solid|glass] [--colors dark|light|dusk|sand|turquoise]
+//   chart_demo [--rate N] [--race N] [--style studio|fluid|plain|plastic|metal|solid|glass] [--colors dark|light|dusk|sand|turquoise|celadon|midnight]
 //              [--language fa] [--frames N]
 //
 // In another language its numbers and times are written as it writes them (--language fa: Persian digits, the Solar
@@ -233,7 +233,7 @@ struct Demo {
                                             .current = static_cast<std::size_t>(app.style()),
                                             .onChanged = [this](std::size_t i) { app.setStyle(static_cast<glw::ThemeStyle>(i)); }}),
                               ui::Label({.text = tr("Colors")}).alignment(glw::Alignment::Start, glw::Alignment::Center),
-                              ui::ComboBox({.items = {tr("Dark"), tr("Light"), tr("Dusk"), tr("Sand"), tr("Turquoise")},
+                              ui::ComboBox({.items = {tr("Dark"), tr("Light"), tr("Dusk"), tr("Sand"), tr("Turquoise"), tr("Celadon"), tr("Midnight")},
                                             .current = static_cast<std::size_t>(app.colorScheme()),
                                             .onChanged = [this](std::size_t i) { app.setColorScheme(static_cast<glw::ColorScheme>(i)); }}),
                               ui::CheckBox({.text = tr("Eased"), .checked = true, .onToggled = [this](bool on) { animate(on); }})

@@ -214,7 +214,8 @@ TEST(builtInPalettesKeepTextReadable) {
     };
     for (ThemeStyle style : {ThemeStyle::Studio, ThemeStyle::Fluid, ThemeStyle::Plain, ThemeStyle::Plastic,
                              ThemeStyle::Metal, ThemeStyle::Solid, ThemeStyle::Glass}) {
-        for (ColorScheme scheme : {ColorScheme::Dark, ColorScheme::Light, ColorScheme::Dusk, ColorScheme::Sand, ColorScheme::Turquoise}) {
+        for (ColorScheme scheme : {ColorScheme::Dark, ColorScheme::Light, ColorScheme::Dusk, ColorScheme::Sand, ColorScheme::Turquoise,
+                                   ColorScheme::Celadon, ColorScheme::Midnight}) {
             const Palette palette = Theme::of(scheme, style).palette;
             for (Color background : {palette.layer, palette.base}) {
                 CHECK(contrast(palette.text, background) >= 4.5f);
@@ -268,6 +269,8 @@ TEST(colorSchemesGiveEveryStyleTheirColors) {
     CHECK(fluidSand.style == ThemeStyle::Fluid && fluidSand.palette.window == sand.palette.window);
     // Metal: its controls further from what they are on
     CHECK(Theme::of(ColorScheme::Turquoise, ThemeStyle::Metal).palette.surface != turquoise.palette.surface);
+    CHECK(colorSchemeNamed("celadon") == ColorScheme::Celadon && !Theme::of(ColorScheme::Celadon).isDark());
+    CHECK(colorSchemeNamed("midnight") == ColorScheme::Midnight && Theme::of(ColorScheme::Midnight).isDark());
     // its code in its own colors
     CHECK(turquoise.textEdit.keyword != dark.textEdit.keyword && sand.textEdit.keyword != light.textEdit.keyword);
     // eased: the scheme the one it goes to, its code's colors mixed

@@ -13,7 +13,7 @@
 // closes; its colors may follow the system's, and its layout stay left to right in Persian.
 //
 //   widgets_demo [--frames N] [--language fa] [--style studio|fluid|plain|plastic|metal|solid|glass]
-//                [--colors dark|light|dusk|sand|turquoise] [--light]
+//                [--colors dark|light|dusk|sand|turquoise|celadon|midnight] [--light]
 //
 // --light: the same as --colors light.
 //
@@ -77,6 +77,8 @@ constexpr const char* persianCatalog = R"({
     "Light": "روشن",
     "Dusk": "غروب",
     "Sand": "ماسه",
+    "Celadon": "سبز چینی",
+    "Midnight": "نیمه‌شب",
     "Turquoise": "فیروزه",
     "Every widget, in these colors": "همه‌ی ویجت‌ها، با این رنگ‌ها",
     "Close": "بستن",
@@ -686,9 +688,9 @@ struct Page {
                    ui::HStack({.spacing = 10},
                               // in the other language: the button says which one it goes to
                               ui::Button({.text = tr("فارسی"), .onClick = [this] { switchLanguage(); }}),
-                              // the colors: the style's dark and light ones, two more of each, one of glazed tiles' turquoise
+                              // Keep the picker in ColorScheme order.
                               ui::Label({.text = tr("Colors")}).alignment(glw::Alignment::Start, glw::Alignment::Center),
-                              ui::ComboBox({.items = {tr("Dark"), tr("Light"), tr("Dusk"), tr("Sand"), tr("Turquoise")},
+                              ui::ComboBox({.items = {tr("Dark"), tr("Light"), tr("Dusk"), tr("Sand"), tr("Turquoise"), tr("Celadon"), tr("Midnight")},
                                             .current = 0,
                                             .onChanged = [this](std::size_t i) {
                                                 app.setColorScheme(static_cast<glw::ColorScheme>(i));

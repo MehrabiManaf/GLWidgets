@@ -9,7 +9,7 @@
 // a link let go on the empty canvas searches those that have a pin for it, and links the one added.
 //
 //   node_editor [--nodes N] [--rtl] [--frames N] [--style studio|fluid|plain|plastic|metal|solid|glass]
-//               [--colors dark|light|dusk|sand|turquoise]
+//               [--colors dark|light|dusk|sand|turquoise|celadon|midnight]
 //
 // --nodes adds N more nodes linked in a chain (thousands of them: only those that show are painted).
 #include <GLWidgets/Paint/Painter.hpp>

@@ -89,10 +89,12 @@ enum class ColorScheme : std::uint8_t {
     Dusk,
     Sand,
     Turquoise,
+    Celadon,    // light porcelain greens, eucalyptus accent
+    Midnight,   // deep ink blues, apricot accent
 };
 
 // A style, a scheme by its name, in lower case ("studio", "fluid", "plain", "plastic", "metal"; "dark", "light", "dusk",
-// "sand", "turquoise"), as a command line or a settings file says it; none for another name.
+// "sand", "turquoise", "celadon", "midnight"), as a command line or a settings file says it; none for another name.
 GLW_EXPORT std::optional<ThemeStyle> themeStyleNamed(std::string_view name);
 GLW_EXPORT std::optional<ColorScheme> colorSchemeNamed(std::string_view name);
 
