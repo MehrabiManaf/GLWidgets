@@ -712,6 +712,7 @@ Theme Theme::blend(const Theme& a, const Theme& b, float t) {
     // the shapes
     r.cornerRadius = radius(a.cornerRadius, b.cornerRadius);
     r.button.cornerRadius = radius(a.button.cornerRadius, b.button.cornerRadius);
+    r.button.hoverLift = number(a.button.hoverLift, b.button.hoverLift);
     r.button.padding = insets(a.button.padding, b.button.padding);
     r.lineEdit.cornerRadius = radius(a.lineEdit.cornerRadius, b.lineEdit.cornerRadius);
     r.lineEdit.padding = insets(a.lineEdit.padding, b.lineEdit.padding);

@@ -55,6 +55,7 @@ void Theme::solid(Theme& t, bool dark) {
     t.motion.dialogEntrance = PopupEntrance::Land;
     t.motion.varied = false;
     t.motion.variedMenus = true;
+    t.button.hoverLift = 3.5f;
     // a table's column headers keys of their own; the selection moving from row to row (a brick sliding)
     for (ItemViewStyle* view : {&t.itemView, &t.table}) {
         view->headerGap = 2;

@@ -70,6 +70,24 @@ TEST(aBrickIsAQuadOfItsOwnAfterItsShadow) {
     CHECK(left <= 360 && right >= 440 && right - left < 90);
 }
 
+TEST(bankingMovesOnlyTheArrivingSurfaceAndSettlesAtItsFinalPose) {
+    const auto pose = [](float t) {
+        DrawList list;
+        Painter p(list, {0, 0, 800, 600}, 1);
+        p.drawBrick({.center = {50, 50, 0}, .shadow = 0});
+        const auto mark = p.mark();
+        p.drawBrick({.center = {300, 200, 0}, .shadow = 0});
+        p.bankIn(mark, t, {200, 140, 200, 120}, {1, 0}, Rect{400, 240, 100, 60});
+        CHECK(near(list.sceneVertices.front().center[0], 50));
+        return list.sceneVertices.back();
+    };
+    const auto start = pose(0), middle = pose(0.5f), end = pose(1);
+    CHECK(near(start.center[0], 450) && start.center[2] < 0);
+    CHECK(middle.center[0] < start.center[0] && middle.center[0] > end.center[0] && middle.center[2] > 0);
+    CHECK(std::abs(middle.rotation[0]) > 0.01f && std::abs(middle.rotation[1]) > 0.01f);
+    CHECK(near(end.center[0], 300) && near(end.center[2], 0) && near(end.rotation[3], 1));
+}
+
 TEST(aBrickSeenFromTheCameraLooksLargerAsItIsHigher) {
     DrawList list;
     Painter p(list, {0, 0, 800, 600}, 1);

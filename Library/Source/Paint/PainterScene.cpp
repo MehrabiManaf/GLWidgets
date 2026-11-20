@@ -712,6 +712,29 @@ void Painter::gatherIn(const Mark& mark, float t, const Rect& area, const Rect& 
     unclip(mark);
 }
 
+void Painter::bankIn(const Mark& mark, float progress, const Rect& area, Point direction, std::optional<Rect> from) {
+    if (area.empty() || progress >= 1)
+        return;
+    const float u = std::clamp(progress, 0.0f, 1.0f);
+    const float remaining = 1 - smooth01(u);
+    const float arc = 4 * remaining * (1 - remaining);
+    const Point center = area.center();
+    Point shift = direction * (-8 * remaining);
+    float scale = 1 - 0.06f * remaining;
+    if (from && !from->empty()) {
+        shift = (from->center() - center) * remaining;
+        scale = 1 + (std::min(from->width / area.width, from->height / area.height) - 1) * remaining;
+    }
+    const float depth = std::min(34.0f, 5.0f + 0.10f * std::min(area.width, area.height));
+    const float pitch = 0.37f * remaining - 0.08f * arc;
+    const Quaternion turn = Quaternion::axisAngle({-direction.y, direction.x, 0}, pitch) *
+                            Quaternion::axisAngle({direction.x, direction.y, 0}, 0.13f * arc);
+    const Lifted pose{.lift = depth * (arc - 0.55f * remaining), .turn = turn, .shift = shift,
+                      .alpha = smooth01(u / 0.17f), .scale = scale};
+    placeClips(mark, center, pose);
+    place(mark, center, pose);
+}
+
 void Painter::popIn(const Mark& mark, float t, const Rect& area) {
     t = std::clamp(t, 0.0f, 1.0f);
     if (t >= 1 || area.empty())

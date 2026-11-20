@@ -149,6 +149,7 @@ struct ButtonStyle {
     Insets padding{12, 3, 12, 3};
     Color focusRing;                // a glow around it while it has the focus
     Color ripple{0, 0, 0, 0};                   // a press's: a circle out of where it was pressed, fading (transparent: none)
+    float hoverLift = 0;            // how far the face and its label rise toward the camera, in dips
 };
 
 struct LineEditStyle {
@@ -413,7 +414,7 @@ struct TextEditStyle {
 // How a popup's content comes in: sliding a little out of its anchor (faded in); rising from behind its window
 // (Painter::riseIn: its pieces the controls first, its slab last); landing in its place from a little nearer the one
 // looking (Painter::fallIn from where it is: its slab first, then a row after another).
-enum class PopupEntrance : std::uint8_t { Slide, Rise, Land };
+enum class PopupEntrance : std::uint8_t { Slide, Rise, Land, Bank };
 
 struct MotionStyle {
     std::chrono::milliseconds fast{100};

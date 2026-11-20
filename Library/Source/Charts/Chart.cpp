@@ -360,7 +360,7 @@ void Chart::beginEntrance() {
     const bool solid = solidPieces();
     entranceWay_ = solid ? 7 : 0;
     if (replay && (solid || (ui && ui->theme.motion.varied)))
-        entranceWay_ = randomWay(solid ? 8 : 3);
+        entranceWay_ = randomWay(solid ? 9 : 3);
     Duration duration = own.count() > 0 ? Duration(own) : std::min(normal * 2, Duration(std::chrono::milliseconds(450)));
     if (replay)
         duration = std::max(duration, normal * 4);
@@ -416,6 +416,9 @@ void Chart::placeArriving(paint::Painter& p, const paint::Painter::Mark& mark, f
     };
     if (solidPieces()) {
         switch (entranceWay_) {
+        case 8:
+            p.bankIn(mark, u, p.transform().map(rect), way);
+            return;
         case 7: {
             // Settle onto the plot from just above it with the leading edge slightly raised.
             const float remaining = 1 - smooth(u);

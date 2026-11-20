@@ -4,6 +4,7 @@
 // A push button with a label: clicked by the mouse (pressed and released on it), or by Enter or Space when it has the
 // focus. It looks as its ButtonStyle says: the theme's, or its own.
 #include <GLWidgets/Export.hpp>
+#include <GLWidgets/Paint/Painter.hpp>
 #include <GLWidgets/Widgets/Animation.hpp>
 #include <GLWidgets/Widgets/Bevel.hpp>
 #include <GLWidgets/Widgets/Label.hpp>
@@ -63,6 +64,9 @@ private:
     ColorTransition border_{[this] { invalidatePaint(); }};
     ColorTransition glow_{[this] { invalidatePaint(); }};
     Ripple ripple_{[this] { invalidatePaint(); }};
+    bool liftOnHover_ = false;
+    Animation hoverLift_{[this] { invalidatePaint(); }};
+    std::optional<paint::Painter::Mark> faceMark_;
     Press press_{[this] { invalidatePaint(); }};
 };
 

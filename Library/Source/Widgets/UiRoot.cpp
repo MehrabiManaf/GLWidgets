@@ -284,7 +284,14 @@ namespace {
 
 // What was drawn since `mark` arriving as `arrival` says, in `area` (the target's dips).
 void paintArriving(paint::Painter& painter, const paint::Painter::Mark& mark, const Arrival& arrival, const Rect& area) {
-    if (arrival.fromBehind) {
+    if ((arrival.fromBehind && arrival.rising == RisingMotion::Bank) || (!arrival.fromBehind && arrival.landing == LandingMotion::Bank)) {
+        Point direction{0, 1};
+        if (arrival.hinge == paint::Edge::Left || arrival.hinge == paint::Edge::Right)
+            direction = {arrival.hinge == paint::Edge::Left ? 1.0f : -1.0f, 0};
+        else if (arrival.hinge == paint::Edge::Bottom)
+            direction = {0, -1};
+        painter.bankIn(mark, arrival.progress, area, direction, arrival.from);
+    } else if (arrival.fromBehind) {
         if (arrival.rising == RisingMotion::Pop)
             painter.popIn(mark, arrival.progress, area);
         else if (arrival.rising == RisingMotion::Turn)

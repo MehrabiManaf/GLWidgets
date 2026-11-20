@@ -157,6 +157,8 @@ public:
     void gatherIn(const Mark& mark, float t, const Rect& area, const Rect& from);
     // in its place, growing out of a smaller one a little behind the target, a little past its size and back, the light
     // catching it on the way;
+    // Tip onto the target along a shallow arc, travelling from the old bounds when docking.
+    void bankIn(const Mark& mark, float progress, const Rect& area, Point direction, std::optional<Rect> from = std::nullopt);
     void popIn(const Mark& mark, float t, const Rect& area);
     // ... turned to face the one looking from nearly edge on, about its upright middle, as a card turns.
     void turnIn(const Mark& mark, float t, const Rect& area);

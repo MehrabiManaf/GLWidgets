@@ -884,7 +884,13 @@ Window::Window(Application& app, PopupRequest request, Window& parent)
         entranceKind_ = request.modal ? ui.theme.motion.dialogEntrance : ui.theme.motion.popupEntrance;
         // which way (a style's that varies them): one of three at random; unfolding from the side toward its anchor
         const bool varied = ui.theme.motion.varied || (request.menu && ui.theme.motion.variedMenus);
-        entranceWay_ = varied && entranceKind_ != PopupEntrance::Slide ? randomWay(3) : 0;
+        if (entranceKind_ != PopupEntrance::Slide) {
+            const int ways = varied ? 3 : 1;
+            const bool canBank = ui.theme.reliefBricks && (request.modal || (request.menu && varied));
+            entranceWay_ = randomWay(ways + (canBank ? 1 : 0));
+            if (entranceWay_ == ways)
+                entranceKind_ = PopupEntrance::Bank;
+        }
         hinge_ = paint::Edge::Top;
         if (request.placement == PopupPlacement::Below)
             hinge_ = at.y >= request.anchor.y ? paint::Edge::Top : paint::Edge::Bottom;
@@ -937,6 +943,11 @@ void Window::entering() {
     const Rect all{0, 0, root_.size().width, root_.size().height};
     if (shown >= 1) {
         root_.setContentArrival(std::nullopt);
+    } else if (entranceKind_ == PopupEntrance::Bank) {
+        Arrival arrival{shown, true};
+        arrival.rising = RisingMotion::Bank;
+        arrival.hinge = hinge_;
+        root_.setContentArrival(arrival);
     } else if (entranceKind_ == PopupEntrance::Rise) {
         // rising from behind, growing out of a smaller one, or unfolding from its anchor's side
         Arrival arrival{shown, true};

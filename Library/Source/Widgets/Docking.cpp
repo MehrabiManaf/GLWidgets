@@ -811,10 +811,12 @@ void DockTabs::arrive(const Widget& target, std::chrono::milliseconds duration, 
     landingMotion_ = LandingMotion::Cascade;
     risingMotion_ = RisingMotion::FromBehind;
     if (ui->theme.dock.variedArrivals) {
-        if (fromBehind)
-            risingMotion_ = static_cast<RisingMotion>(randomWay(3));
-        else
-            landingMotion_ = static_cast<LandingMotion>(randomWay(4));
+        if (fromBehind) {
+            constexpr RisingMotion motions[]{RisingMotion::FromBehind, RisingMotion::Pop, RisingMotion::Turn, RisingMotion::Bank};
+            risingMotion_ = motions[randomWay(4)];
+        } else {
+            landingMotion_ = static_cast<LandingMotion>(randomWay(5));
+        }
     }
     landing_.set(0);
     landing_.animateTo(ui->scheduler, 1, Duration(duration), Easing::Linear);

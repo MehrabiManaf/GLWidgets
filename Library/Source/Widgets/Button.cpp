@@ -92,7 +92,9 @@ void Button::onKey(KeyEvent& event) {
     }
 }
 
-void Button::onHoverChanged(bool) {
+void Button::onHoverChanged(bool hovered) {
+    if (hovered)
+        liftOnHover_ = style().hoverLift > 0 && randomWay(2) == 1;
     invalidatePaint();
 }
 
@@ -108,6 +110,11 @@ void Button::paint(PaintContext& context) {
     background_.to(scheduler(), s.background.resolve(v), fast);
     border_.to(scheduler(), s.borderWidth > 0 ? s.border.resolve(v) : Color{0, 0, 0, 0}, fast);
     glow_.to(scheduler(), v.focused ? s.focusRing : withAlpha(s.focusRing, 0), context.ui.theme.motion.normal);
+    if (s.hoverLift > 0) {
+        hoverLift_.animateTo(scheduler(), liftOnHover_ && v.hovered && !v.disabled && !v.pressed ? 1 : 0, fast);
+        if (hoverLift_.value() > 0)
+            faceMark_ = context.painter.mark();
+    }
     paintFocusGlow(context.painter, r, s.cornerRadius, glow_.value());
     press_.to(scheduler(), v.pressed, context.ui.theme.motion);
     paintRaised(context.painter, r, s.cornerRadius, background_.value(), border_.value(), s.bevel, press_.value());
@@ -116,7 +123,15 @@ void Button::paint(PaintContext& context) {
     label_->setColor(s.text.resolve(v));
 }
 
-void Button::paintOver(PaintContext&) {}
+void Button::paintOver(PaintContext& context) {
+    if (!faceMark_)
+        return;
+    const float height = style().hoverLift * hoverLift_.value();
+    const Point center = context.painter.transform().map(Point{size().width / 2, size().height / 2});
+    const float angle = height / std::max(80.0f, size().width);
+    context.painter.place(*faceMark_, center, {.lift = height, .turn = paint::Quaternion::axisAngle({-0.4f, 1, 0}, angle)});
+    faceMark_.reset();
+}
 
 void Button::ripple(Point at) {
     if (const UiContext* ui = context(); ui && style().ripple.a > 0)
