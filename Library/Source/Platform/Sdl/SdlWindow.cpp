@@ -112,6 +112,9 @@ LRESULT CALLBACK frameProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam
 SdlWindow::SdlWindow(SdlPlatform& platform, const WindowDesc& desc) : platform_(platform) {
     GLW_EXPECTS(desc.size.width > 0 && desc.size.height > 0);
     SDL_WindowFlags flags = SDL_WINDOW_HIDDEN | SDL_WINDOW_HIGH_PIXEL_DENSITY;
+#ifdef GLW_OPENGL_FALLBACK
+    if (platform.openGlWindows) flags |= SDL_WINDOW_OPENGL;
+#endif
     if (desc.resizable)
         flags |= SDL_WINDOW_RESIZABLE;
     if (desc.borderless)
@@ -126,7 +129,7 @@ SdlWindow::SdlWindow(SdlPlatform& platform, const WindowDesc& desc) : platform_(
         GLW_EXPECTS(popupOf_ != nullptr);
         const float f = dipsPerUnit(popupOf_->window_);
         const Point at = desc.position.value_or(Point{});
-        flags = SDL_WINDOW_HIDDEN | SDL_WINDOW_HIGH_PIXEL_DENSITY | (desc.tooltip ? SDL_WINDOW_TOOLTIP : SDL_WINDOW_POPUP_MENU);
+        flags = (flags & SDL_WINDOW_OPENGL) | SDL_WINDOW_HIDDEN | SDL_WINDOW_HIGH_PIXEL_DENSITY | (desc.tooltip ? SDL_WINDOW_TOOLTIP : SDL_WINDOW_POPUP_MENU);
         window_ = SDL_CreatePopupWindow(popupOf_->window_, static_cast<int>(std::lround(at.x / f)), static_cast<int>(std::lround(at.y / f)),
                                         sizeInUnits(desc.size.width, f), sizeInUnits(desc.size.height, f), flags);
         if (!window_)

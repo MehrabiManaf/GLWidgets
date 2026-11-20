@@ -1,6 +1,9 @@
 // SPDX-FileCopyrightText: 2026 Abdolmanaf Mehrabi Sisakht
 // SPDX-License-Identifier: MIT
 #include "Rhi/SdlGpu/SdlGpuDevice.hpp"
+#ifdef GLW_OPENGL_FALLBACK
+#include "Rhi/OpenGL/OpenGL.hpp"
+#endif
 
 #include "Platform/Sdl/SdlPlatform.hpp"
 #include "Platform/Sdl/SdlWindow.hpp"
@@ -19,7 +22,19 @@ namespace glw::rhi {
 
 std::unique_ptr<Device> createDevice(platform::Platform& platform, const DeviceDesc& desc) {
     GLW_EXPECTS(dynamic_cast<platform::sdl::SdlPlatform*>(&platform) != nullptr);
+#ifdef GLW_OPENGL_FALLBACK
+    try {
+        return std::make_unique<sdlgpu::SdlGpuDevice>(desc);
+    } catch (const Error& primary) {
+        try {
+            return legacy::create(platform);
+        } catch (const std::exception& fallback) {
+            throw Error(std::string(primary.what()) + "; OpenGL fallback: " + fallback.what());
+        }
+    }
+#else
     return std::make_unique<sdlgpu::SdlGpuDevice>(desc);
+#endif
 }
 
 namespace sdlgpu {

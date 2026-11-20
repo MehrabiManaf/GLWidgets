@@ -19,6 +19,9 @@ class WaylandDrag;
 
 class SdlPlatform final : public Platform {
 public:
+#ifdef GLW_OPENGL_FALLBACK
+    bool openGlWindows = false;
+#endif
     SdlPlatform();
     ~SdlPlatform() override;
 

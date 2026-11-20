@@ -30,6 +30,11 @@ cmake --preset unix-release           # Linux, macOS
 cmake --build --preset <the same preset>
 ```
 
+Desktop builds include the OpenGL 3.3 Core fallback by default. Device creation tries SDL GPU first and
+uses OpenGL if that fails. Configure with `-DGLW_OPENGL_FALLBACK=OFF` to omit the fallback and its
+SPIRV-Cross dependency. To exercise the fallback, run `paint_demo --frames 10` with
+`SDL_GPU_DRIVER=unavailable` in its environment.
+
 On Linux, SDL3 needs the development packages of X11, Wayland and IBus: see `.github/workflows/ci.yml` for the list.
 
 Then, in `build/<preset>/bin`:

@@ -149,3 +149,8 @@ else()
         message(STATUS "GLWidgets: fontconfig not found: no fallback to the system's fonts")
     endif()
 endif()
+
+option(GLW_OPENGL_FALLBACK "Include the legacy desktop OpenGL 3.3 fallback" ON)
+if(GLW_OPENGL_FALLBACK)
+    add_subdirectory(Source/Rhi/OpenGL)
+endif()
