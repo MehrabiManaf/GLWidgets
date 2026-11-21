@@ -875,6 +875,9 @@ std::optional<Arrival> DockTabs::arrivalFor(const Widget& target) const {
     if (arrivalTarget_ != &target || landing_.value() >= 1)
         return std::nullopt;
     Arrival motion{landing_.value(), fromBehind_, from_, landingMotion_, risingMotion_};
+    // Cascade stages the stack body, tab and controls from a single paint pass.
+    if (&target == this && !fromBehind_ && landingMotion_ == LandingMotion::Cascade)
+        return motion;
     if (context() && context()->theme.dock.variedArrivals &&
         (!fromBehind_ || risingMotion_ == RisingMotion::Fan || risingMotion_ == RisingMotion::LiftWave))
         motion.controls = &controlBounds_;
