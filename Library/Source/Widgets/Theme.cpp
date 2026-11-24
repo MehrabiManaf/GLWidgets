@@ -968,6 +968,11 @@ void Theme::reliefs(Theme& t, bool dark) {
 
 void Theme::plastic(Theme& t, bool dark) {
     reliefs(t, dark);
+    t.dock.transition = DockTransition::Soft;
+    t.dock.landing = std::chrono::milliseconds(360);
+    t.dock.rising = std::chrono::milliseconds(320);
+    t.dock.variedArrivals = false;
+    t.motion.popupSlide = 10;
     // glossy: a strong, tight, white highlight where a surface turns toward the light, from the upper left
     t.lighting = {.x = -0.42f, .y = -0.62f, .z = 0.66f,
                   .ambient = dark ? 0.58f : 0.64f,
@@ -979,6 +984,11 @@ void Theme::plastic(Theme& t, bool dark) {
 
 void Theme::metal(Theme& t, bool dark) {
     reliefs(t, dark);
+    t.dock.transition = DockTransition::Mechanical;
+    t.dock.landing = std::chrono::milliseconds(240);
+    t.dock.rising = std::chrono::milliseconds(210);
+    t.dock.variedArrivals = false;
+    t.motion.popupSlide = 5;
     // a metal's highlight of its own color, broad; its surfaces brushed
     t.lighting = {.x = -0.42f, .y = -0.62f, .z = 0.66f,
                   .ambient = dark ? 0.50f : 0.56f,

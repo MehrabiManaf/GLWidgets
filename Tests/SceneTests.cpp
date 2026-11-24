@@ -209,13 +209,15 @@ TEST(whatFallsInComesFromInFrontAndIsWhereItIsAtTheEnd) {
 }
 
 TEST(theSolidStyleIsDataTheWidgetsAlreadyKnow) {
-    // its raised controls bricks, a camera nearer than the painter's own, panels landing; the other styles none of it
+    // its raised controls bricks and a camera nearer than the painter's own; Plastic and Metal use flat panel arrivals
     const Theme solid = Theme::dark(ThemeStyle::Solid);
     CHECK(solid.reliefBricks.has_value() && solid.reliefBricks->bevel == 0 && solid.cameraDistance > 0 && solid.dock.landing.count() > 0);
     CHECK(themeStyleNamed("solid") == ThemeStyle::Solid);
     for (ThemeStyle other : {ThemeStyle::Studio, ThemeStyle::Fluid, ThemeStyle::Plain, ThemeStyle::Plastic, ThemeStyle::Metal}) {
         const Theme t = Theme::light(other);
-        CHECK(!t.reliefBricks && t.cameraDistance == 0 && t.dock.landing.count() == 0);
+        CHECK(!t.reliefBricks && t.cameraDistance == 0);
+        if (other != ThemeStyle::Plastic && other != ThemeStyle::Metal)
+            CHECK(t.dock.landing.count() == 0);
     }
     // Plastic's shapes and light, as Plastic is
     const Theme plastic = Theme::dark(ThemeStyle::Plastic);
@@ -272,6 +274,36 @@ TEST(aRootPaintsWhatIsArrivingFallingInAndItsThemesBricks) {
     flat.layout();
     flat.paint(list);
     CHECK(list.sceneVertices.empty() && !list.vertices.empty() && (list.vertices.back().color >> 24) == 0);
+}
+
+TEST(plasticAndMetalDockArrivalsMoveAsFlatGroups) {
+    const auto paint = [](ThemeStyle style, DockTransition transition, float progress) {
+        tests::FakeHost host;
+        UiContext context = tests::testContext();
+        context.theme = Theme::dark(style);
+        UiRoot root(context, &host);
+        auto made = std::make_unique<Arriving>();
+        made->at = Arrival{.progress = progress, .fromBehind = true, .transition = transition};
+        root.setContent(std::move(made));
+        root.setSize({400, 300});
+        root.layout();
+        DrawList list;
+        root.paint(list);
+        return list;
+    };
+    const DrawList plastic = paint(ThemeStyle::Plastic, DockTransition::Soft, 0.08f);
+    const DrawList metal = paint(ThemeStyle::Metal, DockTransition::Mechanical, 0.08f);
+    const DrawList settled = paint(ThemeStyle::Plastic, DockTransition::Soft, 1);
+    CHECK(plastic.sceneVertices.empty() && metal.sceneVertices.empty());
+    CHECK(plastic.vertices.size() >= 8 && metal.vertices.size() >= 8 && settled.vertices.size() >= 8);
+    CHECK(plastic.vertices[0].position.y > metal.vertices[0].position.y);
+    CHECK(metal.vertices[0].position.x < plastic.vertices[0].position.x);
+    CHECK((plastic.vertices.back().color >> 24) > 0 && (metal.vertices.back().color >> 24) > 0);
+    const float baseX = settled.vertices[4].position.x - settled.vertices[0].position.x;
+    const float baseY = settled.vertices[4].position.y - settled.vertices[0].position.y;
+    const float movingX = plastic.vertices[4].position.x - plastic.vertices[0].position.x;
+    const float movingY = plastic.vertices[4].position.y - plastic.vertices[0].position.y;
+    CHECK(near(movingX / baseX, movingY / baseY, 1e-3f));
 }
 
 TEST(dockControlsStartAtTheirOwnPreviousBoundsAndFloatAsSeparatePieces) {

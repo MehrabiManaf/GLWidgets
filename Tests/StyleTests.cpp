@@ -199,6 +199,16 @@ TEST(viewsHeadersAndNodesLookAsTheStylesControls) {
     CHECK(studio.node.bevel.gradient > 0 && plastic.node.bevel.relief > 0 && metal.node.bodyBevel.relief > 0);
 }
 
+TEST(plasticAndMetalHaveDistinctPlanarDockTransitions) {
+    const Theme plastic = Theme::dark(ThemeStyle::Plastic), metal = Theme::dark(ThemeStyle::Metal);
+    const Theme solid = Theme::dark(ThemeStyle::Solid), glass = Theme::dark(ThemeStyle::Glass);
+    CHECK(plastic.dock.transition == DockTransition::Soft && metal.dock.transition == DockTransition::Mechanical);
+    CHECK(plastic.dock.landing.count() > metal.dock.landing.count() && metal.dock.rising.count() > 0);
+    CHECK(plastic.motion.popupSlide > metal.motion.popupSlide);
+    CHECK(solid.dock.transition == DockTransition::Standard && glass.dock.transition == DockTransition::Standard);
+    CHECK(solid.dock.landing.count() > 0 && glass.dock.landing.count() == 0);
+}
+
 TEST(tabsLookAsTheStylesControls) {
     // the tab shown joined to its content (Plastic's, Metal's and Fluid's a relief of its color, Fluid's rounder)
     const Theme studio = Theme::dark(ThemeStyle::Studio), fluid = Theme::dark(ThemeStyle::Fluid), plain = Theme::dark(ThemeStyle::Plain);

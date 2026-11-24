@@ -289,6 +289,7 @@ struct DockStyle {
     // A stack raised as a control (reliefs): under its tab bar, a slab of its background, the tab shown a relief
     // of it as high, joined to it as a folder's tab is (its face the slab's, no seam), the other tabs on the window.
     Bevel islandBevel;
+    DockTransition transition = DockTransition::Standard;    // how a panel moves as it docks or floats
 };
 
 // The major tabs in a window's title bar, as a browser's.

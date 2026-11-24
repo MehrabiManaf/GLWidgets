@@ -127,6 +127,8 @@ struct TextEvent {
 // floating window, where it was in that window), moving from there to its place.
 // How what lands from somewhere comes (Painter::fallIn from it, swingIn, gatherIn); how what rises comes (Painter::riseIn,
 // popIn, turnIn, unfoldIn on its `hinge` edge).
+// A flat surface's dock arrival: the standard spatial motion, a soft glide, or a crisp mechanical slide.
+enum class DockTransition : std::uint8_t { Standard, Soft, Mechanical };
 enum class LandingMotion : std::uint8_t { Cascade, Swing, Gather, Glide, Bank, Rain, FallingLeaves };
 enum class RisingMotion : std::uint8_t { FromBehind, Pop, Turn, Unfold, Bank, Fan, LiftWave };
 
@@ -142,6 +144,7 @@ struct Arrival {
     paint::Edge hinge = paint::Edge::Top;
     // Present for a dock transition painted one control at a time. Owned by the moving stack.
     const ArrivalBounds* controls = nullptr;
+    DockTransition transition = DockTransition::Standard;
 };
 
 struct GLW_EXPORT PaintContext {

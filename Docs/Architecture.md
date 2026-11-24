@@ -411,10 +411,12 @@ The default style is **Solid**.
   in shade, a soft shadow under them; pressed, a button goes down; fields and boxes are sunk, their rims shadowing their
   floors. Low reliefs (a button 1.6 dips high, its edge rounding over 2.5), and as controls are: the headers of lists,
   trees and tables (`ItemViewStyle::headerBackground`, `headerBevel`) and the rows' highlights, under the mouse and
-  selected (`rowBevel`); corners a little round (4 to 6 dips), Studio's motions. They differ by their finish:
-  - **Plastic**: glossy, a strong, tight, white highlight where a surface turns toward the light; Studio's palettes.
+  selected (`rowBevel`); corners a little round (4 to 6 dips). Their popups slide and fade in 2D; docked and floated
+  panels move as flat groups, keeping their text upright. They differ by their finish and motion:
+  - **Plastic**: glossy, a strong, tight, white highlight where a surface turns toward the light; a soft, slightly springy glide.
   - **Metal**: its highlights of the metal's own color, broad (`Lighting::metal`), its surfaces brushed: fine lines along
-    them a little lighter and darker (`Lighting::brushed`); gunmetal grays in the dark, aluminum in the light.
+    them a little lighter and darker (`Lighting::brushed`); gunmetal grays in the dark, aluminum in the light; a quicker,
+    more mechanical slide.
   `paintRaised` and `paintSunken` draw every control's relief, so a widget of one's own that draws with them has one
   too.
 - **Solid**, the default: Plastic's light, but raised controls are bricks with flat tops. Dock stacks and their selected

@@ -47,6 +47,8 @@ void shapes(Theme& t) {
 void Theme::solid(Theme& t, bool dark) {
     plastic(t, dark);
     shapes(t);
+    t.dock.transition = DockTransition::Standard;
+    t.motion.popupSlide = 6;
     t.dock.islandBevel.relief = 1.0f;
     t.dock.islandBevel.edge = 0.65f;
     t.dock.tabBevel.relief = 1.4f;
@@ -110,6 +112,10 @@ void Theme::glass(Theme& t, bool dark) {
     // Plastic's reliefs, of glass: its controls, and the slabs they stand on (a stack's, a card's), showing what is under
     // them, the window's own
     plastic(t, dark);
+    t.dock.transition = DockTransition::Standard;
+    t.dock.landing = t.dock.rising = std::chrono::milliseconds(0);
+    t.dock.variedArrivals = false;
+    t.motion.popupSlide = 6;
     // shaped as Solid's solids: their corners as round, their tops flat to a sharp edge (no rounded rim), lit as Plastic's
     // reliefs are, of glass
     t.cornerRadius = 4;

@@ -358,8 +358,37 @@ void placeControl(paint::Painter& painter, const paint::Painter::Mark& mark, con
     painter.placeClipped(mark, center, pose);
 }
 
+void placePlanarArrival(paint::Painter& painter, const paint::Painter::Mark& mark, const Arrival& arrival, Rect area) {
+    const float t = std::clamp(arrival.progress, 0.0f, 1.0f);
+    if (t >= 1 || area.empty())
+        return;
+    const bool soft = arrival.transition == DockTransition::Soft;
+    const float remaining = 1 - t;
+    const float progress = soft ? 1 - remaining * remaining * remaining : 1 - remaining * remaining * remaining * remaining;
+    const float fade = soft ? 0.18f : 0.09f;
+    const float alphaT = std::clamp(t / fade, 0.0f, 1.0f);
+    paint::Lifted pose;
+    pose.alpha = alphaT * alphaT * (3 - 2 * alphaT);
+    if (arrival.from && !arrival.from->empty()) {
+        const float fit = std::min(arrival.from->width / area.width, arrival.from->height / area.height);
+        pose.shift = (arrival.from->center() - area.center()) * (1 - progress);
+        pose.scale = fit + (1 - fit) * progress;
+    } else if (soft) {
+        pose.shift.y = (arrival.fromBehind ? 18.0f : -14.0f) * (1 - progress);
+        pose.scale = arrival.fromBehind ? 0.97f + 0.03f * progress : 0.98f + 0.02f * progress;
+        pose.scale += 0.025f * std::sin(3.14159265f * progress) * progress;
+    } else {
+        pose.shift.x = (arrival.fromBehind ? -14.0f : 14.0f) * (1 - progress);
+    }
+    painter.placeClipped(mark, area.center(), pose);
+}
+
 // What was drawn since `mark` arriving as `arrival` says, in `area` (the target's dips).
 void paintArriving(paint::Painter& painter, const paint::Painter::Mark& mark, const Arrival& arrival, const Rect& area) {
+    if (arrival.transition != DockTransition::Standard) {
+        placePlanarArrival(painter, mark, arrival, area);
+        return;
+    }
     if ((arrival.fromBehind && arrival.rising == RisingMotion::Bank) || (!arrival.fromBehind && arrival.landing == LandingMotion::Bank)) {
         Point direction{0, 1};
         if (arrival.hinge == paint::Edge::Left || arrival.hinge == paint::Edge::Right)

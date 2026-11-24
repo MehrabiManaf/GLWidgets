@@ -837,7 +837,7 @@ void DockTabs::arrive(const Widget& target, std::chrono::milliseconds duration, 
     // which way it comes: one of them at random, where the style varies them
     landingMotion_ = LandingMotion::Cascade;
     risingMotion_ = RisingMotion::FromBehind;
-    if (ui->theme.dock.variedArrivals) {
+    if (ui->theme.dock.variedArrivals && ui->theme.dock.transition == DockTransition::Standard) {
         if (ui->theme.style == ThemeStyle::Solid && fromBehind) {
             constexpr RisingMotion motions[]{RisingMotion::FromBehind, RisingMotion::Pop, RisingMotion::Turn, RisingMotion::Bank,
                                              RisingMotion::Fan, RisingMotion::LiftWave};
@@ -883,13 +883,15 @@ std::optional<Arrival> DockTabs::arrivalFor(const Widget& target) const {
     if (arrivalTarget_ != &target || landing_.value() >= 1)
         return std::nullopt;
     Arrival motion{landing_.value(), fromBehind_, from_, landingMotion_, risingMotion_};
+    const UiContext* ui = context();
+    motion.transition = ui ? ui->theme.dock.transition : DockTransition::Standard;
     // Cascade stages the stack body, tab and controls from a single paint pass.
     if (&target == this && !fromBehind_ && landingMotion_ == LandingMotion::Cascade)
         return motion;
-    const UiContext* ui = context();
     const bool solidRisingControls = ui && ui->theme.style == ThemeStyle::Solid && fromBehind_ &&
                                     (risingMotion_ == RisingMotion::Fan || risingMotion_ == RisingMotion::LiftWave);
-    if (ui && ui->theme.dock.variedArrivals && (ui->theme.style != ThemeStyle::Solid || solidRisingControls) &&
+    if (motion.transition == DockTransition::Standard && ui && ui->theme.dock.variedArrivals &&
+        (ui->theme.style != ThemeStyle::Solid || solidRisingControls) &&
         (!fromBehind_ || risingMotion_ == RisingMotion::Fan || risingMotion_ == RisingMotion::LiftWave))
         motion.controls = &controlBounds_;
     return motion;
