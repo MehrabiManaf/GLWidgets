@@ -838,7 +838,15 @@ void DockTabs::arrive(const Widget& target, std::chrono::milliseconds duration, 
     landingMotion_ = LandingMotion::Cascade;
     risingMotion_ = RisingMotion::FromBehind;
     if (ui->theme.dock.variedArrivals) {
-        if (fromBehind) {
+        if (ui->theme.style == ThemeStyle::Solid && fromBehind) {
+            constexpr RisingMotion motions[]{RisingMotion::FromBehind, RisingMotion::Pop, RisingMotion::Turn, RisingMotion::Bank,
+                                             RisingMotion::Fan, RisingMotion::LiftWave};
+            risingMotion_ = motions[randomWay(static_cast<int>(std::size(motions)))];
+        } else if (ui->theme.style == ThemeStyle::Solid) {
+            constexpr LandingMotion motions[]{LandingMotion::Cascade, LandingMotion::Gather, LandingMotion::Rain,
+                                               LandingMotion::FallingLeaves};
+            landingMotion_ = motions[randomWay(static_cast<int>(std::size(motions)))];
+        } else if (fromBehind) {
             constexpr RisingMotion motions[]{RisingMotion::FromBehind, RisingMotion::Pop, RisingMotion::Turn, RisingMotion::Bank,
                                             RisingMotion::Fan, RisingMotion::LiftWave};
             risingMotion_ = motions[randomWay(static_cast<int>(std::size(motions)))];
@@ -878,7 +886,10 @@ std::optional<Arrival> DockTabs::arrivalFor(const Widget& target) const {
     // Cascade stages the stack body, tab and controls from a single paint pass.
     if (&target == this && !fromBehind_ && landingMotion_ == LandingMotion::Cascade)
         return motion;
-    if (context() && context()->theme.dock.variedArrivals &&
+    const UiContext* ui = context();
+    const bool solidRisingControls = ui && ui->theme.style == ThemeStyle::Solid && fromBehind_ &&
+                                    (risingMotion_ == RisingMotion::Fan || risingMotion_ == RisingMotion::LiftWave);
+    if (ui && ui->theme.dock.variedArrivals && (ui->theme.style != ThemeStyle::Solid || solidRisingControls) &&
         (!fromBehind_ || risingMotion_ == RisingMotion::Fan || risingMotion_ == RisingMotion::LiftWave))
         motion.controls = &controlBounds_;
     return motion;

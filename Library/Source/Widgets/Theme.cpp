@@ -30,6 +30,26 @@ bool darkWindow(Color window) {
 // Fluid's: deeper and smoother, the layers further apart, the accent brighter. Plain's: grays without a tint. Their dark
 // ones deep: the window near black, the layers and controls a step apart above it.
 Palette Palette::dark(ThemeStyle style) {
+    if (style == ThemeStyle::Solid) {
+        return {
+            .window = hex(0x17181B),
+            .layer = hex(0x1E2024),
+            .surface = hex(0x30343A),
+            .base = hex(0x111315),
+            .titleBar = hex(0x111215),
+            .text = hex(0xF1F3F5),
+            .mutedText = hex(0xA5ABB5),
+            .disabledText = hex(0x626873),
+            .accent = hex(0xF3A64A),
+            .onAccent = hex(0x211508),
+            .border = {1, 1, 1, 0.075f},
+            .outline = {0, 0, 0, 0.48f},
+            .hover = {1, 1, 1, 0.065f},
+            .pressed = {1, 1, 1, 0.105f},
+            .selection = hex(0xF3A64A, 0.34f),
+            .closeHover = hex(0xC43C32),
+        };
+    }
     if (style == ThemeStyle::Fluid) {
         return {
             .window = hex(0x121315),
@@ -111,6 +131,26 @@ Palette Palette::dark(ThemeStyle style) {
 }
 
 Palette Palette::light(ThemeStyle style) {
+    if (style == ThemeStyle::Solid) {
+        return {
+            .window = hex(0xEEF0F2),
+            .layer = hex(0xF5F6F7),
+            .surface = hex(0xFCFCFD),
+            .base = hex(0xE7EAED),
+            .titleBar = hex(0xE1E4E7),
+            .text = hex(0x20242A),
+            .mutedText = hex(0x59616E),
+            .disabledText = hex(0xA0A7AF),
+            .accent = hex(0x326FD1),
+            .onAccent = hex(0xFFFFFF),
+            .border = {0, 0, 0, 0.085f},
+            .outline = {0, 0, 0, 0.20f},
+            .hover = {0, 0, 0, 0.045f},
+            .pressed = {0, 0, 0, 0.085f},
+            .selection = hex(0x3978D4, 0.24f),
+            .closeHover = hex(0xC43C32),
+        };
+    }
     if (style == ThemeStyle::Fluid) {
         return {
             .window = hex(0xE1E3E5),

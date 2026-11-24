@@ -417,6 +417,12 @@ The default style is **Solid**.
     them a little lighter and darker (`Lighting::brushed`); gunmetal grays in the dark, aluminum in the light.
   `paintRaised` and `paintSunken` draw every control's relief, so a widget of one's own that draws with them has one
   too.
+- **Solid**, the default: Plastic's light, but raised controls are bricks with flat tops. Dock stacks and their selected
+  tabs have a modestly softened edge and stand slightly higher than Plastic's. During docking and floating,
+  bricks enter separately with staggered, scattered motion. Text keeps the existing 2D arrival behavior rather than
+  being matched and reprojected onto individual brick faces.
+  Chart elements keep their own entrance animations.
+- **Glass**: Plastic's controls and panels are translucent reliefs, bending and tinting what is behind them.
 
 Studio's look is of the family of Qt's Fusion, compact and softer: neutral grays with a little blue in them,
 in layers (the title bar the darkest, the window's background, panels over it), controls that stand out of them lit from

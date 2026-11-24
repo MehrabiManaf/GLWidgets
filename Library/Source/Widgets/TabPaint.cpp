@@ -70,6 +70,12 @@ void paintStack(PaintContext& context, const DockStyle& s, Size size, float bar,
         // raised: a slab of its background under its bar, the tab shown a relief as high joined to it, its lower part
         // over the slab's top edge (cut there): a folder's tab, its face the slab's
         const Bevel& slab = s.islandBevel;
+        const auto reliefBricks = p.reliefBricks();
+        if (reliefBricks && reliefBricks->bevel == 0 && slab.edge > 0) {
+            auto softened = *reliefBricks;
+            softened.bevel = slab.edge;
+            p.setReliefBricks(softened);
+        }
         // the tab shown within the row (scrolled): the slab's top joined to it there (one piece, no edge between them)
         const bool tabbed = bar >= 1 && activeTab;
         const float left = tabbed ? std::max(activeTab->x, row.x) - 1 : 0;
@@ -93,6 +99,7 @@ void paintStack(PaintContext& context, const DockStyle& s, Size size, float bar,
             p.fillRelief(shape, s.tabRadius, slab.relief, s.tabBevel.roundness, s.background, {.bottom = true, .onto = true});
             p.popClip();
         }
+        p.setReliefBricks(reliefBricks);
         return;
     }
     p.fillRoundedRect(r, s.cornerRadius, s.background);

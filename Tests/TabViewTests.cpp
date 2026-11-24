@@ -3,6 +3,8 @@
 #include "Check.hpp"
 #include "TestUi.hpp"
 
+#include <GLWidgets/Paint/DrawList.hpp>
+#include <GLWidgets/Paint/Scene.hpp>
 #include <GLWidgets/Widgets/Declarative.hpp>
 #include <GLWidgets/Widgets/TabView.hpp>
 #include <GLWidgets/Widgets/UiRoot.hpp>
@@ -81,6 +83,29 @@ TEST(aTabViewShowsThePageOfTheTabClicked) {
     t.click(t.middleOf(0));                             // shown already: nothing
     CHECK(t.currents.size() == 1);
     CHECK(t.view->indexOf(*t.pages[1]) == 1);
+}
+
+TEST(solidStackAndSelectedTabHaveSoftenedBrickEdges) {
+    UiContext context = tests::testContext();
+    context.theme = Theme::dark(ThemeStyle::Solid);
+    tests::FakeHost host;
+    UiRoot root(context, &host);
+    auto view = std::make_unique<TabView>();
+    view->addTab(LocalizedText("First"), std::make_unique<Widget>());
+    root.setSize({600, 300});
+    root.setContent(std::move(view));
+    root.layout();
+
+    paint::DrawList list;
+    root.paint(list);
+    std::size_t bricks = 0;
+    for (const paint::SceneVertex& vertex : list.sceneVertices) {
+        if (vertex.material[2] != paint::brickKind)
+            continue;
+        ++bricks;
+        CHECK(vertex.bevel > 0);
+    }
+    CHECK(bricks >= 2);
 }
 
 TEST(aTabViewsTabsAskToCloseByTheirCrossOrTheMiddleButton) {

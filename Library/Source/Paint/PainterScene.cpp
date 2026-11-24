@@ -4,8 +4,10 @@
 #include <GLWidgets/Paint/Painter.hpp>
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <cstdint>
+#include <limits>
 #include <vector>
 
 namespace glw::paint {
@@ -331,7 +333,7 @@ void Painter::arriveFrom(const Mark& mark, float t, const Rect& area, const Rect
     const float lifted = path == FallPath::Cascade ? eye.z * 0.08f : 0;             // where it starts (nearer the camera)
     const float hop = eye.z * 0.035f;               // the arc's height over that
     const float bounce = std::min(5.0f, eye.z * 0.006f);
-    constexpr float span = 0.6f, landed = 0.8f;     // of t a piece takes; of that, when it lands (then the bounce)
+    constexpr float span = 0.56f, landed = 0.8f;    // of t a piece takes; of that, when it lands (then the bounce)
     struct Motion {
         Point drift{};
         float e = 1;            // of the way from where it was (its place and size), eased
@@ -344,7 +346,7 @@ void Painter::arriveFrom(const Mark& mark, float t, const Rect& area, const Rect
     const Pieces pieces = piecesOf(list_.sceneVertices, mark.sceneVertices, area);
     const auto motion = [&](int stage, float y, float large) {
         const float rows = std::clamp((y - area.y) / area.height, 0.0f, 1.0f);
-        const float delay = stage == 0 ? 0.0f : stage == 1 ? 0.14f : 0.26f + 0.14f * rows;
+        const float delay = stage == 0 ? 0.0f : stage == 1 ? 0.14f : 0.18f + 0.24f * rows;
         const float u = std::clamp((t - delay) / span, 0.0f, 1.0f);
         const float s = std::min(1.0f, u / landed);
         Motion m;
@@ -450,7 +452,7 @@ void Painter::arrive(const Mark& mark, float t, const Rect& area, bool fromBehin
     // the order they land in (Pieces): the rest a row after another, then its tab, then its slab
     const Pieces pieces = piecesOf(list_.sceneVertices, mark.sceneVertices, area);
     const auto risingDelay = [&](int stage, float y) {
-        return stage == 2 ? 0.12f * std::clamp((y - top) / tall, 0.0f, 1.0f) : stage == 1 ? 0.2f : 0.3f;
+        return stage == 2 ? 0.34f * std::clamp((y - top) / tall, 0.0f, 1.0f) : stage == 1 ? 0.40f : 0.42f;
     };
     const auto delayAt = [&](Point at) {
         return fromBehind ? risingDelay(pieces.stageOf(at.y), at.y) : 0.40f * std::clamp((at.y - top) / tall, 0.0f, 1.0f);
@@ -495,9 +497,11 @@ void Painter::arrive(const Mark& mark, float t, const Rect& area, bool fromBehin
                 scaleAlpha(four[k].color, u * u);
             continue;
         }
+        const bool raisedControl = four[0].material[3] == 1.0f;
         const Float3 axis{next() * 2 - 1, next() * 2 - 1, next() - 0.5f};
         const Float3 turnAbout = length(axis) > 0.01f ? axis : Float3{1, 0, 0};
         float rise = 0, angle = 0, alpha = 1;
+        float tiltX = 0, tiltY = 0;
         Point aside{};
         if (!fromBehind) {
             // dropped: high, then down faster and faster, a small bounce where it lands, its turn undone as it comes
@@ -511,6 +515,12 @@ void Painter::arrive(const Mark& mark, float t, const Rect& area, bool fromBehin
             }
             angle = (0.5f + next() * 0.7f) * free * 6.2831853f * fall;
             aside = {(next() * 2 - 1) * 70 * fall * free, (next() * 2 - 1) * 45 * fall * free};
+            if (raisedControl) {
+                tiltX = (next() * 2 - 1) * 0.18f * fall;
+                tiltY = (next() * 2 - 1) * 0.18f * fall;
+                angle = 0;
+                aside = {(next() * 2 - 1) * 28 * fall * free, (next() * 2 - 1) * 20 * fall * free};
+            }
             alpha = std::min(1.0f, u * 8);
         } else {
             // from far behind: nearer and nearer, slowing as it comes, its tilt undone
@@ -518,11 +528,19 @@ void Painter::arrive(const Mark& mark, float t, const Rect& area, bool fromBehin
             const float behind = left * left * left;
             rise = -far * 0.9f * behind;
             angle = 0.35f * free * behind;
+            if (raisedControl) {
+                tiltX = (next() * 2 - 1) * 0.14f * behind;
+                tiltY = (next() * 2 - 1) * 0.14f * behind;
+                angle = 0;
+                aside = {(next() * 2 - 1) * 24 * behind * free, (next() * 2 - 1) * 16 * behind * free};
+            }
             alpha = smooth(u / 0.35f);
         }
         // rising: turned toward the light on the way too (a highlight across it), flat where it comes to
         const float glint = fromBehind ? 0.26f * std::sin(3.14159265f * u) * (0.25f + 0.75f * free) : 0.0f;
-        const Quaternion spin = towardLight(glint) * Quaternion::axisAngle(turnAbout, angle);
+        const Quaternion tilt = raisedControl ? Quaternion::axisAngle({0, 1, 0}, tiltY) * Quaternion::axisAngle({1, 0, 0}, tiltX)
+                                              : Quaternion::axisAngle(turnAbout, angle);
+        const Quaternion spin = towardLight(glint) * tilt;
         for (int k = 0; k < 4; ++k) {
             SceneVertex& v = four[k];
             setPlace(v, {cx + aside.x, cy + aside.y, v.center[2] + rise + order}, spin * rotationOf(v));

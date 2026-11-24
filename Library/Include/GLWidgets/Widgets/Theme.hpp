@@ -137,8 +137,8 @@ struct Bevel {
     // `roundness` dips; the gradient and the highlight then left to the light. 0: painted as above.
     float relief = 0;
     float roundness = 4;
-    // A slab of a popup (a menu's, a dialog's) drawn as a solid (where reliefs are, Theme::reliefBricks): its top's edge
-    // rounding down over this many dips, so that it shows as one; 0: as the solids' own.
+    // A slab (a popup's, or a stack's) drawn as a solid (where reliefs are, Theme::reliefBricks): its top's edge rounding
+    // down over this many dips, so that it shows as one; 0: as the solids' own.
     float edge = 0;
 };
 

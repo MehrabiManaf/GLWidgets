@@ -141,6 +141,11 @@ TEST(aStyleChangedEasesItsShapes) {
 
 TEST(solidIsTheDefault) {
     CHECK(Theme::dark().style == ThemeStyle::Solid && Theme::light().style == ThemeStyle::Solid && Theme{}.style == ThemeStyle::Solid);
+    const Theme darkSolid = Theme::dark(ThemeStyle::Solid), lightSolid = Theme::light(ThemeStyle::Solid);
+    CHECK(darkSolid.palette.window != Theme::dark(ThemeStyle::Studio).palette.window);
+    CHECK(lightSolid.palette.window != Theme::light(ThemeStyle::Studio).palette.window);
+    CHECK(darkSolid.button.cornerRadius > Theme::dark(ThemeStyle::Studio).button.cornerRadius);
+    CHECK(lightSolid.lineEdit.cornerRadius > Theme::light(ThemeStyle::Studio).lineEdit.cornerRadius);
     // Fluid: its splitters seen; its buttons and its panels' headers reliefs, lit softer than Plastic's
     const Theme fluid = Theme::dark(ThemeStyle::Fluid), plastic = Theme::dark(ThemeStyle::Plastic);
     CHECK(fluid.splitter.handle.a > 0 && fluid.button.bevel.relief > 0 && fluid.collapsiblePanel.bevel.relief > 0);

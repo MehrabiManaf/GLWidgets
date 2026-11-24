@@ -326,6 +326,33 @@ TEST(whatRisesInComesFromBehindAndShowsItsTextAsItComes) {
     CHECK(near(end.sceneVertices[0].center[2], 5) && (end.vertices[0].color >> 24) == 255);
 }
 
+TEST(solidControlsArriveAsSeparateReadableBricks) {
+    DrawList list;
+    Painter painter(list, {0, 0, 800, 600}, 1);
+    painter.setCamera({{400, 300, 540}});
+    painter.setReliefBricks(ReliefBricks{.depth = 2.25f, .bevel = 0});
+    const Painter::Mark mark = painter.mark();
+    for (int row = 0; row < 4; ++row) {
+        const float y = 50.0f + row * 70;
+        painter.fillRelief({120, y, 160, 40}, 5, 1.6f, 0, {0.5f, 0.5f, 0.5f, 1});
+        painter.drawMask({160, y + 12, 40, 12}, 1, {1, 1, 1, 1}, {0, 0, 1, 1});
+    }
+    const std::array<SceneVertex, 4> still{list.sceneVertices[0], list.sceneVertices[4],
+                                           list.sceneVertices[8], list.sceneVertices[12]};
+    painter.riseIn(mark, 0.5f, {0, 0, 500, 400});
+
+    int distinctPoses = 0;
+    for (std::size_t row = 0; row < still.size(); ++row) {
+        const SceneVertex& brick = list.sceneVertices[row * 4];
+        const Quaternion rotation{brick.rotation[0], brick.rotation[1], brick.rotation[2], brick.rotation[3]};
+        CHECK(rotation.rotate({0, 0, 1}).z > 0.9f);
+        distinctPoses += std::abs(brick.center[0] - still[row].center[0]) > 1 ||
+                         std::abs(brick.center[1] - still[row].center[1]) > 1 ||
+                         std::abs(brick.center[2] - still[row].center[2]) > 1;
+    }
+    CHECK(distinctPoses >= 3);
+}
+
 TEST(aGlassBrickReadsWhatWasDrawnUnderIt) {
     DrawList list;
     {
@@ -556,6 +583,9 @@ TEST(theSolidStylesControlsAreBricksOfTheirOwn) {
     const Theme solid = Theme::dark(ThemeStyle::Solid), plastic = Theme::dark(ThemeStyle::Plastic);
     CHECK(solid.table.headerGap > 0 && solid.table.slideSelection && solid.checkBox.checkDrop > 0);
     CHECK(solid.scrollBar.trackBevel.relief > 0 && solid.scrollBar.thumbBevel.relief > 0);
+    CHECK(solid.dock.islandBevel.relief > plastic.dock.islandBevel.relief);
+    CHECK(solid.dock.islandBevel.edge > 0 && plastic.dock.islandBevel.edge == 0);
+    CHECK(solid.dock.tabBevel.relief > plastic.dock.tabBevel.relief);
     CHECK(plastic.table.headerGap == 0 && plastic.checkBox.checkDrop == 0 && plastic.scrollBar.thumbBevel.relief == 0);
     // a thumb raised: a relief (a brick, with the painter's bricks), not a flat pill
     DrawList list;
