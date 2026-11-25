@@ -1306,11 +1306,47 @@ TEST(aDockedTabFadesThePageItCoversWithoutKeepingItInteractive) {
     CHECK(!background.visible() && background.lastPaint > before);
     CHECK(foreground.lastPaint > background.lastPaint);
     CHECK(t.window->root->widgetAt(foreground.mapToRoot({10, 10})) == &foreground);
+    CHECK(!t.window->root->needsPaint());
+    background.invalidatePaint();
+    CHECK(t.window->root->needsPaint());
     const int during = background.lastPaint;
     tests::advance(std::chrono::seconds(1));
     t.window->root->paint(list);
     CHECK(background.lastPaint == during);
+    background.invalidatePaint();
+    CHECK(!t.window->root->needsPaint());
     tests::testScheduler().setAnimationsEnabled(false);
+}
+
+TEST(aLiveChartOnAnInactiveTabOnlyRequestsPaintWhenShown) {
+    struct ChartProbe : LineChart {
+        std::size_t paintedSamples = 0;
+        LineSeries& samples = addSeries({.name = "live"});
+        void paint(PaintContext& context) override {
+            LineChart::paint(context);
+            paintedSamples = samples.data().size();
+        }
+    };
+    UiRoot root(tests::testContext());
+    root.setSize({600, 400});
+    auto tabs = std::make_unique<DockTabs>();
+    DockTabs& stack = *tabs;
+    auto page = std::make_unique<Widget>();
+    auto& chart = page->add(std::make_unique<ChartProbe>());
+    stack.add({"live", LocalizedText("Live"), std::move(page)});
+    stack.add(panel("active"));
+    root.setContent(std::move(tabs));
+    paint::DrawList list;
+    root.paint(list);
+    for (int i = 0; i < 100; ++i)
+        chart.samples.append(i, i);
+    CHECK(!root.needsPaint() && !root.needsLayout() && chart.paintedSamples == 0);
+    stack.setActive(0);
+    CHECK(root.needsPaint() || root.needsLayout());
+    root.paint(list);
+    CHECK(chart.paintedSamples == 100 && chart.samples.data().y(99) == 99);
+    chart.samples.append(100, 100);
+    CHECK(root.needsPaint());
 }
 
 TEST(aChartReplaysItsEntranceOnlyWhenItsPanelLands) {

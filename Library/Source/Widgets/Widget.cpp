@@ -284,8 +284,13 @@ void Widget::invalidateLayout() {
 }
 
 void Widget::invalidatePaint() {
-    if (UiRoot* r = root())
-        r->invalidatePaint();
+    for (const Widget* w = this; w; w = w->parent_) {
+        // A departing dock page still paints until its fade ends.
+        if (!w->visible_ && !(w->parent_ && w->parent_->paintsHiddenChild(*w)))
+            return;
+        if (w->uiRoot_)
+            w->uiRoot_->invalidatePaint();
+    }
 }
 
 // ---- state ----
