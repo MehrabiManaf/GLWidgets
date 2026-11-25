@@ -46,6 +46,7 @@ public:
 protected:
     Size measureContent(Size available) override;
     void arrangeContent(const Rect& content) override;
+    virtual Rect paneCell(Widget&, Rect cell) const { return cell; }
     void paint(PaintContext& context) override;
     std::optional<platform::Cursor> cursorAt(Point point) const override;
     void onMouse(MouseEvent& event) override;

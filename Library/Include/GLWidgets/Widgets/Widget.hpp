@@ -349,6 +349,8 @@ protected:
     // What it and its children paint arriving (none: where it is): drawn falling in from in front of the window
     // (Painter::fallIn: a docked panel landing) or rising from behind it (Painter::riseIn: a panel floated), a brick at a
     // time, cut by no clip meanwhile.
+    // A page fading out can finish painting after it has left input and layout.
+    virtual bool paintsHiddenChild(const Widget&) const { return false; }
     virtual std::optional<Arrival> childArrival(const Widget&) const { return std::nullopt; }
     virtual std::optional<Arrival> arrival() const { return std::nullopt; }
     // One of its children moved in space as it is painted (none: where it is): all it paints lifted, turned about its

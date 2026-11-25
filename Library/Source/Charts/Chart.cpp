@@ -10,12 +10,15 @@
 
 #include <algorithm>
 #include <cmath>
+#include <iterator>
 #include <string>
 
 namespace glw {
 
 namespace {
 
+constexpr int slantingRain = 9;
+constexpr int fallingLeaf = 10;
 constexpr float swatchSize = 10;
 constexpr float legendSpacing = 16;     // between its items
 constexpr float legendGap = 6;          // between a swatch and its text
@@ -364,8 +367,12 @@ bool Chart::beginEntrance(std::optional<Duration> synchronizedDuration) {
     const std::chrono::milliseconds own = style().entrance;
     const bool solid = solidPieces();
     entranceWay_ = solid ? 7 : 0;
-    if (replay && (solid || (ui && ui->theme.motion.varied)))
-        entranceWay_ = randomWay(solid ? 11 : 3);
+    if (replay && solid) {
+        constexpr int ways[]{0, 1, 2, 3, 4, 5, 6, 7, 8, slantingRain, slantingRain, fallingLeaf, fallingLeaf};
+        entranceWay_ = ways[randomWay(static_cast<int>(std::size(ways)))];
+    } else if (replay && ui && ui->theme.motion.varied) {
+        entranceWay_ = randomWay(3);
+    }
     Duration duration = own.count() > 0 ? Duration(own) : std::min(normal * 2, Duration(std::chrono::milliseconds(450)));
     if (replay)
         duration = std::max(duration, normal * 4);
@@ -422,7 +429,7 @@ void Chart::placeArriving(paint::Painter& p, const paint::Painter::Mark& mark, f
     };
     if (solidPieces()) {
         switch (entranceWay_) {
-        case 9: {
+        case slantingRain: {
             // Slanting rain: descend along a diagonal, then rebound slightly on contact.
             constexpr float contact = 0.78f;
             const float fall = std::min(u / contact, 1.0f);
@@ -436,7 +443,7 @@ void Chart::placeArriving(paint::Painter& p, const paint::Painter::Mark& mark, f
                       .alpha = smooth(u / 0.18f)};
             break;
         }
-        case 10: {
+        case fallingLeaf: {
             // A falling leaf: drift across the landing point and roll gently back to level.
             const float remaining = 1 - smooth(u);
             const float sway = std::sin(2 * pi * u) * remaining;

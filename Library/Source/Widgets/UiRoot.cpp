@@ -471,9 +471,12 @@ void UiRoot::setOverlay(std::optional<Color> color) {
 void UiRoot::paintTree(Widget& widget, PaintContext& context, const Rect& visible, std::vector<Later>* later, const Arrival* controls, Rect panel) {
     // what paints a little out of its bounds (a focus ring, a shadow) is painted while that may show
     constexpr float overhang = 24;
-    if (!widget.visible_ || !widget.bounds_.inflated(overhang).intersects(visible))
+    if ((!widget.visible_ && !(widget.parent_ && widget.parent_->paintsHiddenChild(widget))) ||
+        !widget.bounds_.inflated(overhang).intersects(visible))
         return;
     paint::Painter& painter = context.painter;
+    if (!widget.visible_)
+        later = nullptr;    // the departing background page stays in the ordinary paint pass
     auto arrival = widget.parent_ ? widget.parent_->childArrival(widget) : std::nullopt;
     if (!arrival)
         arrival = widget.arrival();
@@ -513,7 +516,8 @@ void UiRoot::paintTree(Widget& widget, PaintContext& context, const Rect& visibl
     }
     for (const auto& child : widget.children_) {
         // moved in space (a style's motion): what it paints, placed
-        const std::optional<paint::Lifted> lifted = child->visible_ ? widget.childLifted(*child) : std::nullopt;
+        const bool painting = child->visible_ || widget.paintsHiddenChild(*child);
+        const auto lifted = painting ? widget.childLifted(*child) : std::nullopt;
         const paint::Painter::Mark childMark = lifted ? painter.mark() : paint::Painter::Mark{};
         if (const std::optional<Rect> cut = widget.childClip(*child)) {
             painter.pushClip(*cut);

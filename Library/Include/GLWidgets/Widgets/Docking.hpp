@@ -146,6 +146,8 @@ protected:
     void onRootChanged() override;
     std::optional<Arrival> arrival() const override;
     std::optional<Arrival> childArrival(const Widget& child) const override;
+    bool paintsHiddenChild(const Widget& child) const override;
+    std::optional<paint::Lifted> childLifted(const Widget& child) const override;
 
 private:
     friend class DockArea;
@@ -191,6 +193,9 @@ private:
     Animation barShown_{[this] { barStepped(); }};      // how much of the bar shows, from 0 to 1
     bool cornerHovered_ = false;
     Animation cornerGrown_{[this] { invalidatePaint(); }};      // the tongue under the mouse: from 0 to 1
+    std::optional<Rect> previousCell_;
+    const Widget* previousPage_ = nullptr;
+    bool resizing_ = false;
     ArrivalBounds controlBounds_;
     Animation landing_{[this] {
         if (landing_.value() >= 1)
@@ -210,6 +215,7 @@ public:
     explicit DockSplit(Orientation orientation) : Splitter(Props{orientation, std::nullopt}) {}
 
 protected:
+    Rect paneCell(Widget& pane, Rect cell) const override;
     // the theme's dock splitter: a gap between islands
     void onRootChanged() override;
     void onStyleChanged() override;
@@ -408,6 +414,13 @@ private:
     std::function<void(const std::string&, std::vector<MenuItem>&)> onTabMenu_;
     std::function<void(DockTabs&, const std::string&)> onPanelShown_;
     friend class DockTabs;
+    friend class DockSplit;
+    void beginReflow(std::chrono::milliseconds duration);
+    void reflowStepped();
+    Rect paneCell(Widget& pane, Rect cell);
+    std::optional<Rect> previousCenterCell_;
+    bool centerResizing_ = false;
+    Animation reflow_{[this] { reflowStepped(); }};
     // A stack of the group, but its center stack: where a panel goes by default.
     DockTabs* firstSideTabs() const;
     // Where panel `id` of `source` (a stack of this area) is, kept as it floats: docked back (its window's dock button), it

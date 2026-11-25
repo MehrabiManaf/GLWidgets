@@ -123,7 +123,7 @@ void Splitter::arrangeContent(const Rect& content) {
                 return Rect{content.x, content.y + start, content.width, size};
             return Rect{rtl ? content.right() - start - size : content.x + start, content.y, size, content.height};
         };
-        arrangeInCell(*list[i], rect(position, length), rtl);
+        arrangeInCell(*list[i], paneCell(*list[i], rect(position, length)), rtl);
         position += length;
         if (i + 1 < list.size()) {
             handles_.push_back(rect(position, thickness));

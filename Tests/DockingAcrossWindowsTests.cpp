@@ -1206,6 +1206,113 @@ TEST(somethingIsDraggedFromOneWindowToAnother) {
     CHECK((t.source->finished == std::vector<DropAction>{DropAction::Copy}));
 }
 
+TEST(neighbouringDockPanesResizeBehindTheMovingPanel) {
+    tests::testScheduler().setAnimationsEnabled(true);
+    Screen screen;
+    screen.context.theme = Theme::dark(ThemeStyle::Solid);
+    Tools t(screen, {0, 0});
+    UiRoot& root = *t.window->root;
+    const float narrow = t.graph->size().width;
+    t.area->toggleFloating("palette");
+    root.layout();
+    CHECK(std::abs(t.graph->size().width - narrow) < 1);
+    tests::advance(std::chrono::milliseconds(60));
+    root.layout();
+    const float growing = t.graph->size().width;
+    tests::advance(std::chrono::milliseconds(150));
+    root.layout();
+    const float mid = t.graph->size().width;
+    tests::advance(std::chrono::seconds(1));
+    root.layout();
+    const float wide = t.graph->size().width;
+    CHECK(narrow < growing && growing < mid && mid < wide);
+    CHECK(growing - narrow < (wide - narrow) * 0.25f);
+    t.area->tabsOf("palette")->area()->toggleFloating("palette");
+    root.layout();
+    CHECK(std::abs(t.graph->size().width - wide) < 1);
+    tests::advance(std::chrono::milliseconds(60));
+    root.layout();
+    CHECK(narrow < t.graph->size().width && t.graph->size().width < wide);
+    tests::advance(std::chrono::seconds(1));
+    root.layout();
+    CHECK(std::abs(t.graph->size().width - narrow) < 1);
+    tests::testScheduler().setAnimationsEnabled(false);
+}
+
+TEST(closingAndShowingASidePanelAnimatesBothNeighbouringRows) {
+    tests::testScheduler().setAnimationsEnabled(true);
+    Screen screen;
+    screen.context.theme = Theme::dark(ThemeStyle::Solid);
+    Tools t(screen, {0, 0});
+    UiRoot& root = *t.window->root;
+    auto& bottom = t.area->addPanel(panel("lower"), t.graph, DockSide::Bottom);
+    root.layout();
+    tests::advance(std::chrono::seconds(1));
+    root.layout();
+    const float narrow = t.graph->size().width;
+    std::optional<DockPanel> hidden;
+    t.area->setOnPanelClosed([&](DockPanel p) { hidden = std::move(p); });
+    t.area->closePanel("palette");
+    root.layout();
+    CHECK(hidden.has_value() && t.graph->size().width == narrow);
+    tests::advance(std::chrono::milliseconds(130));
+    root.layout();
+    const float expanding = t.graph->size().width;
+    CHECK(bottom.size().width == expanding);
+    tests::advance(std::chrono::seconds(1));
+    root.layout();
+    const float wide = t.graph->size().width;
+    CHECK(narrow < expanding && expanding < wide);
+    auto& restored = t.area->addPanel(std::move(*hidden), nullptr, DockSide::Start, 0.3f);
+    root.layout();
+    CHECK(t.graph->size().width == wide && restored.size().width == 0);
+    tests::advance(std::chrono::milliseconds(150));
+    root.layout();
+    const float shrinking = t.graph->size().width;
+    CHECK(narrow < shrinking && shrinking < wide && bottom.size().width == shrinking);
+    CHECK(restored.size().width > 0);
+    tests::advance(std::chrono::seconds(1));
+    root.layout();
+    CHECK(std::abs(t.graph->size().width - narrow) < 1);
+    tests::testScheduler().setAnimationsEnabled(false);
+}
+
+TEST(aDockedTabFadesThePageItCoversWithoutKeepingItInteractive) {
+    struct Page : Widget {
+        explicit Page(int& sequence) : sequence(sequence) {}
+        int& sequence;
+        int lastPaint = 0;
+        void paint(PaintContext&) override { lastPaint = ++sequence; }
+    };
+    tests::testScheduler().setAnimationsEnabled(true);
+    Screen screen;
+    screen.context.theme = Theme::dark(ThemeStyle::Solid);
+    Tools t(screen, {0, 0});
+    int sequence = 0;
+    auto page = std::make_unique<Page>(sequence);
+    Page& background = *page;
+    t.area->addPanel({"background", LocalizedText("Background"), std::move(page)}, t.graph);
+    auto moving = std::make_unique<Page>(sequence);
+    Page& foreground = *moving;
+    t.area->addPanel({"moving", LocalizedText("Moving"), std::move(moving)}, t.graph);
+    t.area->toggleFloating("moving");
+    tests::advance(std::chrono::seconds(1));
+    paint::DrawList list;
+    t.window->root->paint(list);
+    CHECK(background.visible() && background.lastPaint > 0);
+    t.area->tabsOf("moving")->area()->toggleFloating("moving");
+    const int before = background.lastPaint;
+    t.window->root->paint(list);
+    CHECK(!background.visible() && background.lastPaint > before);
+    CHECK(foreground.lastPaint > background.lastPaint);
+    CHECK(t.window->root->widgetAt(foreground.mapToRoot({10, 10})) == &foreground);
+    const int during = background.lastPaint;
+    tests::advance(std::chrono::seconds(1));
+    t.window->root->paint(list);
+    CHECK(background.lastPaint == during);
+    tests::testScheduler().setAnimationsEnabled(false);
+}
+
 TEST(aChartReplaysItsEntranceOnlyWhenItsPanelLands) {
     struct TestGauge : Gauge {
         using Chart::entranceProgress;

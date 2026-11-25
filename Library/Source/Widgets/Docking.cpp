@@ -700,12 +700,16 @@ DockTabs::DockTabs() {
     barShown_.set(1);
 }
 
-DockArea* DockTabs::area() const {
-    for (Widget* w = parent(); w; w = w->parent()) {
+static DockArea* enclosingArea(const Widget& widget) {
+    for (Widget* w = widget.parent(); w; w = w->parent()) {
         if (auto* area = dynamic_cast<DockArea*>(w))
             return area;
     }
     return nullptr;
+}
+
+DockArea* DockTabs::area() const {
+    return enclosingArea(*this);
 }
 
 const DockStyle& DockTabs::style() const {
@@ -738,6 +742,8 @@ void DockTabs::add(DockPanel panel, std::size_t index) {
 DockPanel DockTabs::take(std::size_t index) {
     if (arrivalTarget_ == entries_[index].content || arrivalTarget_ == this)
         arrivalTarget_ = nullptr;
+    if (previousPage_ == entries_[index].content)
+        previousPage_ = nullptr;
     Entry entry = std::move(entries_[index]);
     entries_.erase(entries_.begin() + static_cast<std::ptrdiff_t>(index));
     std::unique_ptr<Widget> content = removeChild(*entry.content);
@@ -838,20 +844,21 @@ void DockTabs::arrive(const Widget& target, std::chrono::milliseconds duration, 
     landingMotion_ = LandingMotion::Cascade;
     risingMotion_ = RisingMotion::FromBehind;
     if (ui->theme.dock.variedArrivals && ui->theme.dock.transition == DockTransition::Standard) {
-        if (ui->theme.style == ThemeStyle::Solid && fromBehind) {
+        if (fromBehind) {
             constexpr RisingMotion motions[]{RisingMotion::FromBehind, RisingMotion::Pop, RisingMotion::Turn, RisingMotion::Bank,
                                              RisingMotion::Fan, RisingMotion::LiftWave};
             risingMotion_ = motions[randomWay(static_cast<int>(std::size(motions)))];
         } else if (ui->theme.style == ThemeStyle::Solid) {
             constexpr LandingMotion motions[]{LandingMotion::Cascade, LandingMotion::Gather, LandingMotion::Rain,
-                                               LandingMotion::FallingLeaves};
+                                               LandingMotion::Rain, LandingMotion::FallingLeaves, LandingMotion::FallingLeaves};
             landingMotion_ = motions[randomWay(static_cast<int>(std::size(motions)))];
-        } else if (fromBehind) {
-            constexpr RisingMotion motions[]{RisingMotion::FromBehind, RisingMotion::Pop, RisingMotion::Turn, RisingMotion::Bank,
-                                            RisingMotion::Fan, RisingMotion::LiftWave};
-            risingMotion_ = motions[randomWay(static_cast<int>(std::size(motions)))];
         } else {
-            landingMotion_ = static_cast<LandingMotion>(randomWay(from && !from->empty() ? 7 : 5));
+            constexpr LandingMotion motions[]{LandingMotion::Cascade, LandingMotion::Swing, LandingMotion::Gather,
+                                               LandingMotion::Glide, LandingMotion::Bank, LandingMotion::Rain, LandingMotion::Rain,
+                                               LandingMotion::FallingLeaves, LandingMotion::FallingLeaves};
+            // Rain and leaves travel from the previous bounds. Only the first five work without them.
+            const int count = from && !from->empty() ? static_cast<int>(std::size(motions)) : 5;
+            landingMotion_ = motions[randomWay(count)];
         }
     }
     landing_.set(0);
@@ -864,6 +871,30 @@ std::optional<Arrival> DockTabs::arrival() const {
 
 std::optional<Arrival> DockTabs::childArrival(const Widget& child) const {
     return arrivalFor(child);
+}
+
+bool DockTabs::paintsHiddenChild(const Widget& child) const {
+    return previousCell_ && previousPage_ == &child && !entries_.empty() && entries_[active_].content != &child;
+}
+
+std::optional<paint::Lifted> DockTabs::childLifted(const Widget& child) const {
+    if (!previousCell_ || entries_.empty() || previousPage_ == entries_[active_].content)
+        return std::nullopt;
+    const bool outgoing = previousPage_ == &child;
+    if (!outgoing && (&child != entries_[active_].content || arrivalFor(child)))
+        return std::nullopt;
+    const DockArea* owner = area();
+    if (!owner || !owner->reflow_.running())
+        return std::nullopt;
+    const float t = owner->reflow_.value();
+    if (context()->theme.style != ThemeStyle::Solid)
+        return paint::Lifted{.alpha = outgoing ? 1 - t : t};
+
+    // The page underneath remains legible as the foreground passes over it.
+    // When uncovered, it comes forward the last few dips from that same depth.
+    const float depth = outgoing ? t : 1 - t;
+    const float opacity = outgoing ? 1 - t * t : 0.55f + 0.45f * t;
+    return paint::Lifted{.lift = -14 * depth, .shift = {0, 3 * depth}, .alpha = opacity};
 }
 
 std::optional<Arrival> DockTabs::tabArrival(std::size_t index) const {
@@ -1058,6 +1089,31 @@ Rect DockTabs::revealCorner() const {
 }
 
 void DockTabs::paintOver(PaintContext& context) {
+    if (resizing_ && previousCell_ && context.ui.theme.style == ThemeStyle::Solid) {
+        // A soft contact shadow just inside each travelling edge, underneath the arriving panel.
+        const DockArea* owner = area();
+        if (owner && owner->reflow_.running()) {
+            const Point old = mapFromRoot(owner->mapToRoot({previousCell_->x, previousCell_->y}));
+            const Rect before = margin().deflate({old.x, old.y, previousCell_->width, previousCell_->height},
+                                                 parent()->rightToLeft());
+            const float t = owner->reflow_.value();
+            const float strength = 4 * t * (1 - t);
+            const float w = size().width, h = size().height;
+            constexpr float reach = 16;
+            auto& painter = context.painter;
+            painter.pushClip({1, barHeight(), std::max(0.0f, w - 2), std::max(0.0f, h - barHeight() - 1)});
+            const auto shade = [&](float travelled, Rect outside) {
+                const float alpha = strength * std::min(std::abs(travelled) / 40.0f, 1.0f);
+                if (alpha > 0.01f)
+                    painter.drawShadow(outside, 0, reach, Color{0, 0, 0, 0.30f * alpha});
+            };
+            shade(before.left(), {-reach, 0, reach, h});
+            shade(before.right() - w, {w, 0, reach, h});
+            shade(before.top(), {0, barHeight() - reach, w, reach});
+            shade(before.bottom() - h, {0, h, w, reach});
+            painter.popClip();
+        }
+    }
     // the tongue: as much of it as the bar is gone, longer under the mouse (eased), a tab's shape and bevel
     const float shown = barHidden_ ? 1 - barShown_.value() : 0.0f;
     if (shown <= 0.01f)
@@ -1107,6 +1163,12 @@ void DockTabs::onHoverChanged(bool hovered) {
         cornerGrown_.animateTo(scheduler(), 0.0f, ui ? Duration(ui->theme.motion.fast) : Duration::zero());
         invalidatePaint();
     }
+}
+
+Rect DockSplit::paneCell(Widget& pane, Rect cell) const {
+    if (auto* owner = enclosingArea(*this))
+        return owner->paneCell(pane, cell);
+    return cell;
 }
 
 void DockSplit::onRootChanged() {
@@ -1288,15 +1350,42 @@ DockTabs& DockArea::addPanel(DockPanel panel, Widget* nextTo, DockSide side, flo
     GLW_EXPECTS(panel.scope == scope_);     // a panel goes only into areas of its scope
     auto* stack = dynamic_cast<DockTabs*>(nextTo);
     GLW_EXPECTS(!nextTo || stack || (center_ && nextTo == center_));
+    DockArea* owner = nextTo ? enclosingArea(*nextTo) : this;
+    if (owner && owner->context())
+        owner->beginReflow(owner->context()->theme.dock.landing);
+    // Open a new split from the outside edge of its target as its neighbours yield space.
+    const auto openBeside = [&](Widget& target, DockSide edge) -> DockTabs& {
+        std::optional<Rect> start;
+        if (owner && owner->reflow_.running() && target.size().width > 0 && target.size().height > 0) {
+            const Point p = owner->mapFromRoot(target.mapToRoot({}));
+            Rect cell{p.x, p.y, target.size().width, target.size().height};
+            if (edge == DockSide::Top || edge == DockSide::Bottom) {
+                if (edge == DockSide::Bottom)
+                    cell.y = cell.bottom();
+                cell.height = 0;
+            } else {
+                if ((edge == DockSide::End) != target.parent()->rightToLeft())
+                    cell.x = cell.right();
+                cell.width = 0;
+            }
+            start = cell;
+        }
+        DockTabs& added = insertBeside(std::move(panel), target, edge, share);
+        if (start) {
+            added.previousCell_ = start;
+            added.previousPage_ = added.panelContent(added.active());
+        }
+        return added;
+    };
     // a center stack takes it as a tab; beside the center otherwise
     if (DockTabs* documents = centerStack(); documents && nextTo == center_ && side == DockSide::Center) {
         documents->add(std::move(panel));
         return *documents;
     }
     if (center_ && nextTo == center_)
-        return insertBeside(std::move(panel), *center_, side == DockSide::Center ? DockSide::End : side, share);
+        return openBeside(*center_, side == DockSide::Center ? DockSide::End : side);
     if (center_ && !firstSideTabs() && (side == DockSide::Center || !nextTo))
-        return insertBeside(std::move(panel), *node(), side == DockSide::Center ? DockSide::End : side, share);
+        return openBeside(*node(), side == DockSide::Center ? DockSide::End : side);
     if (!node()) {
         auto& tabs = static_cast<DockTabs&>(addChild(std::make_unique<DockTabs>(), 0));     // under the window buttons
         tabs.add(std::move(panel));
@@ -1307,7 +1396,7 @@ DockTabs& DockArea::addPanel(DockPanel panel, Widget* nextTo, DockSide side, flo
         tabs.add(std::move(panel));
         return tabs;
     }
-    return insertBeside(std::move(panel), stack ? static_cast<Widget&>(*stack) : *node(), side, share);
+    return openBeside(stack ? static_cast<Widget&>(*stack) : *node(), side);
 }
 
 DockTabs& DockArea::insertBeside(DockPanel panel, Widget& target, DockSide side, float share) {
@@ -1370,6 +1459,7 @@ std::unique_ptr<Widget> DockArea::removePanel(std::string_view id) {
     if (!tabs)
         return nullptr;
     DockArea* from = tabs->area();
+    from->beginReflow(tabs->style().rising);
     DockPanel panel = tabs->take(*tabs->indexOf(id));
     prune(*tabs);
     from->closeIfEmpty();
@@ -1382,6 +1472,7 @@ void DockArea::closePanel(std::string_view id) {
         if (!tabs)
             return;
         DockArea* from = tabs->area();
+        from->beginReflow(tabs->style().rising);
         DockPanel panel = tabs->take(*tabs->indexOf(id));
         prune(*tabs);
         from->closeIfEmpty();
@@ -1450,6 +1541,9 @@ void DockArea::toggleFloating(std::string_view id) {
             const auto was = screenRect(*tabs);
             auto previous = previousLayout(*tabs, *tabs->indexOf(id));
             const auto contentWas = screenRect(*tabs->panelContent(*tabs->indexOf(id)));
+            from->beginReflow(tabs->style().landing);
+            if (to != from)
+                to->beginReflow(tabs->style().landing);
             DockPanel panel = tabs->take(*tabs->indexOf(id));
             prune(*tabs);
             DockTabs& landed = to->placeBack(std::move(panel));
@@ -1477,6 +1571,12 @@ void DockArea::move(const std::vector<std::string>& ids, const std::string& show
     const auto was = docking ? screenRect(*source) : std::nullopt;
     auto previous = docking ? previousLayout(*source, *source->indexOf(shown)) : DockTabs::PreviousLayout{};
     const auto contentWas = docking ? screenRect(*source->panelContent(*source->indexOf(shown))) : std::nullopt;
+    if (docking) {
+        DockArea* from = source->area();
+        from->beginReflow(source->style().landing);
+        if (auto* to = enclosingArea(target); to && to != from)
+            to->beginReflow(source->style().landing);
+    }
     move(ids.front(), target, side, true, share);
     for (std::size_t i = 1; i < ids.size(); ++i) {
         if (DockTabs* into = tabsOf(ids.front()))
@@ -1645,6 +1745,7 @@ DockArea* DockArea::floatPanel(const std::string& id, Point position, Size size,
     if (!h || !source)
         return nullptr;
     DockArea* from = source->area();
+    from->beginReflow(source->style().rising);
     if (!from->floating_)
         from->rememberPlace(*source, id);       // docked back by its window's button: there again
     DockPanel panel = source->take(*source->indexOf(id));
@@ -1731,11 +1832,85 @@ Size DockArea::leastSize() const {
     return least;
 }
 
+void DockArea::beginReflow(std::chrono::milliseconds duration) {
+    Widget* tree = node();
+    const UiContext* ui = context();
+    if (!tree || size().width <= 0 || size().height <= 0 || !ui || !ui->scheduler || !ui->scheduler->animationsEnabled() ||
+        duration.count() <= 0 || !visibleInTree())
+        return;
+    const auto oldCell = [&](Widget& pane) -> std::optional<Rect> {
+        const Size size = pane.size();
+        if (size.width <= 0 || size.height <= 0 || !pane.visible())
+            return std::nullopt;
+        const Insets m = pane.margin();
+        const Point p = mapFromRoot(pane.mapToRoot({}));
+        return Rect{p.x - (pane.parent()->rightToLeft() ? m.end : m.start), p.y - m.top,
+                    size.width + m.horizontal(), size.height + m.vertical()};
+    };
+    forEachTabs(*tree, [&](DockTabs& tabs) {
+        tabs.previousCell_ = oldCell(tabs);
+        tabs.previousPage_ = tabs.count() ? tabs.panelContent(tabs.active()) : nullptr;
+        tabs.resizing_ = false;
+        tabs.parent()->invalidateLayout();
+    });
+    previousCenterCell_ = center_ ? oldCell(*center_) : std::nullopt;
+    centerResizing_ = false;
+    reflow_.set(0);
+    if (ui->theme.style == ThemeStyle::Solid) {
+        // Give the neighbour time to yield as the other panel lands, then settle first.
+        const auto settle = std::min(duration * 2 / 3, std::chrono::milliseconds(460));
+        reflow_.animateTo(ui->scheduler, 1, settle, Easing::InOutCubic);
+    } else {
+        reflow_.animateTo(ui->scheduler, 1, std::min(duration, std::chrono::milliseconds(200)), Easing::OutCubic);
+    }
+}
+
+Rect DockArea::paneCell(Widget& pane, Rect cell) {
+    if (!reflow_.running())
+        return cell;
+    auto* tabs = dynamic_cast<DockTabs*>(&pane);
+    if (!tabs && &pane != center_)
+        return cell;
+    const auto& before = tabs ? tabs->previousCell_ : previousCenterCell_;
+    if (!before)
+        return cell;
+    const Point p = pane.parent()->mapFromRoot(mapToRoot({before->x, before->y}));
+    const Rect from{p.x, p.y, before->width, before->height};
+    bool& resizing = tabs ? tabs->resizing_ : centerResizing_;
+    resizing = from != cell;
+    if (!resizing)
+        return cell;
+    const float t = reflow_.value();
+    return {std::lerp(from.x, cell.x, t), std::lerp(from.y, cell.y, t),
+            std::lerp(from.width, cell.width, t), std::lerp(from.height, cell.height, t)};
+}
+
+void DockArea::reflowStepped() {
+    if (Widget* tree = node()) {
+        forEachTabs(*tree, [&](DockTabs& tabs) {
+            if (tabs.resizing_)
+                tabs.parent()->invalidateLayout();
+            if (!reflow_.running()) {
+                tabs.previousCell_.reset();
+                tabs.previousPage_ = nullptr;
+                tabs.resizing_ = false;
+            }
+        });
+    }
+    if (center_ && centerResizing_)
+        center_->parent()->invalidateLayout();
+    if (!reflow_.running()) {
+        previousCenterCell_.reset();
+        centerResizing_ = false;
+    }
+    invalidatePaint();
+}
+
 void DockArea::arrangeContent(const Rect& content) {
     const bool rtl = rightToLeft();
     Widget* n = node();
     if (n)
-        arrangeInCell(*n, content, rtl);
+        arrangeInCell(*n, paneCell(*n, content), rtl);
     if (!buttons_)
         return;
     // the buttons at the top, at the side of the system (mirrored with the direction), as high as a tab bar
