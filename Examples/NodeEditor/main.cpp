@@ -726,13 +726,22 @@ void NodeView::paint(PaintContext& context) {
     const NodeStyle& s = context.ui.theme.node;
     const Rect r{0, 0, size().width, size().height};
     const float radius = s.cornerRadius;
+    // Keep the relief depth in screen units when zooming in. Perspective otherwise
+    // separates the sides from the outline near the corners of the window.
+    const float depthScale = 1.0f / std::max(1.0f, graph_.zoom());
+    const auto atZoom = [depthScale](Bevel bevel) {
+        bevel.relief *= depthScale;
+        bevel.roundness *= depthScale;
+        bevel.edge *= depthScale;
+        return bevel;
+    };
     if (s.shadow.a > 0)
         p.drawShadow({r.x, r.y + 3, r.width, r.height}, radius, 12, s.shadow);
-    paintRaised(p, r, radius, s.body, {0, 0, 0, 0}, s.bodyBevel);
+    paintRaised(p, r, radius, s.body, {0, 0, 0, 0}, atZoom(s.bodyBevel));
     // the header: rounded at the top only (cut out of a taller box)
     const float h = title_->bounds().bottom();
     p.pushClip({0, 0, r.width, h});
-    paintRaised(p, {0, 0, r.width, h + radius}, radius, header_, {0, 0, 0, 0}, s.bevel);
+    paintRaised(p, {0, 0, r.width, h + radius}, radius, header_, {0, 0, 0, 0}, atZoom(s.bevel));
     p.popClip();
     p.strokeRoundedRect(r, radius, 1, s.border);
 }
