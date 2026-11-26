@@ -107,6 +107,10 @@ public:
     void setCursor(std::shared_ptr<ChartCursor> cursor);
     const std::shared_ptr<ChartCursor>& cursor() const { return cursor_; }
 
+    // Piece entrances. Random uses the style's usual first entrance and replay choices.
+    enum class EntranceMotion { Random = -1, Drop, Swing, Rise, Flip, Spiral, Wave, Tumble, Settle, Bank, Rain, FallingLeaves };
+    void setEntranceMotion(EntranceMotion motion) { entranceMotion_ = motion; }
+
     // Its pieces (bars, tiles, slices) coming in again, as when it first showed them.
     void playEntrance();
     // Start immediately and finish with the transition carrying this chart.
@@ -253,7 +257,12 @@ protected:
     // How far a piece whose turn is at `order` (0 the first, 1 the last) has come, from 0 to 1 (1 when none comes).
     float arrived(float order) const;
     // Its pieces are solids (they come in space).
+    struct PieceArrival { float progress; float variation; };
+    PieceArrival pieceArrival(float order, std::size_t key) const;
+    void placeArriving(paint::Painter& painter, const paint::Painter::Mark& mark, PieceArrival piece, const Rect& rect,
+                       std::optional<Point> base = {}, Point out = {}) const;
     bool solidPieces() const;
+    bool spatialEntrance() const { return entranceMotion_ != EntranceMotion::Random || solidPieces(); }
     // What was drawn of a piece since `mark` (Painter::markHere) placed as it comes, `u` of its way (arrived): `rect` its
     // bounds; `base` where it stands (a bar's middle on its axis, a slice's on its inner edge; a tile: none, its top);
     // `out` the way out of there (a bar's up from its axis, a slice's out from the middle).
@@ -312,7 +321,9 @@ private:
     bool replayRequested_ = false;
     bool entered_ = false;
     bool entering_ = false;
+    EntranceMotion entranceMotion_ = EntranceMotion::Random;
     int entranceWay_ = 0;
+    std::uint32_t entranceSequence_ = 0;
     Animation entrance_{[this] {
         if (entrance_.value() >= 1)
             entering_ = false;

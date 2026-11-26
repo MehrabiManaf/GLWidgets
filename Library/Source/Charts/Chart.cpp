@@ -17,8 +17,6 @@ namespace glw {
 
 namespace {
 
-constexpr int slantingRain = 9;
-constexpr int fallingLeaf = 10;
 constexpr float swatchSize = 10;
 constexpr float legendSpacing = 16;     // between its items
 constexpr float legendGap = 6;          // between a swatch and its text
@@ -366,10 +364,15 @@ bool Chart::beginEntrance(std::optional<Duration> synchronizedDuration) {
     const UiContext* ui = context();
     const std::chrono::milliseconds own = style().entrance;
     const bool solid = solidPieces();
+    ++entranceSequence_;
     entranceWay_ = solid ? 7 : 0;
-    if (replay && solid) {
-        constexpr int ways[]{0, 1, 2, 3, 4, 5, 6, 7, 8, slantingRain, slantingRain, fallingLeaf, fallingLeaf};
-        entranceWay_ = ways[randomWay(static_cast<int>(std::size(ways)))];
+    if (entranceMotion_ != EntranceMotion::Random) {
+        entranceWay_ = static_cast<int>(entranceMotion_);
+    } else if (replay && solid) {
+        using Motion = EntranceMotion;
+        constexpr Motion ways[]{Motion::Drop, Motion::Swing, Motion::Rise, Motion::Flip, Motion::Spiral, Motion::Wave, Motion::Tumble,
+                                Motion::Settle, Motion::Bank, Motion::Rain, Motion::Rain, Motion::FallingLeaves, Motion::FallingLeaves};
+        entranceWay_ = static_cast<int>(ways[randomWay(static_cast<int>(std::size(ways)))]);
     } else if (replay && ui && ui->theme.motion.varied) {
         entranceWay_ = randomWay(3);
     }
@@ -393,14 +396,47 @@ float Chart::arrived(float order) const {
     return std::clamp((entrance_.value() - 0.45f * std::clamp(order, 0.0f, 1.0f)) / 0.55f, 0.0f, 1.0f);
 }
 
+Chart::PieceArrival Chart::pieceArrival(float order, std::size_t key) const {
+    const auto motion = static_cast<EntranceMotion>(entranceWay_);
+    if (!entering_ || !spatialEntrance())
+        return {arrived(order), 0.5f};
+
+    // Hash the piece once per evaluation, without sampling the RNG or depending on paint order.
+    std::uint32_t bits = static_cast<std::uint32_t>(key) + 0x9e3779b9u * entranceSequence_;
+    bits ^= bits >> 16;
+    bits *= 0x7feb352du;
+    bits ^= bits >> 15;
+    bits *= 0x846ca68bu;
+    bits ^= bits >> 16;
+    const float phase = static_cast<float>(bits & 0xffffu) / 65535.0f;
+    const float variation = static_cast<float>(bits >> 16) / 65535.0f;
+    // Rain and leaves scatter freely. Wave keeps its travelling front; other motions
+    // loosely follow chart order while adjacent pieces can overtake one another.
+    float start = phase;
+    if (motion != EntranceMotion::Rain && motion != EntranceMotion::FallingLeaves) {
+        const float scatter = motion == EntranceMotion::Wave ? 0.4f : 0.7f;
+        start = std::lerp(std::clamp(order, 0.0f, 1.0f), phase, scatter);
+    }
+    const float stagger = motion == EntranceMotion::Rain ? 0.64f : 0.48f;
+    return {std::clamp((entrance_.value() - stagger * start) / (1 - stagger), 0.0f, 1.0f), variation};
+}
+
 bool Chart::solidPieces() const {
     const UiContext* ui = context();
     return ui && ui->theme.reliefBricks && style().barBevel.relief > 0;
 }
 
 void Chart::placeArriving(paint::Painter& p, const paint::Painter::Mark& mark, float u, const Rect& rect, std::optional<Point> base, Point out) const {
+    placeArriving(p, mark, PieceArrival{u, 0.5f}, rect, base, out);
+}
+
+void Chart::placeArriving(paint::Painter& p, const paint::Painter::Mark& mark, PieceArrival piece, const Rect& rect,
+                          std::optional<Point> base, Point out) const {
+    const float u = piece.progress;
     if (u >= 1)
         return;
+    const float variation = piece.variation;
+    const float reach = 0.7f + 0.6f * variation;
     constexpr float pi = 3.14159265f;
     const auto outCubic = [](float x) { return 1 - (1 - x) * (1 - x) * (1 - x); };
     const auto outBack = [](float x, float over) {
@@ -427,61 +463,61 @@ void Chart::placeArriving(paint::Painter& p, const paint::Painter::Mark& mark, f
         const float c = std::cos(angle), s = std::sin(angle);
         return Point{v.x * c - v.y * s, v.x * s + v.y * c};
     };
-    if (solidPieces()) {
-        switch (entranceWay_) {
-        case slantingRain: {
+    if (spatialEntrance()) {
+        switch (static_cast<EntranceMotion>(entranceWay_)) {
+        case EntranceMotion::Rain: {
             // Slanting rain: descend along a diagonal, then rebound slightly on contact.
             constexpr float contact = 0.78f;
             const float fall = std::min(u / contact, 1.0f);
             const float height = 1 - fall * fall;
             const float after = std::max(0.0f, (u - contact) / (1 - contact));
             const float bounce = 4 * after * (1 - after);
-            const float drop = std::min(60.0f, middle.y * 0.45f);
+            const float drop = std::min(88.0f, middle.y * 0.6f) * (0.55f + 0.45f * variation);
             lifted = {.lift = 24 * height + 3 * bounce,
                       .turn = paint::Quaternion::axisAngle({0, 0, 1}, start * 0.18f * height),
-                      .shift = {start * drop * 0.35f * height, -drop * height - 3 * bounce},
+                      .shift = {start * drop * (0.1f + 0.45f * variation) * height, -drop * height - 3 * bounce},
                       .alpha = smooth(u / 0.18f)};
             break;
         }
-        case fallingLeaf: {
+        case EntranceMotion::FallingLeaves: {
             // A falling leaf: drift across the landing point and roll gently back to level.
             const float remaining = 1 - smooth(u);
-            const float sway = std::sin(2 * pi * u) * remaining;
+            const float sway = std::sin(2 * pi * (u + variation)) * remaining;
             lifted = {.lift = 30 * remaining,
                       .turn = paint::Quaternion::axisAngle({0, 1, 0}, 0.55f * sway) * paint::towardLight(0.24f * remaining),
-                      .shift = {start * std::min(26.0f, middle.x * 0.2f) * sway, -std::min(46.0f, middle.y * 0.4f) * remaining},
+                      .shift = {start * std::min(26.0f, middle.x * 0.2f) * sway, -std::min(60.0f, middle.y * 0.5f) * (0.55f + 0.45f * variation) * remaining},
                       .alpha = smooth(u / 0.2f)};
             break;
         }
-        case 8:
-            p.bankIn(mark, u, p.transform().map(rect), way);
+        case EntranceMotion::Bank:
+            p.bankIn(mark, u, p.transform().map(rect), turned(way, (variation - 0.5f) * 0.8f));
             return;
-        case 7: {
+        case EntranceMotion::Settle: {
             // Settle onto the plot from just above it with the leading edge slightly raised.
             const float remaining = 1 - smooth(u);
-            lifted = {.lift = std::min(18.0f, 5.0f + size * 0.08f) * remaining,
+            lifted = {.lift = std::min(18.0f, 5.0f + size * 0.08f) * reach * remaining,
                       .turn = paint::Quaternion::axisAngle({-way.y, way.x, 0}, 0.12f * remaining),
-                      .shift = way * (4.0f * remaining),
+                      .shift = way * (4.0f * reach * remaining),
                       .alpha = smooth(u / 0.22f)};
             break;
         }
-        case 3: {
+        case EntranceMotion::Flip: {
             // turning in from edge on about its upright middle, up off the plot over an arc and down again (a little past
             // facing, and back), the light sweeping across it as it turns
             const float facing = outBack(u, 1.4f);
             lifted = {.lift = std::min(36.0f + 0.25f * size, 90.0f) * std::sin(pi * e),
-                      .turn = paint::Quaternion::axisAngle({0, 1, 0}, start * 1.45f * (1 - facing)) * paint::towardLight(0.25f * std::sin(pi * e)),
+                      .turn = paint::Quaternion::axisAngle({0, 1, 0}, start * 1.45f * reach * (1 - facing)) * paint::towardLight(0.25f * std::sin(pi * e)),
                       .alpha = smooth(u / 0.2f)};
             break;
         }
-        case 4: {
+        case EntranceMotion::Spiral: {
             // spiralling in from far behind, round the middle of the chart: a part of a turn still to go round it, smaller
             // and further the more is left; tipped as it comes round, flat as it lands
             const float left = (1 - e) * (1 - e);
-            const float round = 1.7f * left;
+            const float round = 1.7f * reach * left;
             const Point from = rect.center() - middle;
-            const Point at = middle + turned(from, -round);
-            lifted = {.lift = -std::min(160.0f + 0.6f * size, 380.0f) * left,
+            const Point at = middle + turned(from, -round) * (1 + (variation - 0.5f) * 0.6f * left);
+            lifted = {.lift = -std::min(160.0f + 0.6f * size, 380.0f) * reach * left,
                       .turn = paint::Quaternion::axisAngle({0, 0, 1}, -round) * paint::Quaternion::axisAngle({from.y, -from.x, 0}, 0.6f * left) *
                               paint::towardLight(0.3f * std::sin(pi * e)),
                       .shift = at - rect.center(),
@@ -489,44 +525,45 @@ void Chart::placeArriving(paint::Painter& p, const paint::Painter::Mark& mark, f
                       .scale = 0.55f + 0.45f * outBack(u, 1.2f)};
             break;
         }
-        case 5: {
+        case EntranceMotion::Wave: {
             // a wave across the plot: from under it, up through it toward the one looking and back down onto it, rocking
             // with the wave as it passes (its front edge up first)
             const float z = -90 * (1 - u) * (1 - u) + 28 * std::sin(pi * u) * (1 - 0.4f * u);
             const float rock = 0.5f * std::cos(pi * u) * (1 - u);
-            lifted = {.lift = z, .turn = paint::Quaternion::axisAngle({0, 1, 0}, -start * rock) * paint::towardLight(0.2f * std::sin(pi * u)),
+            lifted = {.lift = z * reach, .turn = paint::Quaternion::axisAngle({0, 1, 0}, -start * rock) * paint::towardLight(0.2f * std::sin(pi * u)),
                       .alpha = smooth(u / 0.3f)};
             break;
         }
-        case 6: {
+        case EntranceMotion::Tumble: {
             // thrown in from beyond its start side, high over the plot, tumbling over about its long middle, landing with
             // a small bounce
             constexpr float landed = 0.82f;
             const float s = std::min(1.0f, u / landed);
             const float c = 1 - (1 - s) * (1 - s);
             float lift = std::min(110.0f + 0.4f * size, 220.0f) * std::sin(pi * 0.5f * (1 + c)) * (1 - c * 0.15f);
-            lift *= 1 - c;
+            lift *= (1 - c) * reach;
             if (u > landed) {
                 const float b = (u - landed) / (1 - landed);
                 lift = 5 * std::sin(pi * b) * (1 - b);
             }
             const paint::Float3 along = rect.width >= rect.height ? paint::Float3{1, 0, 0} : paint::Float3{0, 1, 0};
             lifted = {.lift = lift,
-                      .turn = paint::Quaternion::axisAngle(along, 2 * pi * (1 - c)) * paint::towardLight(0.2f * std::sin(pi * c)),
-                      .shift = {start * (Widget::size().width * 0.75f) * (1 - c), -Widget::size().height * 0.25f * std::sin(pi * c)},
+                      .turn = paint::Quaternion::axisAngle(along, 2 * pi * reach * (1 - c)) * paint::towardLight(0.2f * std::sin(pi * c)),
+                      .shift = {start * Widget::size().width * 0.75f * reach * (1 - c),
+                                Widget::size().height * ((variation - 0.5f) * 0.25f * (1 - c) - 0.25f * std::sin(pi * c))},
                       .alpha = smooth(u / 0.15f)};
             break;
         }
-        case 1: {
+        case EntranceMotion::Swing: {
             // standing on its base toward the one looking, swinging down onto the plot (a little past, and back)
-            const float angle = 1.35f * (1 - outBack(u, 1.3f));
+            const float angle = 1.35f * reach * (1 - outBack(u, 1.3f));
             lifted = {.turn = paint::Quaternion::axisAngle({-way.y, way.x, 0}, -angle), .alpha = std::min(1.0f, u * 5)};
             pivot = hinge;
             break;
         }
-        case 2: {
+        case EntranceMotion::Rise: {
             // from behind the plot, growing as it comes nearer, the light catching it on the way
-            lifted = {.lift = -std::min(60.0f + 0.4f * size, 160.0f) * (1 - e) * (1 - e),
+            lifted = {.lift = -std::min(60.0f + 0.4f * size, 160.0f) * reach * (1 - e) * (1 - e),
                       .turn = paint::towardLight(0.3f * std::sin(pi * e)),
                       .alpha = smooth(u / 0.35f),
                       .scale = 0.7f + 0.3f * outBack(u, 1.5f)};
@@ -536,7 +573,7 @@ void Chart::placeArriving(paint::Painter& p, const paint::Painter::Mark& mark, f
             // from in front: down faster and faster, turned a little (and catching the light), a small bounce as it lands
             constexpr float landed = 0.8f;
             const float left = 1 - std::min(1.0f, u / landed);
-            float lift = std::min(70.0f + 0.3f * size, 150.0f) * left * left;
+            float lift = std::min(70.0f + 0.3f * size, 150.0f) * reach * left * left;
             if (u > landed) {
                 const float b = (u - landed) / (1 - landed);
                 lift = 4 * std::sin(pi * b) * (1 - b);

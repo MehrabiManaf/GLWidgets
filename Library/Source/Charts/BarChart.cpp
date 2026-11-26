@@ -424,7 +424,7 @@ void BarChart::paint(PaintContext& context) {
                 base = {fromLeft ? r.x : r.right(), r.center().y};
                 out = {fromLeft ? 1.0f : -1.0f, 0};
             }
-            placeArriving(p, mark, arrived(order), r, base, out);
+            placeArriving(p, mark, pieceArrival(order, (dropped_ + ci) * 65537u + si), r, base, out);
         }
     };
     const float gap = s.gap;

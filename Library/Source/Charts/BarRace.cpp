@@ -403,18 +403,19 @@ void BarRace::paint(PaintContext& context) {
             bool coming, lifts;
             Rect row;
             float order;
+            std::size_t id;
             Point base;
             std::string key;
             ~Placed() {
                 if (lifts)
                     race.placeLifted(painter, mark, race.pieceLift(key), row);
                 if (coming)
-                    race.placeArriving(painter, mark, race.arrived(order), row, base, {race.rightToLeft() ? -1.0f : 1.0f, 0});
+                    race.placeArriving(painter, mark, race.pieceArrival(order, id), row, base, {race.rightToLeft() ? -1.0f : 1.0f, 0});
             }
         };
         const float zeroX = x(0);
         const Placed placed{*this, p, mark, coming, lifts, Rect{plot.x, y, plot.width, thickness}, std::clamp(place / ranks, 0.0f, 1.0f),
-                            Point{zeroX, middle}, lifts ? std::to_string(id) : std::string()};
+                            id, Point{zeroX, middle}, lifts ? std::to_string(id) : std::string()};
         if (clipped)
             p.pushClip(plot);
         double at = 0;

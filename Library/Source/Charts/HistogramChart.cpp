@@ -460,7 +460,7 @@ void HistogramChart::paint(PaintContext& context) {
             if (lifts)
                 placeLifted(p, mark, pieceLift(std::to_string(b)), r);
             if (coming)
-                placeArriving(p, mark, arrived(bins_ > 1 ? static_cast<float>(b) / static_cast<float>(bins_ - 1) : 0.0f), r,
+                placeArriving(p, mark, pieceArrival(bins_ > 1 ? static_cast<float>(b) / static_cast<float>(bins_ - 1) : 0.0f, b * 65537u + k), r,
                               Point{r.center().x, plot.bottom()}, {0, -1});
         }
     }

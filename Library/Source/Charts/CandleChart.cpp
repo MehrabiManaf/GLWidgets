@@ -763,6 +763,9 @@ void CandleChart::paint(PaintContext& context) {
             return f;                               // the oldest first, on to the newest
         }
     };
+    const auto arrivalOf = [&](const Shown& c) {
+        return pieceArrival(orderOf(c), static_cast<std::size_t>(c.index * 2));
+    };
     p.pushClip(plot);
     // the volumes: bars along the bottom, faint, as high as the highest that shows
     if (volumes_.height > 1) {
@@ -779,7 +782,7 @@ void CandleChart::paint(PaintContext& context) {
                 const Rect r{px(c.index) - w / 2, volumes_.bottom() - h, w, h};
                 p.fillRect(r, withAlpha(color, color.a * alpha));
                 if (coming)
-                    placeArriving(p, mark, arrived(orderOf(c)), r, Point{r.center().x, volumes_.bottom()}, {0, -1});
+                    placeArriving(p, mark, arrivalOf(c), r, Point{r.center().x, volumes_.bottom()}, {0, -1});
             }
         }
     }
@@ -805,17 +808,17 @@ void CandleChart::paint(PaintContext& context) {
             bool coming;
             float lift;
             Rect rect;
-            float order;
+            PieceArrival arrival;
             ~Placed() {
                 if (lift > 0)
                     chart.placeLifted(painter, mark, lift, rect);
                 if (coming)
-                    chart.placeArriving(painter, mark, chart.arrived(order), rect, Point{rect.center().x, rect.bottom()}, {0, -1});
+                    chart.placeArriving(painter, mark, arrival, rect, Point{rect.center().x, rect.bottom()}, {0, -1});
             }
         };
         const float width = std::max(room, 2.0f);
         const Placed placed{*this, p, mark, coming, lifts ? pieceLift(keyOf(c)) : 0.0f, Rect{x - width / 2, top, width, std::max(hair, bottom - top)},
-                            orderOf(c)};
+                            coming ? arrivalOf(c) : PieceArrival{1, 0}};
         if (props_.kind == Kind::Bars) {
             const float stroke = std::clamp(room * 0.12f, hair, 2.0f);
             const float tick = std::max(hair, room * 0.35f);

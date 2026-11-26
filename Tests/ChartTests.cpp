@@ -1536,6 +1536,53 @@ TEST(aChartsPiecesComeInWhenItFirstShowsThemAndWhenAskedAgain) {
     tests::testScheduler().setAnimationsEnabled(false);
 }
 
+TEST(aChartUsesTheChosenPieceMotionOnReplayAndDocking) {
+    struct Probe : Gauge { using Chart::entranceWay; };
+    tests::testScheduler().setAnimationsEnabled(true);
+    Shown<Probe> c;
+    using Motion = Chart::EntranceMotion;
+    for (auto motion : {Motion::Rain, Motion::FallingLeaves, Motion::Tumble}) {
+        c.chart->setEntranceMotion(motion);
+        c.chart->playEntrance();
+        c.paint();
+        CHECK(c.chart->entranceWay() == static_cast<int>(motion));
+        c.chart->playEntrance(std::chrono::milliseconds(500));
+        CHECK(c.chart->entranceWay() == static_cast<int>(motion));
+    }
+    c.chart->setEntranceMotion(Motion::Random);
+    c.chart->playEntrance();
+    c.paint();
+    CHECK(c.chart->entranceWay() >= 0 && c.chart->entranceWay() < 3);  // Studio
+    tests::testScheduler().setAnimationsEnabled(false);
+}
+
+TEST(spatialEntrancesStaggerPiecesByIdentity) {
+    struct Probe : Gauge { using Chart::pieceArrival; };
+    tests::testScheduler().setAnimationsEnabled(true);
+    Shown<Probe> c;
+    using Motion = Chart::EntranceMotion;
+    for (auto motion : {Motion::Drop, Motion::Swing, Motion::Rise, Motion::Flip, Motion::Spiral, Motion::Wave,
+                        Motion::Tumble, Motion::Settle, Motion::Bank, Motion::Rain, Motion::FallingLeaves}) {
+        c.chart->setEntranceMotion(motion);
+        c.chart->playEntrance(std::chrono::milliseconds(1000));
+        tests::advance(std::chrono::milliseconds(450));
+        float lowest = 1, highest = 0;
+        for (std::size_t id = 0; id < 32; ++id) {
+            const auto piece = c.chart->pieceArrival(0.5f, id);
+            lowest = std::min(lowest, piece.progress);
+            highest = std::max(highest, piece.progress);
+            const auto same = c.chart->pieceArrival(0.5f, id);
+            CHECK(piece.progress == same.progress && piece.variation == same.variation);
+            if (motion == Motion::Rain)
+                CHECK(piece.progress == c.chart->pieceArrival(0, id).progress);
+        }
+        CHECK(highest - lowest > 0.15f);
+        tests::advance(std::chrono::milliseconds(550));
+        CHECK(c.chart->pieceArrival(1, 31).progress == 1);
+    }
+    tests::testScheduler().setAnimationsEnabled(false);
+}
+
 TEST(solidChartsLiftOnDrillDownAndRecedeOnReturn) {
     UiContext& ui = tests::testContext();
     const Theme saved = ui.theme;

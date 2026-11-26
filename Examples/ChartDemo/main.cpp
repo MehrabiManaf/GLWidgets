@@ -73,6 +73,7 @@ namespace {
 
 struct Demo {
     glw::Application& app;
+    glw::Chart::EntranceMotion entranceMotion = glw::Chart::EntranceMotion::Random;
     double rate = 200;                      // points a second, each series
     glw::LineChart* line = nullptr;
     glw::LineSeries* cpu = nullptr;
@@ -238,9 +239,16 @@ struct Demo {
                                             .onChanged = [this](std::size_t i) { app.setColorScheme(static_cast<glw::ColorScheme>(i)); }}),
                               ui::CheckBox({.text = tr("Eased"), .checked = true, .onToggled = [this](bool on) { animate(on); }})
                                   .alignment(glw::Alignment::Start, glw::Alignment::Center),
-                              // the bars, the tiles and the slices coming in again, as when they first showed
+                              ui::Label({.text = tr("Animation")}).alignment(glw::Alignment::Start, glw::Alignment::Center),
+                              ui::ComboBox({.items = {tr("Random"), tr("Drop"), tr("Swing"), tr("Rise"), tr("Flip"), tr("Spiral"), tr("Wave"),
+                                                      tr("Tumble"), tr("Settle"), tr("Bank"), tr("Rain"), tr("Falling Leaves")},
+                                            .onChanged = [this](std::size_t i) {
+                                                entranceMotion = static_cast<glw::Chart::EntranceMotion>(static_cast<int>(i) - 1);
+                                                replay();
+                                            }}).toolTip(tr("Entrance motion for chart pieces, including candles, bars and slices")),
                               ui::Button({.text = tr("Again"), .onClick = [this] { replay(); }})
-                                  .toolTip(tr("The charts' pieces coming in again")),
+                                  .toolTip(tr("The charts' pieces coming in again"))),
+                   ui::HStack({.spacing = 10},
                               ui::Label({.text = tr("Bars")}).alignment(glw::Alignment::Start, glw::Alignment::Center),
                               ui::ComboBox({.items = {tr("Stacked"), tr("Grouped"), tr("Percent")},
                                             .onChanged = [this](std::size_t i) { bars->setLayout(static_cast<glw::BarLayout>(i)); }}),
@@ -679,7 +687,8 @@ struct Demo {
     }
 
     void replay() {
-        const auto replayVisible = [](glw::Chart* chart) {
+        const auto replayVisible = [this](glw::Chart* chart) {
+            chart->setEntranceMotion(entranceMotion);
             if (chart->root() && chart->visibleInTree())
                 chart->playEntrance();
         };

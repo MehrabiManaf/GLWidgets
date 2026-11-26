@@ -8,6 +8,7 @@
 #include <GLWidgets/Widgets/UiRoot.hpp>
 
 #include <algorithm>
+#include <functional>
 #include <cmath>
 #include <limits>
 #include <numeric>
@@ -384,7 +385,7 @@ void TreeMap::paint(PaintContext& context) {
         if (coming && area.width > 0 && area.height > 0) {
             const float across = ((rtl ? area.right() - r.right() : r.x - area.x)) / area.width;
             const float order = (across + (r.y - area.y) / area.height) / 2;
-            placeArriving(p, mark, arrived(order), r);
+            placeArriving(p, mark, pieceArrival(order, std::hash<std::string>{}(t.key)), r);
         }
     };
     std::vector<std::size_t> over;

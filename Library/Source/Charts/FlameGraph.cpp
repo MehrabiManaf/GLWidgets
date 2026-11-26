@@ -274,7 +274,7 @@ void FlameGraph::paint(PaintContext& context) {
         return Rect{plot.x, y, plot.width, rh};
     };
     const auto rowArrived = [&](std::size_t row) {
-        return arrived(levelCount > 1 ? static_cast<float>(row) / static_cast<float>(levelCount - 1) : 0.0f);
+        return pieceArrival(levelCount > 1 ? static_cast<float>(row) / static_cast<float>(levelCount - 1) : 0.0f, row);
     };
     const Point out{0, props_.icicle ? 1.0f : -1.0f};
     // each row (one piece coming in), each frame of it drawn by `draw`; the one under the mouse lifted
@@ -324,7 +324,7 @@ void FlameGraph::paint(PaintContext& context) {
     // their names, as much as fits in each (a row's as it lands; the one under the mouse's lifted with it)
     if (rh >= s.fontSize) {
         for (std::size_t row = 0; row < levelCount; ++row) {
-            const float shown = coming ? std::clamp((rowArrived(row) - 0.7f) / 0.3f, 0.0f, 1.0f) : 1.0f;
+            const float shown = coming ? std::clamp((rowArrived(row).progress - 0.7f) / 0.3f, 0.0f, 1.0f) : 1.0f;
             if (shown <= 0)
                 continue;
             for (const std::size_t i : byRow[row]) {

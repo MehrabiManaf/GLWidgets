@@ -8,6 +8,7 @@
 #include <GLWidgets/Widgets/UiRoot.hpp>
 
 #include <algorithm>
+#include <functional>
 #include <cmath>
 
 namespace glw {
@@ -365,7 +366,7 @@ void PieChart::paint(PaintContext& context) {
     liftPiece(hovered_, mouse_);
     const bool lifts = lifting();
     float swept = 1;
-    if (coming && entranceWay() == 0 && !solidPieces()) {
+    if (coming && entranceWay() == 0 && !spatialEntrance()) {
         const float x = std::min(1.0f, entranceProgress() / 0.75f);
         swept = x < 0.5f ? 4 * x * x * x : 1 - std::pow(-2 * x + 2, 3.0f) / 2;
     }
@@ -455,13 +456,13 @@ void PieChart::paint(PaintContext& context) {
         }
         if (levelLift != 0)
             tiltLevelPiece(p, mark, at + direction * ((r0 + r1) / 2), {-direction.y, direction.x}, levelLift);
-        if (coming && (entranceWay() != 0 || solidPieces())) {
+        if (coming && (entranceWay() != 0 || spatialEntrance())) {
             const float order = static_cast<float>(((item.from + item.to) / 2 - low) / (high - low));
             // (as large as the slice is, about: how far it comes from)
             const Point middlePoint = at + direction * ((r0 + r1) / 2);
             const float extent = std::max(r1 - r0, std::min(r1 * sweep, 2 * r1));
             const Rect bounds{middlePoint.x - extent / 2, middlePoint.y - extent / 2, extent, extent};
-            placeArriving(p, mark, arrived(order), bounds, at + direction * r0, direction);
+            placeArriving(p, mark, pieceArrival(order, std::hash<std::string>{}(item.key)), bounds, at + direction * r0, direction);
         }
         };
     std::vector<std::size_t> over;
