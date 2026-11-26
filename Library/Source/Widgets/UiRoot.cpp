@@ -405,9 +405,10 @@ void paintArriving(paint::Painter& painter, const paint::Painter::Mark& mark, co
             painter.unfoldIn(mark, arrival.progress, area, arrival.hinge);
         else
             painter.riseIn(mark, arrival.progress, area);
-    } else if (arrival.from && (arrival.landing == LandingMotion::Rain || arrival.landing == LandingMotion::FallingLeaves)) {
+    } else if (arrival.landing == LandingMotion::Rain || arrival.landing == LandingMotion::FallingLeaves) {
         using Path = paint::Painter::FallPath;
-        painter.arriveFrom(mark, arrival.progress, area, *arrival.from, arrival.landing == LandingMotion::Rain ? Path::Rain : Path::FallingLeaves);
+        const Rect& source = arrival.from && !arrival.from->empty() ? *arrival.from : area;
+        painter.arriveFrom(mark, arrival.progress, area, source, arrival.landing == LandingMotion::Rain ? Path::Rain : Path::FallingLeaves);
     } else if (arrival.landing == LandingMotion::Glide) {
         painter.glideIn(mark, arrival.progress, area, arrival.from.value_or(area));
     } else if (arrival.from && arrival.landing == LandingMotion::Swing) {

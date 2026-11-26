@@ -276,6 +276,28 @@ TEST(aRootPaintsWhatIsArrivingFallingInAndItsThemesBricks) {
     CHECK(list.sceneVertices.empty() && !list.vertices.empty() && (list.vertices.back().color >> 24) == 0);
 }
 
+TEST(dockWeatherMotionsUseTheDestinationWhenTheSourceIsUnavailable) {
+    UiContext context = tests::testContext();
+    context.theme = Theme::dark(ThemeStyle::Solid);
+    UiRoot root(context);
+    auto made = std::make_unique<Arriving>();
+    Arriving& w = *made;
+    root.setContent(std::move(made));
+    root.setSize({400, 300});
+    const auto position = [&](LandingMotion motion, std::optional<Rect> from) {
+        w.at = Arrival{.progress = 0.45f, .from = from, .landing = motion};
+        DrawList list;
+        root.paint(list);
+        return list.vertices.back().position;
+    };
+    for (auto motion : {LandingMotion::Rain, LandingMotion::FallingLeaves}) {
+        const Point expected = position(motion, Rect{0, 0, 400, 300});
+        CHECK(position(motion, std::nullopt) == expected);
+        CHECK(position(motion, Rect{}) == expected);
+    }
+    CHECK(position(LandingMotion::Rain, {}) != position(LandingMotion::FallingLeaves, {}));
+}
+
 TEST(plasticAndMetalDockArrivalsMoveAsFlatGroups) {
     const auto paint = [](ThemeStyle style, DockTransition transition, float progress) {
         tests::FakeHost host;
