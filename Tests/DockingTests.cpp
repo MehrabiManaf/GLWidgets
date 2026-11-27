@@ -86,6 +86,96 @@ TEST(addPanelMakesTheTree) {
     CHECK((d.area->panelIds() == std::vector<std::string>{"palette", "graph", "output", "search"}));
 }
 
+TEST(aPanelCanSwitchWithoutPaintingTheHiddenPage) {
+    struct Page : Widget {
+        int paints = 0;
+        void paint(PaintContext&) override { ++paints; }
+    };
+    Docked d;
+    auto& landing = tests::testContext().theme.dock.landing;
+    const auto savedLanding = landing;
+    landing = std::chrono::milliseconds(250);
+    tests::testScheduler().setAnimationsEnabled(true);
+    const auto add = [&](const char* id, bool blend) -> Page& {
+        auto page = std::make_unique<Page>();
+        auto& result = *page;
+        d.area->addPanel({.id = id, .title = id, .content = std::move(page), .animatePageChange = blend}, d.graph);
+        d.root.layout();
+        return result;
+    };
+    const auto paint = [&] {
+        paint::DrawList list;
+        d.root.paint(list);
+    };
+    Page& first = add("first", true);
+    Page& second = add("second", true);
+    paint();
+    CHECK(first.paints == 1 && second.paints == 1);
+    Page& document = add("document", false);
+    paint();
+    CHECK(first.paints == 1 && second.paints == 1 && document.paints == 1);
+    Page& tool = add("tool", true);
+    paint();
+    CHECK(document.paints == 1 && tool.paints == 1);
+    tests::advance(std::chrono::seconds(1));
+    tests::testScheduler().setAnimationsEnabled(false);
+    landing = savedLanding;
+}
+
+TEST(pageDropMovesTheActiveTabAndBodyOnly) {
+    Docked d;
+    tests::testScheduler().setAnimationsEnabled(true);
+    DockTabs& tabs = *d.output;
+    const Widget& row = *tabs.children()[0];
+    const Widget& inactive = *row.children()[0];
+    const Widget& selected = *row.children()[1];
+    const Widget& page = *tabs.panelContent(1);
+    const float top = page.mapToRoot({}).y, tab = selected.mapToRoot({}).y;
+    const Rect other = inactive.bounds(), neighbour = d.graph->bounds();
+    tabs.playPageDrop();
+    CHECK(near(page.mapToRoot({}).y, top - 12) && near(selected.mapToRoot({}).y, tab - 12));
+    tests::advance(std::chrono::milliseconds(80));
+    CHECK(near(page.mapToRoot({}).y, top - 6) && near(selected.mapToRoot({}).y, tab - 6));
+    CHECK(inactive.bounds() == other && d.graph->bounds() == neighbour);
+    tabs.setActive(0);
+    d.root.layout();
+    CHECK(tabs.pageDropOffset() == 0 && near(tabs.panelContent(0)->mapToRoot({}).y, top));
+    tests::testScheduler().setAnimationsEnabled(false);
+    tabs.playPageDrop();
+    CHECK(tabs.pageDropOffset() == 0);
+}
+
+TEST(solidPageDropBringsTheSelectedTabForward) {
+    auto& theme = tests::testContext().theme;
+    const Theme saved = theme;
+    theme = Theme::dark(ThemeStyle::Solid);
+    Docked d;
+    tests::testScheduler().setAnimationsEnabled(true);
+    DockTabs& tabs = *d.output;
+    const Widget& selected = *tabs.children()[0]->children()[tabs.active()];
+    paint::DrawList list;
+    const auto raisedDepth = [&] {
+        d.root.paint(list);
+        float highest = 0;
+        for (const auto& v : list.sceneVertices) {
+            if (v.material[2] != 0 || v.center[2] < 10)
+                continue;
+            CHECK(std::abs(v.center[0] - selected.mapToRoot({selected.size().width / 2, 0}).x) < selected.size().width / 2 + 4);
+            highest = std::max(highest, v.center[2]);
+        }
+        return highest;
+    };
+    tabs.playPageDrop();
+    const float start = raisedDepth();
+    tests::advance(std::chrono::milliseconds(80));
+    const float halfway = raisedDepth();
+    CHECK(start > halfway && halfway > 10);
+    tests::advance(std::chrono::milliseconds(80));
+    CHECK(raisedDepth() == 0);
+    tests::testScheduler().setAnimationsEnabled(false);
+    theme = saved;
+}
+
 // A panel renamed: where it was, what it shows, its tab's title; another's id, or none, refused.
 TEST(aPanelIsRenamedWhereItIs) {
     Docked d;

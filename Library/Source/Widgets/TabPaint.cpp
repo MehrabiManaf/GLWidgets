@@ -63,7 +63,17 @@ void paintClose(PaintContext& context, const DockStyle& s, const Rect& area, boo
     p.drawLine({m.x - 4, m.y + 4}, {m.x + 4, m.y - 4}, 1.2f, s.text);
 }
 
-void paintStack(PaintContext& context, const DockStyle& s, Size size, float bar, std::optional<Rect> activeTab, const Rect& row) {
+void placeDroppingTab(paint::Painter& painter, const paint::Painter::Mark& mark, Point localPivot, float amount) {
+    const Point pivot = painter.transform().map(localPivot);
+    const auto eye = painter.camera().eye;
+    const float lift = std::min(32.0f, eye.z * 0.05f) * amount;
+    // Travel along the ray from the tab to the eye, so even a tab near the screen edge lands over its slot.
+    const Point shift{(eye.x - pivot.x) * lift / eye.z, (eye.y - pivot.y) * lift / eye.z};
+    painter.placeClipped(mark, pivot, {.lift = lift, .turn = paint::Quaternion::axisAngle({1, 0, 0}, -0.16f * amount),
+                                       .shift = shift, .scale = 1 + 0.035f * amount});
+}
+
+void paintStack(PaintContext& context, const DockStyle& s, Size size, float bar, std::optional<Rect> activeTab, const Rect& row, float tabDepth) {
     paint::Painter& p = context.painter;
     const Rect r{0, 0, size.width, size.height};
     if (s.islandBevel.relief > 0) {
@@ -95,9 +105,12 @@ void paintStack(PaintContext& context, const DockStyle& s, Size size, float bar,
             const bool glass = context.ui.theme.glassReliefs && slab.relief >= context.ui.theme.glassReliefs->from;
             const float over = glass ? 10 : slab.roundness;
             const Rect shape{tab.x, top, tab.width, bar - top + over + (glass ? s.tabRadius : s.tabBevel.roundness + 2)};
+            const auto face = tabDepth > 0 ? p.mark() : paint::Painter::Mark{};
             p.pushClip({left, 0, right - left, bar + over});
             p.fillRelief(shape, s.tabRadius, slab.relief, s.tabBevel.roundness, s.background, {.bottom = true, .onto = true});
             p.popClip();
+            if (tabDepth > 0)
+                placeDroppingTab(p, face, tab.center(), tabDepth);
         }
         p.setReliefBricks(reliefBricks);
         return;

@@ -92,6 +92,7 @@ struct DockPanel {
     bool closable = true;                   // a × on its tab
     std::vector<DockButton> buttons{};      // on the tab bar while it is shown, before the float button
     DockScope scope = DockScope::MajorTab;  // the areas it goes into: of its scope only
+    bool animatePageChange = true;          // allow the stack to blend this page with another during a layout change
 };
 
 // A stack of panels: their tabs, and the content of the one shown under them.
@@ -111,6 +112,9 @@ public:
     void renamePanel(std::size_t index, std::string id, LocalizedText title);
     std::size_t active() const { return active_; }
     void setActive(std::size_t index);
+    // Briefly drop the stack body and its selected tab when a new document opens.
+    void playPageDrop();
+    float pageDropOffset() const { return pageDrop_.value(); }
     DockArea* area() const;
     const DockStyle& style() const;
 
@@ -144,6 +148,7 @@ protected:
     void onPreviewMouse(MouseEvent& event) override;
     void onHoverChanged(bool hovered) override;
     void onRootChanged() override;
+    void onVisibleChanged(bool visible) override;
     std::optional<Arrival> arrival() const override;
     std::optional<Arrival> childArrival(const Widget& child) const override;
     bool paintsHiddenChild(const Widget& child) const override;
@@ -170,6 +175,7 @@ private:
         bool closable = true;
         std::vector<DockButton> buttons;
         DockScope scope = DockScope::MajorTab;
+        bool animatePageChange = true;
     };
     void rebuildBar();
     void rebuildTools();                    // the buttons of the panel shown, the float button
@@ -195,6 +201,10 @@ private:
     Animation cornerGrown_{[this] { invalidatePaint(); }};      // the tongue under the mouse: from 0 to 1
     std::optional<Rect> previousCell_;
     const Widget* previousPage_ = nullptr;
+    bool blendPages_ = true;
+    void placePageDrop();
+    void finishPageDrop();
+    Animation pageDrop_{[this] { placePageDrop(); }};
     bool resizing_ = false;
     ArrivalBounds controlBounds_;
     Animation landing_{[this] {

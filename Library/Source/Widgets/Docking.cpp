@@ -49,6 +49,11 @@ struct DockGroup {
 namespace {
 
 constexpr float dragThreshold = 6;      // dips the mouse moves with a tab before it is dragged
+constexpr float pageDropHeight = 12;
+
+float tabDropDepth(ThemeStyle style, float offset) {
+    return style == ThemeStyle::Solid ? -offset / pageDropHeight : 0.0f;
+}
 constexpr Size centerMinimum{160, 100}; // what an area's center keeps at least
 constexpr float draggedOpacity = 0.6f;  // of a window dragged by its only tab
 constexpr float tearReach = 24;         // dips above and below a stack's tab bar where a tab dragged from it stays in it
@@ -74,6 +79,7 @@ public:
 
     // The panel it is the tab of: what the row knows it by when the tabs are made again.
     const std::string& panelId() const { return owner_.panelId(index_); }
+    float dropOffset() const { return active_ ? owner_.pageDropOffset() : 0; }
 
     void setActive(bool active) {
         active_ = active;
@@ -89,10 +95,18 @@ protected:
     void paint(PaintContext& context) override {
         const DockStyle& s = owner_.style();
         const VisualState state{.hovered = hovered(), .pressed = pressed_ && hovered()};
+        if (tabDropDepth(context.ui.theme.style, dropOffset()) > 0)
+            dropMark_ = context.painter.mark();
         tabs::paintTab(context, s, size(), active_, state);
         label_->setColor(active_ || hovered() ? s.text : s.mutedText);
         if (closable_ && (hovered() || active_))
             tabs::paintClose(context, s, closeRect(), closeHovered_);
+    }
+
+    void paintOver(PaintContext& context) override {
+        const float depth = tabDropDepth(context.ui.theme.style, dropOffset());
+        if (depth > 0)
+            tabs::placeDroppingTab(context.painter, dropMark_, {size().width / 2, size().height / 2}, depth);
     }
 
     // What can be done with its panel: floated (or docked again), its stack's tab bar hidden (a stack of one panel,
@@ -195,6 +209,7 @@ private:
     }
 
     DockTabs& owner_;
+    paint::Painter::Mark dropMark_;
     std::size_t index_;
     bool closable_;
     bool active_;
@@ -220,6 +235,15 @@ public:
         reveal_ = index;
         smooth_.stop();
         invalidateLayout();
+    }
+
+    void placeActiveTab(std::size_t index) {
+        if (index < children().size()) {
+            auto& tab = static_cast<DockTab&>(*children()[index]);
+            Rect bounds = tab.bounds();
+            bounds.y = area_.y + tab.dropOffset();
+            tab.arrange(bounds);
+        }
     }
 
 protected:
@@ -287,7 +311,8 @@ protected:
             const float start = starts[i] + shifts_[i] * left;
             const float at = start - offset_;
             const float x = rtl ? content.right() - at - widths[i] : content.x + at;
-            children()[i]->arrange({x, content.y, widths[i], content.height});
+            const auto& tab = static_cast<const DockTab&>(*children()[i]);
+            children()[i]->arrange({x, content.y + tab.dropOffset(), widths[i], content.height});
             targets_[ids[i]] = starts[i];
             shown_[ids[i]] = start;
         }
@@ -732,7 +757,7 @@ void DockTabs::add(DockPanel panel, std::size_t index) {
     std::unique_ptr<Widget> content = panel.content ? std::move(panel.content) : std::make_unique<Widget>();
     Widget& shown = addChild(std::move(content));
     entries_.insert(entries_.begin() + static_cast<std::ptrdiff_t>(index),
-                    Entry{std::move(panel.id), std::move(panel.title), &shown, panel.closable, std::move(panel.buttons), panel.scope});
+                    Entry{std::move(panel.id), std::move(panel.title), &shown, panel.closable, std::move(panel.buttons), panel.scope, panel.animatePageChange});
     if (entries_.size() > 1)
         setTabBarHidden(false);     // its tabs: to choose between them
     rebuildBar();
@@ -755,7 +780,7 @@ DockPanel DockTabs::take(std::size_t index) {
         setActive(active_);
     else
         rebuildTools();
-    return DockPanel{std::move(entry.id), std::move(entry.title), std::move(content), entry.closable, std::move(entry.buttons), entry.scope};
+    return DockPanel{std::move(entry.id), std::move(entry.title), std::move(content), entry.closable, std::move(entry.buttons), entry.scope, entry.animatePageChange};
 }
 
 void DockTabs::moveTab(std::size_t from, std::size_t to) {
@@ -769,6 +794,7 @@ void DockTabs::moveTab(std::size_t from, std::size_t to) {
 }
 
 void DockTabs::setActive(std::size_t index) {
+    finishPageDrop();
     if (entries_.empty())
         return;
     const auto next = std::min(index, entries_.size() - 1);
@@ -783,6 +809,8 @@ void DockTabs::setActive(std::size_t index) {
         }
     }
     active_ = next;
+    if (!entries_[next].animatePageChange)
+        blendPages_ = false;
     for (std::size_t i = 0; i < entries_.size(); ++i)
         entries_[i].content->setVisible(i == active_);
     // the tabs are told in place: one of them may be the one pressed, in its own handler
@@ -796,6 +824,28 @@ void DockTabs::setActive(std::size_t index) {
         DockArea* handling = a->group_->home ? a->group_->home : a;
         if (handling->onPanelShown_)
             handling->onPanelShown_(*this, entries_[active_].id);
+    }
+}
+
+void DockTabs::playPageDrop() {
+    if (entries_.empty() || !visibleInTree() || !scheduler() || !scheduler()->animationsEnabled())
+        return;
+    selectionMove_.set(1);
+    pageDrop_.set(-pageDropHeight);
+    pageDrop_.animateTo(scheduler(), 0, std::chrono::milliseconds(160), Easing::InOutCubic);
+    placePageDrop();
+}
+
+void DockTabs::placePageDrop() {
+    rearrange();
+    static_cast<TabRow&>(*bar_).placeActiveTab(active_);
+    invalidatePaint();
+}
+
+void DockTabs::finishPageDrop() {
+    if (pageDrop_.running()) {
+        pageDrop_.set(0);
+        placePageDrop();
     }
 }
 
@@ -874,11 +924,11 @@ std::optional<Arrival> DockTabs::childArrival(const Widget& child) const {
 }
 
 bool DockTabs::paintsHiddenChild(const Widget& child) const {
-    return previousCell_ && previousPage_ == &child && !entries_.empty() && entries_[active_].content != &child;
+    return blendPages_ && previousCell_ && previousPage_ == &child && !entries_.empty() && entries_[active_].content != &child;
 }
 
 std::optional<paint::Lifted> DockTabs::childLifted(const Widget& child) const {
-    if (!previousCell_ || entries_.empty() || previousPage_ == entries_[active_].content)
+    if (!blendPages_ || !previousCell_ || entries_.empty() || previousPage_ == entries_[active_].content)
         return std::nullopt;
     const bool outgoing = previousPage_ == &child;
     if (!outgoing && (&child != entries_[active_].content || arrivalFor(child)))
@@ -952,7 +1002,13 @@ void DockTabs::rebuildTools() {
 }
 
 void DockTabs::onRootChanged() {
+    finishPageDrop();
     rebuildTools();     // the float button: with a docking host only
+}
+
+void DockTabs::onVisibleChanged(bool visible) {
+    if (!visible)
+        finishPageDrop();
 }
 
 void DockTabs::renamePanel(std::size_t index, std::string id, LocalizedText title) {
@@ -1004,7 +1060,7 @@ void DockTabs::arrangeContent(const Rect& content) {
     arrangeInCell(*bar_, {rtl ? line.right() - lead - tabs : line.x + lead, line.y, tabs, full}, rtl);
     // the panel inside the stack's edge (drawn under it: what reaches its side or bottom would cover it)
     constexpr float edge = 1;
-    const Rect below{content.x + edge, content.y + bar, std::max(0.0f, content.width - 2 * edge), std::max(0.0f, content.height - bar - edge)};
+    const Rect below{content.x + edge, content.y + bar + pageDropOffset(), std::max(0.0f, content.width - 2 * edge), std::max(0.0f, content.height - bar - edge)};
     for (const Entry& e : entries_) {
         if (e.content->visible())
             arrangeInCell(*e.content, below, rtl);
@@ -1036,7 +1092,7 @@ void DockTabs::paint(PaintContext& context) {
     if (active_ < bar_->children().size()) {
         const Widget& tab = *bar_->children()[active_];
         const Point at = mapFromRoot(tab.mapToRoot({}));
-        activeTab = Rect{at.x, at.y, tab.size().width, tab.size().height};
+        activeTab = Rect{at.x, at.y - pageDropOffset(), tab.size().width, tab.size().height};
     }
     if (activeTab && selectionMove_.running()) {
         const float t = selectionMove_.value();
@@ -1046,7 +1102,11 @@ void DockTabs::paint(PaintContext& context) {
     paintedTab_ = activeTab;
     const Point rowAt = mapFromRoot(bar_->mapToRoot({}));
     const Rect row{rowAt.x, rowAt.y, bar_->size().width, bar_->size().height};
-    tabs::paintStack(context, style(), size(), bar, activeTab, row);
+    if (pageDrop_.running())
+        context.painter.pushTransform({1, {0, pageDropOffset()}});
+    tabs::paintStack(context, style(), size(), bar, activeTab, row, tabDropDepth(context.ui.theme.style, pageDropOffset()));
+    if (pageDrop_.running())
+        context.painter.popTransform();
 }
 
 float DockTabs::barHeight() const {
@@ -1140,6 +1200,8 @@ void DockTabs::paintOver(PaintContext& context) {
 }
 
 void DockTabs::onPreviewMouse(MouseEvent& event) {
+    if (event.type == MouseEventType::Press || event.type == MouseEventType::Wheel)
+        finishPageDrop();
     if (!barGone())
         return;
     const bool over = revealCorner().contains(event.position);
@@ -1351,7 +1413,8 @@ DockTabs& DockArea::addPanel(DockPanel panel, Widget* nextTo, DockSide side, flo
     auto* stack = dynamic_cast<DockTabs*>(nextTo);
     GLW_EXPECTS(!nextTo || stack || (center_ && nextTo == center_));
     DockArea* owner = nextTo ? enclosingArea(*nextTo) : this;
-    if (owner && owner->context())
+    const bool instantTab = side == DockSide::Center && !panel.animatePageChange && stack;
+    if (!instantTab && owner && owner->context())
         owner->beginReflow(owner->context()->theme.dock.landing);
     // Open a new split from the outside edge of its target as its neighbours yield space.
     const auto openBeside = [&](Widget& target, DockSide edge) -> DockTabs& {
@@ -1850,6 +1913,7 @@ void DockArea::beginReflow(std::chrono::milliseconds duration) {
     forEachTabs(*tree, [&](DockTabs& tabs) {
         tabs.previousCell_ = oldCell(tabs);
         tabs.previousPage_ = tabs.count() ? tabs.panelContent(tabs.active()) : nullptr;
+        tabs.blendPages_ = !tabs.count() || tabs.entries_[tabs.active()].animatePageChange;
         tabs.resizing_ = false;
         tabs.parent()->invalidateLayout();
     });

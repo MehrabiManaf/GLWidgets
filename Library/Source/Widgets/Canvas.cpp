@@ -261,7 +261,7 @@ void Canvas::paint(PaintContext& context) {
             });
         }
     }
-    p.pushTransform(viewTransform());
+    p.pushTransform(childrenTransform());
     paintUnderItems(context);
     p.popTransform();
     p.popClip();
@@ -270,7 +270,7 @@ void Canvas::paint(PaintContext& context) {
 void Canvas::paintOver(PaintContext& context) {
     paint::Painter& p = context.painter;
     p.pushClip({0, 0, size().width, size().height});
-    p.pushTransform(viewTransform());
+    p.pushTransform(childrenTransform());
     paintOverItems(context);
     p.popTransform();
     p.popClip();

@@ -3,6 +3,7 @@
 #pragma once
 // How a stack of tabs over its content is drawn, in the theme's DockStyle: a dock's stacks (Docking.cpp) and a TabView's.
 #include <GLWidgets/Core/Geometry.hpp>
+#include <GLWidgets/Paint/Painter.hpp>
 #include <GLWidgets/Widgets/Theme.hpp>
 
 #include <optional>
@@ -22,7 +23,9 @@ void paintTab(PaintContext& context, const DockStyle& s, Size size, bool active,
 void paintClose(PaintContext& context, const DockStyle& s, const Rect& area, bool hovered);
 // The stack under its tabs, `size` big, its bar `bar` high: its background, its edge, the line under the bar; a raised
 // stack's slab, and its tab shown (`activeTab`, in the stack's coordinates, cut to `row`, where the tabs show) joined to it.
-void paintStack(PaintContext& context, const DockStyle& s, Size size, float bar, std::optional<Rect> activeTab, const Rect& row);
+void paintStack(PaintContext& context, const DockStyle& s, Size size, float bar, std::optional<Rect> activeTab, const Rect& row, float tabDepth = 0);
+// Both halves of a Solid tab (the face on the slab and the lettering on the tab) share its pivot and pose.
+void placeDroppingTab(paint::Painter& painter, const paint::Painter::Mark& mark, Point localPivot, float amount);
 
 } // namespace tabs
 } // namespace glw
